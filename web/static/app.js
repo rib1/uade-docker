@@ -92,7 +92,7 @@ async function handleFileUpload(file) {
 
         if (response.ok) {
             showStatus(`✓ Converted: ${data.filename}`, 'success');
-            playFile(data.file_id, data.filename, data.play_url, data.download_url, '', data.format || 'wav');
+            playFile(data.file_id, data.filename, data.play_url, data.download_url, data.player_format || 'Module', data.audio_format || 'wav');
         } else {
             showStatus(`✗ Error: ${data.error}`, 'error');
         }
@@ -134,7 +134,7 @@ async function handleUrlConvert() {
 
         if (response.ok) {
             showStatus(`✓ Converted: ${data.filename}`, 'success');
-            playFile(data.file_id, data.filename, data.play_url, data.download_url, '', data.format || 'wav');
+            playFile(data.file_id, data.filename, data.play_url, data.download_url, data.player_format || 'Module', data.audio_format || 'wav');
             urlInput.value = '';
         } else {
             showStatus(`✗ Error: ${data.error}`, 'error');
@@ -179,7 +179,7 @@ async function handleTfmxConvert() {
 
         if (response.ok) {
             showStatus('✓ TFMX converted successfully', 'success');
-            playFile(data.file_id, 'TFMX Module', data.play_url, data.download_url, 'TFMX', data.format || 'wav');
+            playFile(data.file_id, 'TFMX Module', data.play_url, data.download_url, 'TFMX', data.audio_format || 'wav');
             mdatInput.value = '';
             smplInput.value = '';
         } else {
