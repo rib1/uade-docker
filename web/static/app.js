@@ -238,7 +238,7 @@ async function handleExamplePlay(example, button) {
 
         if (response.ok) {
             showStatus(`✓ ${example.name} ready to play`, 'success');
-            playFile(data.file_id, example.name, data.play_url, data.download_url, example.format, data.format || 'wav');
+            playFile(data.file_id, example.name, data.play_url, data.download_url, example.format, data.audio_format || 'wav');
             button.innerHTML = '✓ Playing';
             
             // Reset button after 2 seconds
