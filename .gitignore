@@ -5,9 +5,6 @@ smpl.*
 # WAV output files
 *.wav
 
-# Docker build cache
-.dockerignore
-
 # OS files
 .DS_Store
 Thumbs.db
