@@ -10,6 +10,7 @@ import uuid
 import time
 import subprocess
 import logging
+import hashlib
 from pathlib import Path
 from datetime import datetime, timedelta
 from flask import Flask, request, jsonify, send_file, send_from_directory
@@ -106,9 +107,37 @@ def cleanup_old_files():
     except Exception as e:
         logger.error(f"Cleanup error: {e}")
 
-def convert_to_wav(input_path, output_path):
-    """Convert module to WAV using UADE"""
+def get_file_hash(file_path):
+    """Calculate MD5 hash of a file for caching"""
+    md5 = hashlib.md5()
+    with open(file_path, 'rb') as f:
+        for chunk in iter(lambda: f.read(4096), b""):
+            md5.update(chunk)
+    return md5.hexdigest()
+
+def get_cached_conversion(cache_hash):
+    """Check if a converted file exists in cache"""
+    cache_file = CONVERTED_DIR / f"{cache_hash}.wav"
+    if cache_file.exists():
+        # Update access time to prevent cleanup
+        cache_file.touch()
+        logger.info(f"Cache hit: {cache_hash}")
+        return cache_file
+    return None
+
+def convert_to_wav(input_path, output_path, use_cache=True):
+    """Convert module to WAV using UADE with optional caching"""
     try:
+        # Check cache first
+        if use_cache:
+            cache_hash = get_file_hash(input_path)
+            cached_file = get_cached_conversion(cache_hash)
+            if cached_file:
+                # Copy cached file to output path
+                import shutil
+                shutil.copy2(cached_file, output_path)
+                return True, None
+        
         cmd = [
             '/usr/local/bin/uade123',
             '-c',  # Headless mode
@@ -130,6 +159,14 @@ def convert_to_wav(input_path, output_path):
         if not output_path.exists():
             return False, "Conversion failed: Output file not created"
         
+        # Save to cache
+        if use_cache:
+            cache_file = CONVERTED_DIR / f"{cache_hash}.wav"
+            if not cache_file.exists():
+                import shutil
+                shutil.copy2(output_path, cache_file)
+                logger.info(f"Cached conversion: {cache_hash}")
+        
         logger.info(f"Successfully converted: {input_path} -> {output_path}")
         return True, None
         
@@ -139,9 +176,22 @@ def convert_to_wav(input_path, output_path):
         logger.error(f"Conversion exception: {e}")
         return False, str(e)
 
-def convert_tfmx(mdat_url, smpl_url, output_path):
-    """Convert TFMX module using uade-convert helper"""
+def convert_tfmx(mdat_url, smpl_url, output_path, use_cache=True):
+    """Convert TFMX module using uade-convert helper with caching"""
     try:
+        # Create cache key from both URLs
+        if use_cache:
+            cache_key = hashlib.md5(f"{mdat_url}:{smpl_url}".encode()).hexdigest()
+            cache_file = CONVERTED_DIR / f"{cache_key}.wav"
+            
+            if cache_file.exists():
+                # Cache hit - copy cached file
+                import shutil
+                shutil.copy2(cache_file, output_path)
+                cache_file.touch()  # Update access time
+                logger.info(f"Cache hit (TFMX): {cache_key}")
+                return True, None
+        
         cmd = [
             '/usr/local/bin/uade-convert',
             mdat_url,
@@ -159,6 +209,12 @@ def convert_tfmx(mdat_url, smpl_url, output_path):
         if result.returncode != 0:
             logger.error(f"TFMX conversion error: {result.stderr}")
             return False, f"TFMX conversion failed: {result.stderr}"
+        
+        # Save to cache
+        if use_cache and output_path.exists():
+            import shutil
+            shutil.copy2(output_path, cache_file)
+            logger.info(f"Cached TFMX conversion: {cache_key}")
         
         return True, None
         
