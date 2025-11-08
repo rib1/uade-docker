@@ -709,16 +709,8 @@ def download_file(file_id):
         response.headers['Content-Disposition'] = f'attachment; filename="{filename}"'
         return response
     else:
-        # For files larger than 20MB, return error suggesting browser doesn't support range requests
-        if file_size > 20 * 1024 * 1024:
-            return jsonify({
-                'error': 'File too large for direct download',
-                'message': f'File size is {file_size / 1024 / 1024:.1f}MB. Please use a download manager that supports range requests, or stream the file instead.',
-                'file_size': file_size,
-                'play_url': f'/play/{file_id}'
-            }), 413
-        
-        # Stream small files normally
+        # For requests without range header, stream the entire file
+        # Browsers will automatically use range requests for large files when needed
         def generate():
             with open(file_path, 'rb') as f:
                 while True:
