@@ -102,14 +102,7 @@ docker run --rm -v "C:\path\to\modules:/music" uade-player -z /music/*.mod
 
 You can download modules directly into the container and convert them to WAV in one command:
 
-### Download and Convert Single Module
-
-```powershell
-# Download a module from a URL and convert to WAV
-docker run --rm -v "C:\path\to\output:/music" --entrypoint /bin/sh uade-player -c "apt-get update && apt-get install -y wget && wget -O /tmp/module.mod 'https://example.com/song.mod' && /usr/local/bin/uade123 -c -f /music/output.wav /tmp/module.mod"
-```
-
-### Simplified with curl (already available)
+### Download and Convert with curl
 
 ```powershell
 # Using curl to download (no extra packages needed)
