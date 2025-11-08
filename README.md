@@ -5,7 +5,7 @@ A Docker container for playing Amiga music modules using UADE (Unix Amiga Delitr
 ## Prerequisites
 
 - Docker Desktop for Windows installed and running
-- Module files (`.mod`, `.xm`, `.s3m`, etc.) on your Windows system
+- Amiga module files (`.mod`, `.ahx`, TFMX `mdat.*`/`smpl.*` pairs, etc.) on your Windows system
 
 ## Building the Image
 
