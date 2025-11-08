@@ -6,6 +6,10 @@ FROM ${BASE_IMAGE} AS uade-base
 # Runtime stage - Add web server
 FROM debian:stable-slim
 
+# Build argument for git commit hash
+ARG GIT_COMMIT=unknown
+ENV GIT_COMMIT=${GIT_COMMIT}
+
 # Install runtime dependencies + Python + tools for cloud environments
 RUN apt-get update && apt-get install -y \
     libao4 \
@@ -61,5 +65,5 @@ HEALTHCHECK --interval=30s --timeout=3s --retries=3 \
   CMD curl -f http://localhost:5000/health || exit 1
 
 # Use gunicorn for production (better than Flask dev server for cloud)
-# Configurable workers for scaling
-CMD ["gunicorn", "--bind", "0.0.0.0:5000", "--workers", "4", "--timeout", "120", "--access-logfile", "-", "--error-logfile", "-", "server:app"]
+# Single worker to minimize memory usage for large file streaming
+CMD ["gunicorn", "--bind", "0.0.0.0:5000", "--workers", "1", "--threads", "4", "--timeout", "300", "--graceful-timeout", "300", "--keep-alive", "5", "--worker-class", "gthread", "--access-logfile", "-", "--error-logfile", "-", "server:app"]

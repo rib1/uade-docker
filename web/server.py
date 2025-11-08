@@ -13,7 +13,7 @@ import logging
 import hashlib
 from pathlib import Path
 from datetime import datetime, timedelta
-from flask import Flask, request, jsonify, send_file, send_from_directory
+from flask import Flask, request, jsonify, send_file, send_from_directory, Response
 from werkzeug.utils import secure_filename
 import requests
 
@@ -25,6 +25,25 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 app = Flask(__name__, static_folder='static')
+
+# Get git commit hash for version tracking
+def get_git_commit():
+    """Get current git commit hash"""
+    try:
+        result = subprocess.run(
+            ['git', 'rev-parse', '--short', 'HEAD'],
+            capture_output=True,
+            text=True,
+            timeout=2
+        )
+        if result.returncode == 0:
+            return result.stdout.strip()
+    except Exception:
+        pass
+    return os.getenv('GIT_COMMIT', 'unknown')
+
+GIT_COMMIT = get_git_commit()
+logger.info(f"Starting UADE Web Player (commit: {GIT_COMMIT})")
 
 # Configuration from environment variables (cloud-ready)
 MAX_UPLOAD_SIZE = int(os.getenv('MAX_UPLOAD_SIZE', 10485760))  # 10MB
@@ -324,6 +343,7 @@ def health():
     """Health check for load balancers"""
     return jsonify({
         'status': 'healthy',
+        'version': GIT_COMMIT,
         'timestamp': datetime.utcnow().isoformat(),
         'uade_available': Path('/usr/local/bin/uade123').exists()
     })
@@ -526,50 +546,154 @@ def play_example(example_id):
 
 @app.route('/play/<file_id>')
 def play_file(file_id):
-    """Stream audio file for playback (FLAC or WAV)"""
+    """Stream audio file for playback (FLAC or WAV) with range request support"""
     # Try FLAC first, then WAV
     flac_path = CONVERTED_DIR / f"{file_id}.flac"
     wav_path = CONVERTED_DIR / f"{file_id}.wav"
     
     if flac_path.exists():
-        return send_file(
-            flac_path,
-            mimetype='audio/flac',
-            as_attachment=False
-        )
+        file_path = flac_path
+        mimetype = 'audio/flac'
     elif wav_path.exists():
-        return send_file(
-            wav_path,
-            mimetype='audio/wav',
-            as_attachment=False,
-            download_name=f'{file_id}.wav'
-        )
+        file_path = wav_path
+        mimetype = 'audio/wav'
     else:
         return jsonify({'error': 'File not found'}), 404
+    
+    file_size = file_path.stat().st_size
+    
+    # Handle range requests for large files (Cloud Run has 32MB response limit)
+    range_header = request.headers.get('Range')
+    if range_header:
+        # Parse range header: bytes=start-end
+        byte_range = range_header.replace('bytes=', '').split('-')
+        start = int(byte_range[0]) if byte_range[0] else 0
+        end = int(byte_range[1]) if len(byte_range) > 1 and byte_range[1] else file_size - 1
+        
+        # Limit chunk size to 20MB to stay well under Cloud Run's 32MB limit
+        if end - start > 20 * 1024 * 1024:
+            end = start + 20 * 1024 * 1024 - 1
+        
+        length = end - start + 1
+        
+        def generate_range():
+            with open(file_path, 'rb') as f:
+                f.seek(start)
+                remaining = length
+                while remaining > 0:
+                    chunk_size = min(8192, remaining)
+                    chunk = f.read(chunk_size)
+                    if not chunk:
+                        break
+                    remaining -= len(chunk)
+                    yield chunk
+        
+        response = Response(generate_range(), 206, mimetype=mimetype)
+        response.headers['Content-Range'] = f'bytes {start}-{end}/{file_size}'
+        response.headers['Content-Length'] = str(length)
+        response.headers['Accept-Ranges'] = 'bytes'
+        response.headers['Cache-Control'] = 'public, max-age=3600'
+        return response
+    else:
+        # For small files or initial request, send full file
+        # If file is larger than 20MB, suggest range requests
+        if file_size > 20 * 1024 * 1024:
+            response = Response('', 206, mimetype=mimetype)
+            response.headers['Content-Range'] = f'bytes 0-0/{file_size}'
+            response.headers['Content-Length'] = '0'
+            response.headers['Accept-Ranges'] = 'bytes'
+            return response
+        
+        def generate():
+            with open(file_path, 'rb') as f:
+                while True:
+                    chunk = f.read(8192)
+                    if not chunk:
+                        break
+                    yield chunk
+        
+        response = Response(generate(), mimetype=mimetype)
+        response.headers['Content-Length'] = str(file_size)
+        response.headers['Accept-Ranges'] = 'bytes'
+        response.headers['Cache-Control'] = 'public, max-age=3600'
+        return response
 
 @app.route('/download/<file_id>')
 def download_file(file_id):
-    """Download audio file (FLAC or WAV)"""
+    """Download audio file (FLAC or WAV) - large files may require a download manager"""
     # Try FLAC first, then WAV
     flac_path = CONVERTED_DIR / f"{file_id}.flac"
     wav_path = CONVERTED_DIR / f"{file_id}.wav"
     
     if flac_path.exists():
-        return send_file(
-            flac_path,
-            mimetype='audio/flac',
-            as_attachment=True,
-            download_name=f'uade_{file_id}.flac'
-        )
+        file_path = flac_path
+        mimetype = 'audio/flac'
+        filename = f'uade_{file_id}.flac'
     elif wav_path.exists():
-        return send_file(
-            wav_path,
-            mimetype='audio/wav',
-            as_attachment=True,
-            download_name=f'uade_{file_id}.wav'
-        )
+        file_path = wav_path
+        mimetype = 'audio/wav'
+        filename = f'uade_{file_id}.wav'
     else:
         return jsonify({'error': 'File not found'}), 404
+    
+    file_size = file_path.stat().st_size
+    
+    # Handle range requests for large downloads (Cloud Run has 32MB response limit)
+    range_header = request.headers.get('Range')
+    if range_header:
+        # Parse range header
+        byte_range = range_header.replace('bytes=', '').split('-')
+        start = int(byte_range[0]) if byte_range[0] else 0
+        end = int(byte_range[1]) if len(byte_range) > 1 and byte_range[1] else file_size - 1
+        
+        # Limit chunk size to 20MB to stay under Cloud Run's 32MB limit
+        if end - start > 20 * 1024 * 1024:
+            end = start + 20 * 1024 * 1024 - 1
+        
+        length = end - start + 1
+        
+        def generate_range():
+            with open(file_path, 'rb') as f:
+                f.seek(start)
+                remaining = length
+                while remaining > 0:
+                    chunk_size = min(8192, remaining)
+                    chunk = f.read(chunk_size)
+                    if not chunk:
+                        break
+                    remaining -= len(chunk)
+                    yield chunk
+        
+        response = Response(generate_range(), 206, mimetype=mimetype)
+        response.headers['Content-Range'] = f'bytes {start}-{end}/{file_size}'
+        response.headers['Content-Length'] = str(length)
+        response.headers['Accept-Ranges'] = 'bytes'
+        response.headers['Content-Disposition'] = f'attachment; filename="{filename}"'
+        return response
+    else:
+        # For files larger than 20MB, return error suggesting browser doesn't support range requests
+        if file_size > 20 * 1024 * 1024:
+            return jsonify({
+                'error': 'File too large for direct download',
+                'message': f'File size is {file_size / 1024 / 1024:.1f}MB. Please use a download manager that supports range requests, or stream the file instead.',
+                'file_size': file_size,
+                'play_url': f'/play/{file_id}'
+            }), 413
+        
+        # Stream small files normally
+        def generate():
+            with open(file_path, 'rb') as f:
+                while True:
+                    chunk = f.read(8192)
+                    if not chunk:
+                        break
+                    yield chunk
+        
+        response = Response(generate(), mimetype=mimetype)
+        response.headers['Content-Length'] = str(file_size)
+        response.headers['Content-Disposition'] = f'attachment; filename="{filename}"'
+        response.headers['Accept-Ranges'] = 'bytes'
+        return response
 
 if __name__ == '__main__':
     logger.info(f"Starting UADE Web Player on port {PORT}")

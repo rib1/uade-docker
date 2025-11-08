@@ -1,0 +1,101 @@
+name: Deploy to Google Cloud Run
+
+on:
+  push:
+    branches: [ web-player ]
+  workflow_dispatch:
+    inputs:
+      project_id:
+        description: 'GCP Project ID'
+        required: true
+        type: string
+      region:
+        description: 'GCP Region'
+        required: false
+        default: 'us-central1'
+        type: string
+
+env:
+  PROJECT_ID: ${{ github.event.inputs.project_id || secrets['GCP_PROJECT_ID'] }}
+  SERVICE_NAME: uade-web-player
+  REGION: ${{ github.event.inputs.region || 'us-central1' }}
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    
+    permissions:
+      contents: read
+      id-token: write
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+    
+    - name: Authenticate to Google Cloud
+      uses: google-github-actions/auth@v2
+      with:
+        credentials_json: ${{ secrets.GCP_SA_KEY }}
+    
+    - name: Set up Cloud SDK
+      uses: google-github-actions/setup-gcloud@v2
+    
+    - name: Configure Docker for GCR
+      run: gcloud auth configure-docker
+    
+    - name: Build base UADE image
+      run: docker build -t uade-player .
+    
+    - name: Build web player image
+      run: |
+        docker build -f Dockerfile.web \
+          --build-arg GIT_COMMIT=${{ github.sha }} \
+          -t gcr.io/${{ env.PROJECT_ID }}/${{ env.SERVICE_NAME }}:${{ github.sha }} \
+          -t gcr.io/${{ env.PROJECT_ID }}/${{ env.SERVICE_NAME }}:latest .
+    
+    - name: Push to Google Container Registry
+      run: |
+        docker push gcr.io/${{ env.PROJECT_ID }}/${{ env.SERVICE_NAME }}:${{ github.sha }}
+        docker push gcr.io/${{ env.PROJECT_ID }}/${{ env.SERVICE_NAME }}:latest
+    
+    - name: Deploy to Cloud Run
+      run: |
+        gcloud run deploy ${{ env.SERVICE_NAME }} \
+          --image gcr.io/${{ env.PROJECT_ID }}/${{ env.SERVICE_NAME }}:${{ github.sha }} \
+          --platform managed \
+          --region ${{ env.REGION }} \
+          --allow-unauthenticated \
+          --port 5000 \
+          --memory 2Gi \
+          --cpu 2 \
+          --timeout 300s \
+          --max-instances 10 \
+          --min-instances 0 \
+          --set-env-vars "FLASK_ENV=production,MAX_UPLOAD_SIZE=10485760,CLEANUP_INTERVAL=3600"
+    
+    - name: Get Service URL
+      id: get-url
+      run: |
+        URL=$(gcloud run services describe ${{ env.SERVICE_NAME }} \
+          --region ${{ env.REGION }} \
+          --format 'value(status.url)')
+        echo "url=$URL" >> $GITHUB_OUTPUT
+        echo "Service deployed at: $URL"
+    
+    - name: Test deployment
+      run: |
+        sleep 10
+        curl -f ${{ steps.get-url.outputs.url }}/health || exit 1
+        echo "✅ Health check passed!"
+    
+    - name: Comment PR with deployment URL
+      if: github.event_name == 'pull_request'
+      uses: actions/github-script@v7
+      with:
+        script: |
+          github.rest.issues.createComment({
+            issue_number: context.issue.number,
+            owner: context.repo.owner,
+            repo: context.repo.repo,
+            body: '🚀 Deployed to Cloud Run: ${{ steps.get-url.outputs.url }}'
+          })

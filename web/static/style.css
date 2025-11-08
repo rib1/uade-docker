@@ -381,6 +381,21 @@ footer a:hover {
     text-decoration: underline;
 }
 
+.version-info {
+    font-size: 0.8rem;
+    color: #666 !important;
+    margin-top: 10px;
+    font-family: 'Courier New', monospace;
+}
+
+.version-info a {
+    color: #666 !important;
+}
+
+.version-info a:hover {
+    color: var(--primary) !important;
+}
+
 /* Responsive */
 @media (max-width: 768px) {
     .container {

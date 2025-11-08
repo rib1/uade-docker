@@ -28,6 +28,7 @@ document.addEventListener('DOMContentLoaded', () => {
     setupTfmxForm();
     setupDownloadButton();
     loadExamples();
+    loadVersionInfo();
 });
 
 // Drag and Drop
@@ -301,4 +302,22 @@ function showStatus(message, type = 'info') {
         status.style.opacity = '0';
         setTimeout(() => status.remove(), 300);
     }, 5000);
+}
+
+// Load Version Info
+async function loadVersionInfo() {
+    try {
+        const response = await fetch('/health');
+        const data = await response.json();
+        const versionElement = document.getElementById('version-info');
+        
+        if (data.version && data.version !== 'unknown') {
+            versionElement.innerHTML = `Version: <a href="https://github.com/rib1/uade-docker/commit/${data.version}" target="_blank" style="color: #666; text-decoration: none;">${data.version}</a>`;
+        } else {
+            versionElement.textContent = '';
+        }
+    } catch (error) {
+        console.error('Failed to load version info:', error);
+        document.getElementById('version-info').textContent = '';
+    }
 }
