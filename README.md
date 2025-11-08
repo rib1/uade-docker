@@ -263,20 +263,6 @@ docker run --rm -v "$env:USERPROFILE\Music:/output" --entrypoint /bin/sh uade-pl
 **Manual TFMX download (advanced):**
 
 ```powershell
-# Method 2: Manual command (if you need more control)
-
-```powershell
-function Convert-TFMX {
-    param(
-        [string]$MdatUrl,
-        [string]$SmplUrl,
-        [string]$OutputFile = "C:\Users\$env:USERNAME\Music\output.wav"
-    )
-    docker run --rm -v "C:\Users\$env:USERNAME\Music:/output" --entrypoint uade-convert uade-player "$MdatUrl" "$SmplUrl" "/output/$(Split-Path $OutputFile -Leaf)"
-}
-**Manual TFMX download (advanced):**
-
-```powershell
 # Download both mdat and smpl files manually, then convert to WAV
 # Note: Use matching base filenames (e.g., both end with "turrican2level0")
 docker run --rm -v "$env:USERPROFILE\Music:/output" --entrypoint /bin/sh uade-player -c "curl -k -o /tmp/mdat.turrican2level0 'https://modland.com/pub/modules/TFMX/Chris%20Huelsbeck/mdat.turrican%202%20level%200-intro' && curl -k -o /tmp/smpl.turrican2level0 'https://modland.com/pub/modules/TFMX/Chris%20Huelsbeck/smpl.turrican%202%20level%200-intro' && /usr/local/bin/uade123 -c -f /output/turrican2-intro.wav /tmp/mdat.turrican2level0"
