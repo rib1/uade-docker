@@ -24,8 +24,8 @@ jobs:
         push: false
         tags: uade-player:test
         load: true
-        cache-from: type=gha
-        cache-to: type=gha,mode=max
+        cache-from: type=gha,scope=cli
+        cache-to: type=gha,mode=max,scope=cli
         
     - name: Test UADE version
       run: |
@@ -33,7 +33,6 @@ jobs:
 
   build-web:
     runs-on: ubuntu-latest
-    needs: build-cli
     
     steps:
     - name: Checkout code
@@ -49,8 +48,8 @@ jobs:
         push: false
         tags: uade-player:latest
         load: true
-        cache-from: type=gha
-        cache-to: type=gha,mode=max
+        cache-from: type=gha,scope=cli
+        cache-to: type=gha,mode=max,scope=cli
         
     - name: Build Web Player image
       uses: docker/build-push-action@v5
@@ -60,8 +59,8 @@ jobs:
         push: false
         tags: uade-web-player:test
         load: true
-        cache-from: type=gha
-        cache-to: type=gha,mode=max
+        cache-from: type=gha,scope=web
+        cache-to: type=gha,mode=max,scope=web
         
     - name: Start Web Player container
       run: |
