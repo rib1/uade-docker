@@ -142,125 +142,19 @@ RATE_LIMIT: 10                    # Max conversions/min per IP
 
 ## Cloud Deployment
 
-### AWS EKS Auto Mode
+For production deployments to AWS EKS, Azure Container Instances, Google Cloud Run, and other cloud platforms, see the **[DEPLOYMENT.md](DEPLOYMENT.md)** guide.
 
-The application is designed to run on Kubernetes/EKS:
+The deployment guide covers:
 
-**1. Build and push to ECR:**
+- AWS EKS with Kubernetes manifests
+- Azure Container Instances
+- Google Cloud Run
+- Environment variables and configuration
+- Security considerations
+- Monitoring and troubleshooting
+- Scaling strategies
 
-```bash
-# Authenticate to ECR
-aws ecr get-login-password --region us-east-1 | docker login --username AWS --password-stdin <account>.dkr.ecr.us-east-1.amazonaws.com
-
-# Build and tag
-docker build -f Dockerfile.web -t uade-web-player .
-docker tag uade-web-player:latest <account>.dkr.ecr.us-east-1.amazonaws.com/uade-web-player:latest
-
-# Push
-docker push <account>.dkr.ecr.us-east-1.amazonaws.com/uade-web-player:latest
-```
-
-**2. Create Kubernetes deployment:**
-
-```yaml
-# k8s/deployment.yaml
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: uade-web-player
-spec:
-  replicas: 3
-  selector:
-    matchLabels:
-      app: uade-web-player
-  template:
-    metadata:
-      labels:
-        app: uade-web-player
-    spec:
-      containers:
-      - name: uade-web-player
-        image: <account>.dkr.ecr.us-east-1.amazonaws.com/uade-web-player:latest
-        ports:
-        - containerPort: 5000
-        env:
-        - name: FLASK_ENV
-          value: "production"
-        - name: MAX_UPLOAD_SIZE
-          value: "10485760"
-        - name: CLEANUP_INTERVAL
-          value: "3600"
-        resources:
-          requests:
-            memory: "256Mi"
-            cpu: "250m"
-          limits:
-            memory: "512Mi"
-            cpu: "500m"
-        livenessProbe:
-          httpGet:
-            path: /health
-            port: 5000
-          initialDelaySeconds: 30
-          periodSeconds: 10
-        readinessProbe:
-          httpGet:
-            path: /health
-            port: 5000
-          initialDelaySeconds: 5
-          periodSeconds: 5
----
-apiVersion: v1
-kind: Service
-metadata:
-  name: uade-web-player-service
-spec:
-  type: LoadBalancer
-  selector:
-    app: uade-web-player
-  ports:
-  - protocol: TCP
-    port: 80
-    targetPort: 5000
-```
-
-**3. Deploy:**
-
-```bash
-kubectl apply -f k8s/deployment.yaml
-kubectl get service uade-web-player-service  # Get LoadBalancer URL
-```
-
-### Azure Container Instances
-
-```bash
-az container create \
-  --resource-group myResourceGroup \
-  --name uade-web-player \
-  --image <registry>/uade-web-player:latest \
-  --dns-name-label uade-player \
-  --ports 5000 \
-  --environment-variables \
-    FLASK_ENV=production \
-    MAX_UPLOAD_SIZE=10485760
-```
-
-### Google Cloud Run
-
-```bash
-# Build and push to GCR
-gcloud builds submit --tag gcr.io/<project>/uade-web-player
-
-# Deploy
-gcloud run deploy uade-web-player \
-  --image gcr.io/<project>/uade-web-player \
-  --platform managed \
-  --region us-central1 \
-  --allow-unauthenticated \
-  --port 5000 \
-  --memory 512Mi \
-  --timeout 300s
-```
+For local development, continue using Docker Compose as described in the Quick Start section above.
 
 ## Architecture
 
