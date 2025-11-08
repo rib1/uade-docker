@@ -17,3 +17,6 @@ Thumbs.db
 *.swp
 *.swo
 *~
+
+# Deployment files (local only)
+deployment/
