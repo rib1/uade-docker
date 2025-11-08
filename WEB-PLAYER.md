@@ -18,6 +18,8 @@ Play Amiga music modules directly in your web browser! No desktop software requi
 
 ### Using Docker Compose (Recommended)
 
+The easiest way to run the UADE Web Player locally:
+
 ```powershell
 # Clone the repository
 git clone https://github.com/rib1/uade-docker.git
@@ -32,16 +34,89 @@ docker-compose up -d
 # Access at: http://localhost:5000
 ```
 
+**What docker-compose provides:**
+- Automatic build and startup
+- Health checks with auto-restart
+- Persistent storage for uploads/conversions
+- Production environment configuration
+- Read-only source code mount for security
+- Cleanup of old files (1 hour interval)
+
+**Managing the service:**
+
+```powershell
+# View logs
+docker-compose logs -f
+
+# Stop the service
+docker-compose down
+
+# Rebuild after code changes
+docker-compose up -d --build
+
+# View service status
+docker-compose ps
+```
+
+**Configuration:**
+
+The `docker-compose.yml` includes these environment variables:
+
+```yaml
+FLASK_ENV: production              # Production mode
+MAX_UPLOAD_SIZE: 10485760         # 10MB max upload
+CLEANUP_INTERVAL: 3600            # Files deleted after 1 hour
+RATE_LIMIT: 10                    # Max 10 conversions/min per IP
+```
+
+To customize, edit `docker-compose.yml` or create a `docker-compose.override.yml`:
+
+```yaml
+# docker-compose.override.yml
+version: '3.8'
+services:
+  uade-web:
+    environment:
+      - MAX_UPLOAD_SIZE=20971520   # 20MB
+      - CLEANUP_INTERVAL=7200       # 2 hours
+    ports:
+      - "8080:5000"                 # Use port 8080 instead
+```
+
 ### Manual Docker Build
+
+For manual control without docker-compose:
 
 ```powershell
 # Build the image
 docker build -f Dockerfile.web -t uade-web-player .
 
 # Run the container
-docker run -p 5000:5000 uade-web-player
+docker run -d \
+  --name uade-web-player \
+  -p 5000:5000 \
+  -e FLASK_ENV=production \
+  -e MAX_UPLOAD_SIZE=10485760 \
+  -e CLEANUP_INTERVAL=3600 \
+  uade-web-player
 
 # Access at: http://localhost:5000
+```
+
+**Managing the container:**
+
+```powershell
+# View logs
+docker logs -f uade-web-player
+
+# Stop the container
+docker stop uade-web-player
+
+# Remove the container
+docker rm uade-web-player
+
+# Restart the container
+docker restart uade-web-player
 ```
 
 ## Usage
@@ -156,22 +231,6 @@ Modern browsers receive FLAC-compressed audio automatically:
 
 Older or unsupported browsers automatically receive WAV files as fallback. No configuration needed!
 
-## Cloud Deployment
-
-For production deployments to AWS EKS, Azure Container Instances, Google Cloud Run, and other cloud platforms, see the **[DEPLOYMENT.md](DEPLOYMENT.md)** guide.
-
-The deployment guide covers:
-
-- AWS EKS with Kubernetes manifests
-- Azure Container Instances
-- Google Cloud Run
-- Environment variables and configuration
-- Security considerations
-- Monitoring and troubleshooting
-- Scaling strategies
-
-For local development, continue using Docker Compose as described in the Quick Start section above.
-
 ## Architecture
 
 ### Multi-Stage Build
@@ -179,12 +238,17 @@ For local development, continue using Docker Compose as described in the Quick S
 - **Stage 2 (runtime):** Lightweight image with Python/Flask + UADE binaries + FLAC encoder
 
 ### Production Server
-- Uses **Gunicorn** with 4 workers (configurable)
+
+- Uses **Gunicorn** WSGI server
+- **Local/Docker Compose:** 4 workers for parallel requests
+- **Cloud Run:** 1 worker + 4 threads (optimized for memory)
 - Health checks for container orchestration
 - Structured logging for cloud platforms
 - Graceful shutdown handling
+- 300s timeout for large file conversions
 
 ### Audio Compression
+
 - **Smart Format Selection:** Detects browser FLAC support via User-Agent
 - **Automatic Compression:** Converts WAV to FLAC for capable browsers (Chrome, Firefox, Edge, Safari)
 - **50-70% Size Reduction:** Typical TFMX files reduce from 30MB WAV to 10-15MB FLAC

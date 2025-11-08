@@ -5,6 +5,8 @@ services:
     build:
       context: .
       dockerfile: Dockerfile.web
+      args:
+        - GIT_COMMIT=${GIT_COMMIT:-unknown}
     container_name: uade-web-player
     ports:
       - "5000:5000"

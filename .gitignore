@@ -1,9 +1,11 @@
-# TFMX test files
+# test modules
 mdat.*
 smpl.*
+mod.*
 
-# WAV output files
+# output files
 *.wav
+*.flac
 
 # OS files
 .DS_Store
