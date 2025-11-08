@@ -2,6 +2,13 @@
 
 A Docker container for playing Amiga music modules using UADE (Unix Amiga Delitracker Emulator).
 
+## About UADE
+
+UADE is a music player for Unix that plays old Amiga music formats by emulating the Amiga hardware. It supports over 100 different Amiga music formats from the 1980s and 1990s, including ProTracker, TFMX, AHX, and many more exotic formats.
+
+**UADE Home Page:** <https://zakalwe.fi/uade/>
+**Official UADE Repository:** <https://gitlab.com/uade-music-player/uade>
+
 ## Prerequisites
 
 - Docker Desktop for Windows installed and running
@@ -245,7 +252,8 @@ docker run --rm -v "$env:USERPROFILE\Music:/output" --entrypoint /bin/sh uade-pl
 
 > **Note:** AHX (Abyss' Highest eXperience) is a tracked chiptune format that uses pure synthesis instead of samples. This allows extremely small file sizes while producing complex, high-quality chip music.
 
-> **Important:** 
+> **Important:**
+>
 > - All URLs above are tested and working
 > - Browse <https://modland.com/pub/modules/Protracker/> to find more artists
 > - ModArchive API is unreliable (often returns XM/IT files instead of MOD)
@@ -275,19 +283,24 @@ docker run --rm -v "$env:USERPROFILE\Music:/output" --entrypoint /bin/sh uade-pl
 ```
 
 > **Note:** TFMX modules require TWO files with matching names:
+>
 > - `mdat.*` = the music data
 > - `smpl.*` = the sample/instrument data (note: `smpl` not `smps`)
-> 
+>
 > Both files must be in the same directory for UADE to play them. Browse Modland's TFMX collection: <https://modland.com/pub/modules/TFMX/Chris%20Huelsbeck/>
 
 ## Supported Formats
 
 UADE supports many Amiga music formats including:
+
 - ProTracker (.mod)
 - Soundtracker
 - Octamed
 - TFMX (Chris Huelsbeck's format - requires both mdat and smpl files)
+- AHX (Abyss' Highest eXperience - synthesized chiptune)
 - And many more Amiga-specific formats
+
+**Full list of supported formats:** <https://gitlab.com/uade-music-player/uade/-/tree/master/players>
 
 ## Notes
 
