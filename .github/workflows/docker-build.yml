@@ -17,22 +17,31 @@ jobs:
     - name: Set up Docker Buildx
       uses: docker/setup-buildx-action@v3
       
-    - name: Build CLI Docker image
+    - name: Log in to GitHub Container Registry
+      uses: docker/login-action@v3
+      with:
+        registry: ghcr.io
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+      
+    - name: Build and push CLI Docker image
       uses: docker/build-push-action@v5
       with:
         context: .
-        push: false
-        tags: uade-player:test
-        load: true
+        push: true
+        tags: |
+          ghcr.io/${{ github.repository }}/uade-player:latest
+          ghcr.io/${{ github.repository }}/uade-player:${{ github.sha }}
         cache-from: type=gha,scope=cli
         cache-to: type=gha,mode=max,scope=cli
         
     - name: Test UADE version
       run: |
-        docker run --rm uade-player:test --version
+        docker run --rm ghcr.io/${{ github.repository }}/uade-player:latest --version
 
   build-web:
     runs-on: ubuntu-latest
+    needs: build-cli
     
     steps:
     - name: Checkout code
@@ -41,16 +50,13 @@ jobs:
     - name: Set up Docker Buildx
       uses: docker/setup-buildx-action@v3
       
-    - name: Build CLI base image (required for web)
-      uses: docker/build-push-action@v5
+    - name: Log in to GitHub Container Registry
+      uses: docker/login-action@v3
       with:
-        context: .
-        push: false
-        tags: uade-player:latest
-        load: true
-        cache-from: type=gha,scope=cli
-        cache-to: type=gha,mode=max,scope=cli
-        
+        registry: ghcr.io
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+      
     - name: Build Web Player image
       uses: docker/build-push-action@v5
       with:
@@ -61,6 +67,8 @@ jobs:
         load: true
         cache-from: type=gha,scope=web
         cache-to: type=gha,mode=max,scope=web
+        build-args: |
+          BASE_IMAGE=ghcr.io/${{ github.repository }}/uade-player:${{ github.sha }}
         
     - name: Start Web Player container
       run: |

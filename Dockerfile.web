@@ -1,6 +1,7 @@
 # Use existing UADE image as base (if it exists) or build from original Dockerfile
 # This avoids rebuilding UADE from scratch
-FROM uade-player:latest AS uade-base
+ARG BASE_IMAGE=uade-player:latest
+FROM ${BASE_IMAGE} AS uade-base
 
 # Runtime stage - Add web server
 FROM debian:stable-slim
