@@ -23,6 +23,7 @@ jobs:
         context: .
         push: false
         tags: uade-player:test
+        load: true
         cache-from: type=gha
         cache-to: type=gha,mode=max
         
