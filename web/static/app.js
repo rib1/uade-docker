@@ -91,7 +91,7 @@ async function handleFileUpload(file) {
 
         if (response.ok) {
             showStatus(`✓ Converted: ${data.filename}`, 'success');
-            playFile(data.file_id, data.filename, data.play_url, data.download_url);
+            playFile(data.file_id, data.filename, data.play_url, data.download_url, '', data.format || 'wav');
         } else {
             showStatus(`✗ Error: ${data.error}`, 'error');
         }
@@ -133,7 +133,7 @@ async function handleUrlConvert() {
 
         if (response.ok) {
             showStatus(`✓ Converted: ${data.filename}`, 'success');
-            playFile(data.file_id, data.filename, data.play_url, data.download_url);
+            playFile(data.file_id, data.filename, data.play_url, data.download_url, '', data.format || 'wav');
             urlInput.value = '';
         } else {
             showStatus(`✗ Error: ${data.error}`, 'error');
@@ -178,7 +178,7 @@ async function handleTfmxConvert() {
 
         if (response.ok) {
             showStatus('✓ TFMX converted successfully', 'success');
-            playFile(data.file_id, 'TFMX Module', data.play_url, data.download_url, 'TFMX');
+            playFile(data.file_id, 'TFMX Module', data.play_url, data.download_url, 'TFMX', data.format || 'wav');
             mdatInput.value = '';
             smplInput.value = '';
         } else {
@@ -237,7 +237,7 @@ async function handleExamplePlay(example, button) {
 
         if (response.ok) {
             showStatus(`✓ ${example.name} ready to play`, 'success');
-            playFile(data.file_id, example.name, data.play_url, data.download_url, example.format);
+            playFile(data.file_id, example.name, data.play_url, data.download_url, example.format, data.format || 'wav');
             button.innerHTML = '✓ Playing';
             
             // Reset button after 2 seconds
@@ -258,13 +258,16 @@ async function handleExamplePlay(example, button) {
 }
 
 // Play File
-function playFile(fileId, filename, playUrl, downloadUrl, format = '') {
+function playFile(fileId, filename, playUrl, downloadUrl, format = '', audioFormat = 'wav') {
     currentFileId = fileId;
     currentDownloadUrl = downloadUrl;
     
     audioPlayer.src = playUrl;
     currentTrack.textContent = filename;
     trackFormat.textContent = format || 'Module';
+    
+    // Update download button text with correct format
+    downloadBtn.textContent = audioFormat === 'flac' ? '⬇ Download FLAC' : '⬇ Download WAV';
     
     playerSection.style.display = 'block';
     playerSection.scrollIntoView({ behavior: 'smooth', block: 'nearest' });

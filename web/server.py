@@ -115,28 +115,80 @@ def get_file_hash(file_path):
             md5.update(chunk)
     return md5.hexdigest()
 
-def get_cached_conversion(cache_hash):
-    """Check if a converted file exists in cache"""
-    cache_file = CONVERTED_DIR / f"{cache_hash}.wav"
-    if cache_file.exists():
-        # Update access time to prevent cleanup
-        cache_file.touch()
-        logger.info(f"Cache hit: {cache_hash}")
-        return cache_file
+def supports_flac(user_agent):
+    """Check if browser supports FLAC playback"""
+    # Modern browsers that support FLAC natively
+    ua = user_agent.lower()
+    flac_browsers = ['chrome', 'chromium', 'edge', 'firefox', 'safari']
+    return any(browser in ua for browser in flac_browsers)
+
+def compress_to_flac(wav_path, flac_path):
+    """Compress WAV to FLAC format"""
+    try:
+        cmd = ['flac', '--best', '--silent', '-f', '-o', str(flac_path), str(wav_path)]
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=60)
+        
+        if result.returncode == 0 and flac_path.exists():
+            logger.info(f"Compressed to FLAC: {wav_path} -> {flac_path} ({flac_path.stat().st_size / wav_path.stat().st_size:.1%} of original)")
+            return True
+        else:
+            logger.error(f"FLAC compression failed: {result.stderr}")
+            return False
+    except Exception as e:
+        logger.error(f"FLAC compression exception: {e}")
+        return False
+
+def get_cached_conversion(cache_hash, prefer_flac=False):
+    """Check if a converted file exists in cache (WAV or FLAC)"""
+    # Try FLAC first if preferred
+    if prefer_flac:
+        flac_file = CONVERTED_DIR / f"{cache_hash}.flac"
+        if flac_file.exists():
+            flac_file.touch()
+            logger.info(f"Cache hit (FLAC): {cache_hash}")
+            return flac_file
+        
+        # If FLAC not found but WAV exists, compress it
+        wav_file = CONVERTED_DIR / f"{cache_hash}.wav"
+        if wav_file.exists():
+            flac_file = CONVERTED_DIR / f"{cache_hash}.flac"
+            if compress_to_flac(wav_file, flac_file):
+                flac_file.touch()
+                logger.info(f"Cache hit (WAV) - compressed to FLAC: {cache_hash}")
+                return flac_file
+            else:
+                # Compression failed, return WAV
+                wav_file.touch()
+                logger.info(f"Cache hit (WAV) - FLAC compression failed: {cache_hash}")
+                return wav_file
+    
+    # Fall back to WAV
+    wav_file = CONVERTED_DIR / f"{cache_hash}.wav"
+    if wav_file.exists():
+        wav_file.touch()
+        logger.info(f"Cache hit (WAV): {cache_hash}")
+        return wav_file
+    
     return None
 
-def convert_to_wav(input_path, output_path, use_cache=True):
-    """Convert module to WAV using UADE with optional caching"""
+def convert_to_wav(input_path, output_path, use_cache=True, compress_flac=False):
+    """Convert module to WAV using UADE with optional caching and FLAC compression"""
     try:
         # Check cache first
         if use_cache:
             cache_hash = get_file_hash(input_path)
-            cached_file = get_cached_conversion(cache_hash)
+            cached_file = get_cached_conversion(cache_hash, prefer_flac=compress_flac)
             if cached_file:
                 # Copy cached file to output path
                 import shutil
-                shutil.copy2(cached_file, output_path)
-                return True, None
+                if compress_flac and cached_file.suffix == '.flac':
+                    # Return FLAC from cache
+                    flac_output = output_path.with_suffix('.flac')
+                    shutil.copy2(cached_file, flac_output)
+                    return True, None, flac_output
+                else:
+                    shutil.copy2(cached_file, output_path)
+                    return True, None, cached_file
         
         cmd = [
             '/usr/local/bin/uade123',
@@ -154,43 +206,64 @@ def convert_to_wav(input_path, output_path, use_cache=True):
         
         if result.returncode != 0:
             logger.error(f"UADE error: {result.stderr}")
-            return False, f"Conversion failed: {result.stderr}"
+            return False, f"Conversion failed: {result.stderr}", None
         
         if not output_path.exists():
-            return False, "Conversion failed: Output file not created"
+            return False, "Conversion failed: Output file not created", None
         
-        # Save to cache
-        if use_cache:
+        final_output = output_path
+        
+        # Compress to FLAC if requested
+        if compress_flac:
+            flac_output = output_path.with_suffix('.flac')
+            if compress_to_flac(output_path, flac_output):
+                final_output = flac_output
+                # Cache the FLAC version
+                if use_cache:
+                    cache_file = CONVERTED_DIR / f"{cache_hash}.flac"
+                    if not cache_file.exists():
+                        import shutil
+                        shutil.copy2(flac_output, cache_file)
+                        logger.info(f"Cached FLAC conversion: {cache_hash}")
+            else:
+                # FLAC compression failed, fall back to WAV
+                logger.warning("FLAC compression failed, using WAV")
+        
+        # Save WAV to cache if not using FLAC
+        if use_cache and not compress_flac:
             cache_file = CONVERTED_DIR / f"{cache_hash}.wav"
             if not cache_file.exists():
                 import shutil
                 shutil.copy2(output_path, cache_file)
                 logger.info(f"Cached conversion: {cache_hash}")
         
-        logger.info(f"Successfully converted: {input_path} -> {output_path}")
-        return True, None
+        logger.info(f"Successfully converted: {input_path} -> {final_output}")
+        return True, None, final_output
         
     except subprocess.TimeoutExpired:
-        return False, "Conversion timeout (5 minutes exceeded)"
+        return False, "Conversion timeout (5 minutes exceeded)", None
     except Exception as e:
         logger.error(f"Conversion exception: {e}")
-        return False, str(e)
+        return False, str(e), None
 
-def convert_tfmx(mdat_url, smpl_url, output_path, use_cache=True):
-    """Convert TFMX module using uade-convert helper with caching"""
+def convert_tfmx(mdat_url, smpl_url, output_path, use_cache=True, compress_flac=False):
+    """Convert TFMX module using uade-convert helper with caching and FLAC compression"""
     try:
         # Create cache key from both URLs
         if use_cache:
             cache_key = hashlib.md5(f"{mdat_url}:{smpl_url}".encode()).hexdigest()
-            cache_file = CONVERTED_DIR / f"{cache_key}.wav"
+            cached_file = get_cached_conversion(cache_key, prefer_flac=compress_flac)
             
-            if cache_file.exists():
+            if cached_file:
                 # Cache hit - copy cached file
                 import shutil
-                shutil.copy2(cache_file, output_path)
-                cache_file.touch()  # Update access time
-                logger.info(f"Cache hit (TFMX): {cache_key}")
-                return True, None
+                if compress_flac and cached_file.suffix == '.flac':
+                    flac_output = output_path.with_suffix('.flac')
+                    shutil.copy2(cached_file, flac_output)
+                    return True, None, flac_output
+                else:
+                    shutil.copy2(cached_file, output_path)
+                    return True, None, cached_file
         
         cmd = [
             '/usr/local/bin/uade-convert',
@@ -208,19 +281,38 @@ def convert_tfmx(mdat_url, smpl_url, output_path, use_cache=True):
         
         if result.returncode != 0:
             logger.error(f"TFMX conversion error: {result.stderr}")
-            return False, f"TFMX conversion failed: {result.stderr}"
+            return False, f"TFMX conversion failed: {result.stderr}", None
         
-        # Save to cache
-        if use_cache and output_path.exists():
-            import shutil
-            shutil.copy2(output_path, cache_file)
-            logger.info(f"Cached TFMX conversion: {cache_key}")
+        final_output = output_path
         
-        return True, None
+        # Compress to FLAC if requested
+        if compress_flac and output_path.exists():
+            flac_output = output_path.with_suffix('.flac')
+            if compress_to_flac(output_path, flac_output):
+                final_output = flac_output
+                # Cache the FLAC version
+                if use_cache:
+                    cache_file = CONVERTED_DIR / f"{cache_key}.flac"
+                    if not cache_file.exists():
+                        import shutil
+                        shutil.copy2(flac_output, cache_file)
+                        logger.info(f"Cached TFMX FLAC conversion: {cache_key}")
+            else:
+                logger.warning("FLAC compression failed for TFMX, using WAV")
+        
+        # Save WAV to cache if not using FLAC
+        if use_cache and output_path.exists() and not compress_flac:
+            cache_file = CONVERTED_DIR / f"{cache_key}.wav"
+            if not cache_file.exists():
+                import shutil
+                shutil.copy2(output_path, cache_file)
+                logger.info(f"Cached TFMX conversion: {cache_key}")
+        
+        return True, None, final_output
         
     except Exception as e:
         logger.error(f"TFMX exception: {e}")
-        return False, str(e)
+        return False, str(e), None
 
 @app.route('/')
 def index():
@@ -254,6 +346,10 @@ def upload_file():
         return jsonify({'error': 'No file selected'}), 400
     
     try:
+        # Check browser FLAC support
+        user_agent = request.headers.get('User-Agent', '')
+        use_flac = supports_flac(user_agent)
+        
         # Generate unique ID
         file_id = str(uuid.uuid4())
         filename = secure_filename(file.filename)
@@ -262,9 +358,9 @@ def upload_file():
         upload_path = UPLOAD_DIR / f"{file_id}_{filename}"
         file.save(upload_path)
         
-        # Convert to WAV
+        # Convert to WAV (and optionally FLAC)
         output_path = CONVERTED_DIR / f"{file_id}.wav"
-        success, error = convert_to_wav(upload_path, output_path)
+        success, error, final_file = convert_to_wav(upload_path, output_path, compress_flac=use_flac)
         
         if not success:
             upload_path.unlink(missing_ok=True)
@@ -277,6 +373,7 @@ def upload_file():
             'success': True,
             'file_id': file_id,
             'filename': filename,
+            'format': final_file.suffix[1:] if final_file else 'wav',
             'play_url': f'/play/{file_id}',
             'download_url': f'/download/{file_id}'
         })
@@ -297,6 +394,10 @@ def convert_url():
     url = data['url']
     
     try:
+        # Check browser FLAC support
+        user_agent = request.headers.get('User-Agent', '')
+        use_flac = supports_flac(user_agent)
+        
         # Download file
         logger.info(f"Downloading: {url}")
         response = requests.get(url, timeout=30, verify=False)  # verify=False for corporate proxies
@@ -310,9 +411,9 @@ def convert_url():
         cache_path = CACHE_DIR / f"{file_id}_{filename}"
         cache_path.write_bytes(response.content)
         
-        # Convert to WAV
+        # Convert to WAV (and optionally FLAC)
         output_path = CONVERTED_DIR / f"{file_id}.wav"
-        success, error = convert_to_wav(cache_path, output_path)
+        success, error, final_file = convert_to_wav(cache_path, output_path, compress_flac=use_flac)
         
         if not success:
             cache_path.unlink(missing_ok=True)
@@ -325,6 +426,7 @@ def convert_url():
             'success': True,
             'file_id': file_id,
             'filename': filename,
+            'format': final_file.suffix[1:] if final_file else 'wav',
             'play_url': f'/play/{file_id}',
             'download_url': f'/download/{file_id}'
         })
@@ -346,10 +448,14 @@ def handle_tfmx():
         return jsonify({'error': 'Both mdat_url and smpl_url required'}), 400
     
     try:
+        # Check browser FLAC support
+        user_agent = request.headers.get('User-Agent', '')
+        use_flac = supports_flac(user_agent)
+        
         file_id = str(uuid.uuid4())
         output_path = CONVERTED_DIR / f"{file_id}.wav"
         
-        success, error = convert_tfmx(data['mdat_url'], data['smpl_url'], output_path)
+        success, error, final_file = convert_tfmx(data['mdat_url'], data['smpl_url'], output_path, compress_flac=use_flac)
         
         if not success:
             return jsonify({'error': error}), 500
@@ -358,6 +464,7 @@ def handle_tfmx():
             'success': True,
             'file_id': file_id,
             'filename': 'tfmx_module',
+            'format': final_file.suffix[1:] if final_file else 'wav',
             'play_url': f'/play/{file_id}',
             'download_url': f'/download/{file_id}'
         })
@@ -376,14 +483,19 @@ def play_example(example_id):
         return jsonify({'error': 'Example not found'}), 404
     
     try:
+        # Check browser FLAC support
+        user_agent = request.headers.get('User-Agent', '')
+        use_flac = supports_flac(user_agent)
+        
         file_id = str(uuid.uuid4())
         output_path = CONVERTED_DIR / f"{file_id}.wav"
         
         if example['type'] == 'tfmx':
-            success, error = convert_tfmx(
+            success, error, final_file = convert_tfmx(
                 example['mdat_url'],
                 example['smpl_url'],
-                output_path
+                output_path,
+                compress_flac=use_flac
             )
         else:
             # Download regular module
@@ -393,7 +505,7 @@ def play_example(example_id):
             cache_path = CACHE_DIR / f"{file_id}_{example['type']}"
             cache_path.write_bytes(response.content)
             
-            success, error = convert_to_wav(cache_path, output_path)
+            success, error, final_file = convert_to_wav(cache_path, output_path, compress_flac=use_flac)
             cache_path.unlink(missing_ok=True)
         
         if not success:
@@ -403,6 +515,7 @@ def play_example(example_id):
             'success': True,
             'file_id': file_id,
             'example': example,
+            'format': final_file.suffix[1:] if final_file else 'wav',
             'play_url': f'/play/{file_id}',
             'download_url': f'/download/{file_id}'
         })
@@ -413,31 +526,50 @@ def play_example(example_id):
 
 @app.route('/play/<file_id>')
 def play_file(file_id):
-    """Stream WAV file for playback"""
+    """Stream audio file for playback (FLAC or WAV)"""
+    # Try FLAC first, then WAV
+    flac_path = CONVERTED_DIR / f"{file_id}.flac"
     wav_path = CONVERTED_DIR / f"{file_id}.wav"
-    if not wav_path.exists():
-        return jsonify({'error': 'File not found'}), 404
     
-    return send_file(
-        wav_path,
-        mimetype='audio/wav',
-        as_attachment=False,
-        download_name=f'{file_id}.wav'
-    )
+    if flac_path.exists():
+        return send_file(
+            flac_path,
+            mimetype='audio/flac',
+            as_attachment=False
+        )
+    elif wav_path.exists():
+        return send_file(
+            wav_path,
+            mimetype='audio/wav',
+            as_attachment=False,
+            download_name=f'{file_id}.wav'
+        )
+    else:
+        return jsonify({'error': 'File not found'}), 404
 
 @app.route('/download/<file_id>')
 def download_file(file_id):
-    """Download WAV file"""
+    """Download audio file (FLAC or WAV)"""
+    # Try FLAC first, then WAV
+    flac_path = CONVERTED_DIR / f"{file_id}.flac"
     wav_path = CONVERTED_DIR / f"{file_id}.wav"
-    if not wav_path.exists():
-        return jsonify({'error': 'File not found'}), 404
     
-    return send_file(
-        wav_path,
-        mimetype='audio/wav',
-        as_attachment=True,
-        download_name=f'uade_{file_id}.wav'
-    )
+    if flac_path.exists():
+        return send_file(
+            flac_path,
+            mimetype='audio/flac',
+            as_attachment=True,
+            download_name=f'uade_{file_id}.flac'
+        )
+    elif wav_path.exists():
+        return send_file(
+            wav_path,
+            mimetype='audio/wav',
+            as_attachment=True,
+            download_name=f'uade_{file_id}.wav'
+        )
+    else:
+        return jsonify({'error': 'File not found'}), 404
 
 if __name__ == '__main__':
     logger.info(f"Starting UADE Web Player on port {PORT}")
