@@ -1,0 +1,31 @@
+version: '3.8'
+
+services:
+  uade-web:
+    build:
+      context: .
+      dockerfile: Dockerfile.web
+    container_name: uade-web-player
+    ports:
+      - "5000:5000"
+    volumes:
+      # Mount source code (read-only for security)
+      - ./web:/app:ro
+      # Persistent temp storage for uploads/conversions
+      - uade-tmp:/tmp
+    environment:
+      - FLASK_ENV=production
+      - MAX_UPLOAD_SIZE=10485760  # 10MB in bytes
+      - CLEANUP_INTERVAL=3600      # 1 hour in seconds
+      - RATE_LIMIT=10              # Max conversions per minute per IP
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5000/health"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+      start_period: 10s
+
+volumes:
+  uade-tmp:
+    driver: local

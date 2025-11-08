@@ -271,7 +271,7 @@ docker run --rm -v "$env:USERPROFILE\Music:/output" --entrypoint /bin/sh uade-pl
 > **Note:** TFMX modules require TWO files with matching names:
 >
 > - `mdat.*` = the music data
-> - `smpl.*` = the sample/instrument data (note: `smpl` not `smps`)
+> - `smpl.*` = the sample/instrument data
 >
 > Both files must be in the same directory for UADE to play them. Browse Modland's TFMX collection: <https://modland.com/pub/modules/TFMX/Chris%20Huelsbeck/>
 
