@@ -554,6 +554,7 @@ def play_example(example_id):
                 output_path,
                 compress_flac=use_flac
             )
+            player_format = 'TFMX'  # TFMX modules are always TFMX format
         else:
             # Download regular module
             response = requests.get(example['url'], timeout=30, verify=False)
