@@ -65,6 +65,7 @@ jobs:
           --platform managed \
           --region ${{ env.REGION }} \
           --allow-unauthenticated \
+          --service-account uade-web-player-sa@${{ env.PROJECT_ID }}.iam.gserviceaccount.com \
           --port 5000 \
           --memory 2Gi \
           --cpu 2 \
