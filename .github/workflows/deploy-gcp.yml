@@ -46,9 +46,8 @@ jobs:
     - name: Check if UADE base needs rebuild
       id: check-uade
       run: |
-        # Check if UADE-related files changed
-        git fetch origin main || true
-        if git diff --name-only ${{ github.event.before }} ${{ github.sha }} | grep -E '^(Dockerfile|uade/|patches/|scripts/build-uade.sh)'; then
+        # Check if UADE-related files changed in last commit
+        if git diff --name-only HEAD~1 HEAD 2>/dev/null | grep -E '^(Dockerfile|uade/|patches/|scripts/build-uade.sh)'; then
           echo "uade_changed=true" >> $GITHUB_OUTPUT
           echo "🔨 UADE base files changed - will rebuild"
         else
