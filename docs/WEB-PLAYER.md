@@ -387,6 +387,7 @@ services:
 - **Modland Archive:** <https://modland.com/pub/modules/>
 - **Module Archive:** <https://modarchive.org>
 - **Exotica:** <https://www.exotica.org.uk/> (Demoscene music archive)
+- **scene.org:** <https://files.scene.org/browse/music> (Demoscene file archive)
 
 ## License
 
