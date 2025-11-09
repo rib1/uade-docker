@@ -382,10 +382,11 @@ services:
 ## Links
 
 - **UADE Home:** https://zakalwe.fi/uade/
-- **UADE Repository:** https://gitlab.com/uade-music-player/uade
-- **GitHub Project:** https://github.com/rib1/uade-docker
-- **Modland Archive:** https://modland.com/pub/modules/
-- **Module Archive:** https://modarchive.org
+- **UADE Repository:** <https://gitlab.com/uade-music-player/uade>
+- **GitHub Project:** <https://github.com/rib1/uade-docker>
+- **Modland Archive:** <https://modland.com/pub/modules/>
+- **Module Archive:** <https://modarchive.org>
+- **Exotica:** <https://www.exotica.org.uk/> (Demoscene music archive)
 
 ## License
 

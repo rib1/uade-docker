@@ -108,7 +108,7 @@ EXAMPLES = [
     },
     {
         "id": "wings-of-death-levels",
-        "name": "Jochen Hippel - Wings of Death Levels 1-7",
+        "name": "Jochen Hippel - Wings of Death",
         "format": "Hippel-COSO",
         "duration": "~5min",
         "url": "https://zakalwe.fi/uade/amiga-music/customs/WingsOfDeath-Levels1-7/cust.WingsOfDeath-Levels1-7",
@@ -120,10 +120,17 @@ EXAMPLES = [
         "format": "Hippel-COSO (LHA)",
         "duration": "~15min (7 tracks)",
         "url": (
-            "http://files.exotica.org.uk/"
-            "?file=exotica%2Fmedia%2Faudio%2FUnExoticA%2FGame%2FFollin_Tim%2FL_E_D_Storm.lha"
+            "http://files.exotica.org.uk/?file=exotica%2Fmedia%2Faudio%2FUnExoticA%2FGame%2FFollin_Tim%2FL_E_D_Storm.lha"
         ),
         "type": "lha",
+    },
+    {
+        "id": "hoffman-way-too-rude",
+        "name": "Hoffman - Way Too Rude",
+        "format": "ProTracker",
+        "duration": "~3min",
+        "url": "https://api.modarchive.org/downloads.php?moduleid=188875#way_too_rude.mod",
+        "type": "mod",
     },
 ]
 
