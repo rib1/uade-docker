@@ -855,9 +855,11 @@ def download_file(file_id):
     # Validate file_id as a strict identifier (alphanumerics, dash, underscore)
     if not re.fullmatch(r"[a-zA-Z0-9_-]+", file_id):
         return jsonify({"error": "Invalid file_id"}), 400
+    # Sanitize file_id to ensure a safe filename
+    safe_file_id = secure_filename(file_id)
     # Try FLAC first, then WAV
-    flac_path = (CONVERTED_DIR / f"{file_id}.flac").resolve()
-    wav_path = (CONVERTED_DIR / f"{file_id}.wav").resolve()
+    flac_path = (CONVERTED_DIR / f"{safe_file_id}.flac").resolve()
+    wav_path = (CONVERTED_DIR / f"{safe_file_id}.wav").resolve()
 
     # Only allow files under CONVERTED_DIR to be served
     converted_base = CONVERTED_DIR.resolve()
@@ -866,12 +868,12 @@ def download_file(file_id):
         if flac_path.exists() and flac_path.relative_to(converted_base):
             file_path = flac_path
             mimetype = "audio/flac"
-            filename = f"uade_{file_id}.flac"
+            filename = f"uade_{safe_file_id}.flac"
         # Validate wav_path containment
         elif wav_path.exists() and wav_path.relative_to(converted_base):
             file_path = wav_path
             mimetype = "audio/wav"
-            filename = f"uade_{file_id}.wav"
+            filename = f"uade_{safe_file_id}.wav"
         else:
             return jsonify({"error": "File not found or forbidden"}), 404
     except ValueError:
