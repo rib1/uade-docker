@@ -106,6 +106,14 @@ EXAMPLES = [
         "url": "https://modland.com/pub/modules/SidMon%201/Romeo%20Knight/beat%20to%20the%20pulp.sid",
         "type": "sid",
     },
+    {
+        "id": "wings-of-death-levels",
+        "name": "Wings of Death - Levels 1-7",
+        "format": "Hippel-COSO",
+        "duration": "~5min",
+        "url": "https://zakalwe.fi/uade/amiga-music/customs/WingsOfDeath-Levels1-7/cust.WingsOfDeath-Levels1-7",
+        "type": "cust",
+    },
 ]
 
 
