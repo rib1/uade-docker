@@ -853,19 +853,23 @@ def play_file(file_id):
 def download_file(file_id):
     """Download audio file (FLAC or WAV) - large files may require a download manager"""
     # Try FLAC first, then WAV
-    flac_path = CONVERTED_DIR / f"{file_id}.flac"
-    wav_path = CONVERTED_DIR / f"{file_id}.wav"
+    flac_path = (CONVERTED_DIR / f"{file_id}.flac").resolve()
+    wav_path = (CONVERTED_DIR / f"{file_id}.wav").resolve()
 
-    if flac_path.exists():
+    # Only allow files under CONVERTED_DIR to be served
+    converted_base = CONVERTED_DIR.resolve()
+    # Validate flac_path containment
+    if flac_path.exists() and str(flac_path).startswith(str(converted_base)):
         file_path = flac_path
         mimetype = "audio/flac"
         filename = f"uade_{file_id}.flac"
-    elif wav_path.exists():
+    # Validate wav_path containment
+    elif wav_path.exists() and str(wav_path).startswith(str(converted_base)):
         file_path = wav_path
         mimetype = "audio/wav"
         filename = f"uade_{file_id}.wav"
     else:
-        return jsonify({"error": "File not found"}), 404
+        return jsonify({"error": "File not found or forbidden"}), 404
 
     file_size = file_path.stat().st_size
 
