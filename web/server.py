@@ -16,7 +16,7 @@ from datetime import datetime
 from flask import Flask, request, jsonify, send_from_directory, Response
 from werkzeug.utils import secure_filename
 import requests
-
+import re
 # Configure logging for cloud environments
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
 logger = logging.getLogger(__name__)
@@ -852,6 +852,9 @@ def play_file(file_id):
 @app.route("/download/<file_id>")
 def download_file(file_id):
     """Download audio file (FLAC or WAV) - large files may require a download manager"""
+    # Validate file_id as a strict identifier (alphanumerics, dash, underscore)
+    if not re.fullmatch(r"[a-zA-Z0-9_-]+", file_id):
+        return jsonify({"error": "Invalid file_id"}), 400
     # Try FLAC first, then WAV
     flac_path = (CONVERTED_DIR / f"{file_id}.flac").resolve()
     wav_path = (CONVERTED_DIR / f"{file_id}.wav").resolve()
