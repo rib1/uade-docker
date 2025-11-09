@@ -20,7 +20,7 @@ Browser-based player with drag-and-drop interface.
 
 Features: Drag & drop files, download from URLs, TFMX support, convert to WAV/FLAC, format auto-detection
 
-**[📖 Full Documentation](WEB-PLAYER.md)**
+**[📖 Full Documentation](docs/WEB-PLAYER.md)**
 
 ### 🖥️ Command-Line
 
@@ -31,7 +31,12 @@ docker pull ghcr.io/rib1/uade-player:latest
 docker run --rm -v "$env:USERPROFILE\Music:/output" ghcr.io/rib1/uade-player -c -f /output/music.wav /music/module.mod
 ```
 
-**[📖 Full Documentation](CLI-USAGE.md)** - Examples, PowerShell integration, TFMX helpers
+**[📖 Full Documentation](docs/CLI-USAGE.md)** - Examples, PowerShell integration, TFMX helpers
+
+## Architecture
+
+- **[System Architecture](docs/ARCHITECTURE.md)** - High-level overview with Mermaid diagram
+- **[Component Diagram](docs/COMPONENT-DIAGRAM.md)** - Detailed component structure
 
 ## Module Archives
 
