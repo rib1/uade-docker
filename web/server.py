@@ -596,13 +596,14 @@ def convert_url():
 
             module_path = music_file
             filename = music_file.name
+        # Assign output_path before restriction check
+        output_path = CONVERTED_DIR / f"{file_id}.wav"
         # Restrict output_path to CONVERTED_DIR
         if not output_path.resolve().is_relative_to(CONVERTED_DIR.resolve()):
             logger.error("Aborting: attempted write outside output directory")
             return jsonify({"error": "Illegal output path"}), 400
 
         # Convert to WAV (and optionally FLAC)
-        output_path = CONVERTED_DIR / f"{file_id}.wav"
         success, error, final_file, player_format = convert_to_wav(module_path, output_path, compress_flac=use_flac)
 
         if not success:
