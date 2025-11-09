@@ -8,7 +8,7 @@ Docker containers for playing and converting Amiga music modules using UADE (Uni
 
 ## Supported Formats
 
-ProTracker (.mod), TFMX (mdat/smpl), AHX (.ahx), FastTracker (.xm), ScreamTracker (.s3m), Impulse Tracker (.it), and 100+ more.
+Protracker (.mod), TFMX (mdat/smpl), AHX (.ahx), FastTracker (.xm), ScreamTracker (.s3m), Impulse Tracker (.it), and 100+ more.
 
 ## Two Ways to Use
 

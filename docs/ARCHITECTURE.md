@@ -80,7 +80,7 @@ architecture-beta
 
 - **Modland Archive**
   - HTTP access to module database
-  - ProTracker, TFMX, AHX formats
+  - Protracker, TFMX, AHX formats
   - Direct download support
 
 ## Data Flow
@@ -153,8 +153,8 @@ architecture-beta
 ### Frontend
 
 - **Language:** JavaScript (ES6+)
-- **Styling:** CSS3 with ProTracker theme
-- **Icons:** ProTracker favicon
+- **Styling:** CSS3 with Protracker theme
+- **Icons:** Protracker favicon
 
 ### Infrastructure
 

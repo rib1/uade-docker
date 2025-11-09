@@ -60,7 +60,7 @@ EXAMPLES = [
     {
         "id": "captain-space-debris",
         "name": "Captain - Space Debris",
-        "format": "ProTracker",
+        "format": "Protracker",
         "duration": "306s",
         "url": "https://modland.com/pub/modules/Protracker/Captain/space%20debris.mod",
         "type": "mod",
@@ -68,7 +68,7 @@ EXAMPLES = [
     {
         "id": "lizardking-doskpop",
         "name": "Lizardking - Doskpop",
-        "format": "ProTracker",
+        "format": "Protracker",
         "duration": "146s",
         "url": "https://modland.com/pub/modules/Protracker/Lizardking/l.k%27s%20doskpop.mod",
         "type": "mod",
@@ -127,7 +127,7 @@ EXAMPLES = [
     {
         "id": "hoffman-way-too-rude",
         "name": "Hoffman - Way Too Rude",
-        "format": "ProTracker",
+        "format": "Protracker",
         "duration": "~3min",
         "url": "https://api.modarchive.org/downloads.php?moduleid=188875#way_too_rude.mod",
         "type": "mod",

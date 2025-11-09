@@ -4,7 +4,7 @@ A Docker container for playing Amiga music modules using UADE (Unix Amiga Delitr
 
 ## About UADE
 
-UADE is a music player for Unix that plays old Amiga music formats by emulating the Amiga hardware. It supports over 100 different Amiga music formats from the 1980s and 1990s, including ProTracker, TFMX, AHX, and many more exotic formats.
+UADE is a music player for Unix that plays old Amiga music formats by emulating the Amiga hardware. It supports over 100 different Amiga music formats from the 1980s and 1990s, including Protracker, TFMX, AHX, and many more exotic formats.
 
 **UADE Home Page:** <https://zakalwe.fi/uade/>
 **Official UADE Repository:** <https://gitlab.com/uade-music-player/uade>
@@ -127,12 +127,12 @@ docker run --rm -v "C:\path\to\output:/music" --entrypoint /bin/sh uade-player -
 
 ### Downloading from Modland
 
-Modland provides HTTP access to their extensive ProTracker module collection. Browse directories at `https://modland.com/pub/modules/Protracker/`.
+Modland provides HTTP access to their extensive Protracker module collection. Browse directories at `https://modland.com/pub/modules/Protracker/`.
 
-**Example: Download and convert a ProTracker module from Modland**
+**Example: Download and convert a Protracker module from Modland**
 
 ```powershell
-# Browse Modland's ProTracker collection to find a module, then download and convert
+# Browse Modland's Protracker collection to find a module, then download and convert
 # Example: Download from 4-Mat's collection
 docker run --rm -v "$env:USERPROFILE\Music:/music" --entrypoint /bin/sh uade-player -c "curl -k -o /tmp/module.mod 'https://modland.com/pub/modules/Protracker/4-Mat/enigma.mod' && /usr/local/bin/uade123 -c -f /music/enigma.wav /tmp/module.mod"
 ```
@@ -206,7 +206,7 @@ _Output: `$env:USERPROFILE\Music\turrican2.wav`_
 docker run --rm -v "$env:USERPROFILE\Music:/output" --entrypoint uade-convert uade-player "https://modland.com/pub/modules/TFMX/Chris%20Huelsbeck/mdat.turrican%202%20level%200-intro" "https://modland.com/pub/modules/TFMX/Chris%20Huelsbeck/smpl.turrican%202%20level%200-intro" /output/turrican2-intro.wav
 ```
 
-**Captain - "Space Debris" (ProTracker):**
+**Captain - "Space Debris" (Protracker):**
 
 ```powershell
 # Download and convert Space Debris → space-debris.wav
@@ -286,7 +286,7 @@ docker run --rm -v "$env:USERPROFILE\Music:/output" --entrypoint /bin/sh uade-pl
 
 UADE supports many Amiga music formats including:
 
-- ProTracker (.mod)
+- Protracker (.mod)
 - Soundtracker
 - Octamed
 - TFMX (Chris Huelsbeck's format - requires both mdat and smpl files)

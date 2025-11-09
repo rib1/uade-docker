@@ -127,10 +127,10 @@ docker restart uade-web-player
 
 Click any example module on the homepage to instantly hear classic Amiga music:
 
-- Captain - "Space Debris" (ProTracker)
-- Lizardking - "Doskpop" (ProTracker)
+- Captain - "Space Debris" (Protracker)
+- Lizardking - "Doskpop" (Protracker)
 - Pink - "Stormlord" (AHX chiptune)
-- Rob Hubbard - "Populous" (ProTracker)
+- Rob Hubbard - "Populous" (Protracker)
 - Chris Huelsbeck - "Turrican 2" (TFMX)
 
 ### 2. Upload Your Files
@@ -368,7 +368,7 @@ services:
 
 | Format              | WAV Size | FLAC Size | Reduction |
 | ------------------- | -------- | --------- | --------- |
-| ProTracker (3min)   | 25MB     | 10-12MB   | ~55%      |
+| Protracker (3min)   | 25MB     | 10-12MB   | ~55%      |
 | TFMX (5min)         | 50MB     | 25-30MB   | ~45%      |
 | AHX Chiptune (2min) | 20MB     | 8-10MB    | ~60%      |
 
