@@ -35,6 +35,7 @@ docker-compose up -d
 ```
 
 **What docker-compose provides:**
+
 - Automatic build and startup
 - Health checks with auto-restart
 - Persistent storage for uploads/conversions
@@ -63,24 +64,24 @@ docker-compose ps
 The `docker-compose.yml` includes these environment variables:
 
 ```yaml
-FLASK_ENV: production              # Production mode
-MAX_UPLOAD_SIZE: 10485760         # 10MB max upload
-CLEANUP_INTERVAL: 3600            # Files deleted after 1 hour
-RATE_LIMIT: 10                    # Max 10 conversions/min per IP
+FLASK_ENV: production # Production mode
+MAX_UPLOAD_SIZE: 10485760 # 10MB max upload
+CLEANUP_INTERVAL: 3600 # Files deleted after 1 hour
+RATE_LIMIT: 10 # Max 10 conversions/min per IP
 ```
 
 To customize, edit `docker-compose.yml` or create a `docker-compose.override.yml`:
 
 ```yaml
 # docker-compose.override.yml
-version: '3.8'
+version: "3.8"
 services:
   uade-web:
     environment:
-      - MAX_UPLOAD_SIZE=20971520   # 20MB
-      - CLEANUP_INTERVAL=7200       # 2 hours
+      - MAX_UPLOAD_SIZE=20971520 # 20MB
+      - CLEANUP_INTERVAL=7200 # 2 hours
     ports:
-      - "8080:5000"                 # Use port 8080 instead
+      - "8080:5000" # Use port 8080 instead
 ```
 
 ### Manual Docker Build
@@ -124,6 +125,7 @@ docker restart uade-web-player
 ### 1. Try Example Modules
 
 Click any example module on the homepage to instantly hear classic Amiga music:
+
 - Captain - "Space Debris" (ProTracker)
 - Lizardking - "Doskpop" (ProTracker)
 - Pink - "Stormlord" (AHX chiptune)
@@ -139,6 +141,7 @@ Drag and drop .mod, .ahx, or other module files directly into the browser.
 Paste a Modland or ModArchive URL to download and convert automatically.
 
 **Example URLs:**
+
 ```
 https://modland.com/pub/modules/Protracker/Captain/space%20debris.mod
 https://modland.com/pub/modules/AHX/Pink/stormlord.ahx
@@ -147,6 +150,7 @@ https://modland.com/pub/modules/AHX/Pink/stormlord.ahx
 ### 4. TFMX Modules
 
 For TFMX modules (requires two files), expand the TFMX section and provide both URLs:
+
 - mdat URL (music data)
 - smpl URL (samples)
 
@@ -155,12 +159,15 @@ For TFMX modules (requires two files), expand the TFMX section and provide both 
 The web player provides a REST API for programmatic access:
 
 ### Health Check
+
 ```http
 GET /health
 ```
+
 Returns server health status and UADE availability.
 
 ### Upload File
+
 ```http
 POST /upload
 Content-Type: multipart/form-data
@@ -169,6 +176,7 @@ file: <module file>
 ```
 
 ### Convert from URL
+
 ```http
 POST /convert-url
 Content-Type: application/json
@@ -179,6 +187,7 @@ Content-Type: application/json
 ```
 
 ### Convert TFMX
+
 ```http
 POST /convert-tfmx
 Content-Type: application/json
@@ -190,16 +199,19 @@ Content-Type: application/json
 ```
 
 ### Play Example
+
 ```http
 POST /play-example/{example_id}
 ```
 
 ### Get Examples
+
 ```http
 GET /examples
 ```
 
 ### Stream/Download WAV
+
 ```http
 GET /play/{file_id}      # Stream in browser
 GET /download/{file_id}  # Download file
@@ -210,11 +222,11 @@ GET /download/{file_id}  # Download file
 Environment variables for customization:
 
 ```yaml
-FLASK_ENV: production              # Flask environment
-PORT: 5000                        # Server port
-MAX_UPLOAD_SIZE: 10485760         # Max upload (10MB)
-CLEANUP_INTERVAL: 3600            # File cleanup (1 hour)
-RATE_LIMIT: 10                    # Max conversions/min per IP
+FLASK_ENV: production # Flask environment
+PORT: 5000 # Server port
+MAX_UPLOAD_SIZE: 10485760 # Max upload (10MB)
+CLEANUP_INTERVAL: 3600 # File cleanup (1 hour)
+RATE_LIMIT: 10 # Max conversions/min per IP
 ```
 
 ## Browser Compatibility
@@ -224,7 +236,7 @@ RATE_LIMIT: 10                    # Max conversions/min per IP
 Modern browsers receive FLAC-compressed audio automatically:
 
 - ✅ **Chrome/Chromium** - Full FLAC support
-- ✅ **Microsoft Edge** - Full FLAC support  
+- ✅ **Microsoft Edge** - Full FLAC support
 - ✅ **Firefox** - Full FLAC support
 - ✅ **Safari** - Full FLAC support (macOS/iOS)
 - ✅ **Opera** - Full FLAC support
@@ -234,6 +246,7 @@ Older or unsupported browsers automatically receive WAV files as fallback. No co
 ## Architecture
 
 ### Multi-Stage Build
+
 - **Stage 1 (base):** Compile UADE and dependencies from source
 - **Stage 2 (runtime):** Lightweight image with Python/Flask + UADE binaries + FLAC encoder
 
@@ -258,6 +271,7 @@ Older or unsupported browsers automatically receive WAV files as fallback. No co
 - **On-the-fly Conversion:** Old WAV cache files are automatically compressed to FLAC when requested
 
 ### File Management
+
 - Automatic cleanup of files older than 1 hour
 - Separate directories: uploads, conversions, cache
 - UUID-based filenames (no collisions)
@@ -274,21 +288,25 @@ Older or unsupported browsers automatically receive WAV files as fallback. No co
 ## Troubleshooting
 
 **Build fails:**
+
 - Ensure Docker Desktop is running
 - Check internet connection (downloads UADE from GitLab)
 - Try: `docker-compose build --no-cache`
 
 **"502 Bad Gateway" or health check fails:**
+
 - Check logs: `docker-compose logs -f`
 - Verify port 5000 is not in use
 - Wait 30s for container initialization
 
 **Conversion errors:**
+
 - Check file format is supported by UADE
 - For TFMX, ensure both URLs are correct
 - Large files may timeout (5 min limit)
 
 **Cleanup not working:**
+
 - Check container has write access to `/tmp`
 - Verify CLEANUP_INTERVAL environment variable
 
@@ -314,8 +332,8 @@ python server.py
 services:
   uade-web:
     volumes:
-      - ./web:/app  # Remove :ro for hot reload
-    command: python3 server.py  # Use Flask dev server
+      - ./web:/app # Remove :ro for hot reload
+    command: python3 server.py # Use Flask dev server
     environment:
       - FLASK_ENV=development
 ```
@@ -332,11 +350,11 @@ services:
 
 ### Example File Sizes
 
-| Format | WAV Size | FLAC Size | Reduction |
-|--------|----------|-----------|-----------|
-| ProTracker (3min) | 25MB | 10-12MB | ~55% |
-| TFMX (5min) | 50MB | 25-30MB | ~45% |
-| AHX Chiptune (2min) | 20MB | 8-10MB | ~60% |
+| Format              | WAV Size | FLAC Size | Reduction |
+| ------------------- | -------- | --------- | --------- |
+| ProTracker (3min)   | 25MB     | 10-12MB   | ~55%      |
+| TFMX (5min)         | 50MB     | 25-30MB   | ~45%      |
+| AHX Chiptune (2min) | 20MB     | 8-10MB    | ~60%      |
 
 ## Limitations
 
