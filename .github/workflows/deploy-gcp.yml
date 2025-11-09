@@ -64,8 +64,15 @@ jobs:
           docker push gcr.io/${{ env.PROJECT_ID }}/uade-base:latest
         else
           echo "Pulling cached UADE base image..."
-          docker pull gcr.io/${{ env.PROJECT_ID }}/uade-base:latest || docker build -t uade-player .
-          docker tag gcr.io/${{ env.PROJECT_ID }}/uade-base:latest uade-player
+          if docker pull gcr.io/${{ env.PROJECT_ID }}/uade-base:latest 2>/dev/null; then
+            echo "✅ Pulled cached base image"
+            docker tag gcr.io/${{ env.PROJECT_ID }}/uade-base:latest uade-player
+          else
+            echo "⚠️  Cache miss - building base image"
+            docker build -t uade-player .
+            docker tag uade-player gcr.io/${{ env.PROJECT_ID }}/uade-base:latest
+            docker push gcr.io/${{ env.PROJECT_ID }}/uade-base:latest
+          fi
         fi
     
     - name: Build web player image
