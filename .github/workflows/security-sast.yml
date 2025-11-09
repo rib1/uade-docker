@@ -1,0 +1,193 @@
+name: Security SAST
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main]
+  schedule:
+    # Run weekly on Sundays at 2 AM UTC
+    - cron: '0 2 * * 0'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  security-events: write
+  actions: read
+
+jobs:
+  codeql:
+    name: CodeQL Analysis
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        language: ['python', 'javascript']
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v3
+        with:
+          languages: ${{ matrix.language }}
+          queries: +security-extended,security-and-quality
+
+      - name: Autobuild
+        uses: github/codeql-action/autobuild@v3
+
+      - name: Perform CodeQL Analysis
+        uses: github/codeql-action/analyze@v3
+        with:
+          category: "/language:${{ matrix.language }}"
+
+  semgrep:
+    name: Semgrep Security Scan
+    runs-on: ubuntu-latest
+    container:
+      image: semgrep/semgrep
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Run Semgrep
+        run: |
+          semgrep scan --config=auto --sarif --output=semgrep.sarif || true
+        env:
+          SEMGREP_RULES: >-
+            p/security-audit
+            p/owasp-top-ten
+            p/python
+            p/docker
+            p/ci
+            p/secrets
+
+      - name: Upload Semgrep results to GitHub
+        uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with:
+          sarif_file: semgrep.sarif
+          category: semgrep
+
+  bandit:
+    name: Bandit Python Security
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install Bandit
+        run: pip install bandit[sarif]
+
+      - name: Run Bandit scan
+        run: |
+          bandit -r web/ -f sarif -o bandit-results.sarif --severity-level medium || true
+
+      - name: Upload Bandit results
+        uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with:
+          sarif_file: bandit-results.sarif
+          category: bandit
+
+  trivy:
+    name: Trivy Security Scanner
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Run Trivy vulnerability scanner in repo mode
+        uses: aquasecurity/trivy-action@master
+        with:
+          scan-type: 'fs'
+          scan-ref: '.'
+          format: 'sarif'
+          output: 'trivy-results.sarif'
+          severity: 'CRITICAL,HIGH,MEDIUM'
+
+      - name: Upload Trivy results to GitHub Security
+        uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with:
+          sarif_file: 'trivy-results.sarif'
+          category: trivy-fs
+
+      - name: Run Trivy scanner on Dockerfile
+        uses: aquasecurity/trivy-action@master
+        with:
+          scan-type: 'config'
+          scan-ref: 'Dockerfile'
+          format: 'sarif'
+          output: 'trivy-dockerfile.sarif'
+
+      - name: Upload Dockerfile scan results
+        uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with:
+          sarif_file: 'trivy-dockerfile.sarif'
+          category: trivy-dockerfile
+
+  hadolint:
+    name: Dockerfile Linting
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Run Hadolint
+        uses: hadolint/hadolint-action@v3.1.0
+        with:
+          dockerfile: Dockerfile
+          format: sarif
+          output-file: hadolint-results.sarif
+          no-fail: true
+
+      - name: Upload Hadolint results
+        uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with:
+          sarif_file: hadolint-results.sarif
+          category: hadolint
+
+  dependency-review:
+    name: Dependency Review
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Dependency Review
+        uses: actions/dependency-review-action@v4
+        with:
+          fail-on-severity: moderate
+
+  security-summary:
+    name: Security Summary
+    runs-on: ubuntu-latest
+    needs: [codeql, semgrep, bandit, trivy, hadolint]
+    if: always()
+    
+    steps:
+      - name: Security Scan Complete
+        run: |
+          echo "🔒 Security SAST scans completed"
+          echo "- CodeQL: ${{ needs.codeql.result }}"
+          echo "- Semgrep: ${{ needs.semgrep.result }}"
+          echo "- Bandit: ${{ needs.bandit.result }}"
+          echo "- Trivy: ${{ needs.trivy.result }}"
+          echo "- Hadolint: ${{ needs.hadolint.result }}"
+          echo ""
+          echo "View results in the Security tab: https://github.com/${{ github.repository }}/security"
