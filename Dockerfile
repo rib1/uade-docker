@@ -22,25 +22,27 @@ RUN apt-get update && \
 WORKDIR /usr/src/uade-build
 
 # 3. Clone and install bencodetools
-RUN git clone --depth 1 https://gitlab.com/heikkiorsila/bencodetools.git && \
-    cd bencodetools && \
-    ./configure && \
+RUN git clone --depth 1 https://gitlab.com/heikkiorsila/bencodetools.git
+WORKDIR /usr/src/uade-build/bencodetools
+RUN ./configure && \
     make && \
     make install && \
     ldconfig
 
 # 4. Clone and install libzakalwe
-RUN git clone --depth 1 https://gitlab.com/hors/libzakalwe.git && \
-    cd libzakalwe && \
-    ./configure && \
+WORKDIR /usr/src/uade-build
+RUN git clone --depth 1 https://gitlab.com/hors/libzakalwe.git
+WORKDIR /usr/src/uade-build/libzakalwe
+RUN ./configure && \
     make && \
     make install && \
     ldconfig
 
 # 5. Clone and install UADE
-RUN git clone --depth 1 https://gitlab.com/uade-music-player/uade.git && \
-    cd uade && \
-    ./configure && \
+WORKDIR /usr/src/uade-build
+RUN git clone --depth 1 https://gitlab.com/uade-music-player/uade.git
+WORKDIR /usr/src/uade-build/uade
+RUN ./configure && \
     make && \
     make install
 
@@ -56,7 +58,7 @@ RUN apt-get update && \
     rm -rf /var/lib/apt/lists/*
 
 # 8. Create helper script for downloading and converting TFMX modules
-RUN echo '#!/bin/sh\n\
+RUN printf '#!/bin/sh\n\
 if [ $# -lt 2 ]; then\n\
     echo "Usage: uade-convert <mdat-url> <smpl-url> <output-file>"\n\
     echo ""\n\
