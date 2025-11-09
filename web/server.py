@@ -108,7 +108,7 @@ EXAMPLES = [
     },
     {
         "id": "wings-of-death-levels",
-        "name": "Wings of Death - Levels 1-7",
+        "name": "Jochen Hippel - Wings of Death Levels 1-7",
         "format": "Hippel-COSO",
         "duration": "~5min",
         "url": "https://zakalwe.fi/uade/amiga-music/customs/WingsOfDeath-Levels1-7/cust.WingsOfDeath-Levels1-7",
