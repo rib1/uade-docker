@@ -16,7 +16,7 @@ from datetime import datetime
 from flask import Flask, request, jsonify, send_from_directory, Response
 from werkzeug.utils import secure_filename
 import requests
-
+import re
 # Configure logging for cloud environments
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
 logger = logging.getLogger(__name__)
@@ -852,20 +852,33 @@ def play_file(file_id):
 @app.route("/download/<file_id>")
 def download_file(file_id):
     """Download audio file (FLAC or WAV) - large files may require a download manager"""
+    # Validate file_id as a strict identifier (alphanumerics, dash, underscore)
+    if not re.fullmatch(r"[a-zA-Z0-9_-]+", file_id):
+        return jsonify({"error": "Invalid file_id"}), 400
+    # Sanitize file_id to ensure a safe filename
+    safe_file_id = secure_filename(file_id)
     # Try FLAC first, then WAV
-    flac_path = CONVERTED_DIR / f"{file_id}.flac"
-    wav_path = CONVERTED_DIR / f"{file_id}.wav"
+    flac_path = (CONVERTED_DIR / f"{safe_file_id}.flac").resolve()
+    wav_path = (CONVERTED_DIR / f"{safe_file_id}.wav").resolve()
 
-    if flac_path.exists():
-        file_path = flac_path
-        mimetype = "audio/flac"
-        filename = f"uade_{file_id}.flac"
-    elif wav_path.exists():
-        file_path = wav_path
-        mimetype = "audio/wav"
-        filename = f"uade_{file_id}.wav"
-    else:
-        return jsonify({"error": "File not found"}), 404
+    # Only allow files under CONVERTED_DIR to be served
+    converted_base = CONVERTED_DIR.resolve()
+    # Validate flac_path containment
+    try:
+        if flac_path.exists() and flac_path.relative_to(converted_base):
+            file_path = flac_path
+            mimetype = "audio/flac"
+            filename = f"uade_{safe_file_id}.flac"
+        # Validate wav_path containment
+        elif wav_path.exists() and wav_path.relative_to(converted_base):
+            file_path = wav_path
+            mimetype = "audio/wav"
+            filename = f"uade_{safe_file_id}.wav"
+        else:
+            return jsonify({"error": "File not found or forbidden"}), 404
+    except ValueError:
+        # Path not contained within converted_base
+        return jsonify({"error": "File not found or forbidden"}), 404
 
     file_size = file_path.stat().st_size
 
