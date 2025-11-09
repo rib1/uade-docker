@@ -2,9 +2,9 @@ name: Docker Build Test
 
 on:
   push:
-    branches: [ main, web-player ]
+    branches: [ main ]
   pull_request:
-    branches: [ main, web-player ]
+    branches: [ main ]
 
 permissions:
   contents: read
