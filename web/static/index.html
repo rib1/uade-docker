@@ -1,100 +1,161 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>UADE Web Player - Amiga Music in Your Browser</title>
-    <link rel="icon" type="image/x-icon" href="/static/favicon.ico">
-    <link rel="icon" type="image/png" sizes="32x32" href="/static/favicon.png">
-    <link rel="stylesheet" href="/static/style.css">
-</head>
-<body>
+    <link rel="icon" type="image/x-icon" href="/static/favicon.ico" />
+    <link
+      rel="icon"
+      type="image/png"
+      sizes="32x32"
+      href="/static/favicon.png"
+    />
+    <link rel="stylesheet" href="/static/style.css" />
+  </head>
+  <body>
     <div class="container">
-        <header>
-            <h1>🎵 UADE Web Player</h1>
-            <p>Play Amiga music modules in your browser</p>
-        </header>
+      <header>
+        <h1>🎵 UADE Web Player</h1>
+        <p>Play Amiga music modules in your browser</p>
+      </header>
 
-        <!-- Example Modules Section -->
-        <section class="examples">
-            <h2>🎮 Try These Classics</h2>
-            <div id="examples-grid" class="examples-grid">
-                <!-- Populated by JavaScript -->
-            </div>
-        </section>
+      <!-- Example Modules Section -->
+      <section class="examples">
+        <h2>🎮 Try These Classics</h2>
+        <div id="examples-grid" class="examples-grid">
+          <!-- Populated by JavaScript -->
+        </div>
+      </section>
 
-        <!-- Upload Section -->
-        <section class="upload-section">
-            <h2>📁 Upload Your Module</h2>
-            <div id="drop-zone" class="drop-zone">
-                <div class="drop-zone-content">
-                    <p>Drag & drop your .mod, .ahx, or other module file here</p>
-                    <p class="or">or</p>
-                    <label for="file-input" class="btn btn-primary">Browse Files</label>
-                    <input type="file" id="file-input" accept=".mod,.ahx,.tfmx,.mdat,.smpl" hidden>
-                    <p class="file-info">Max size: 10MB</p>
-                </div>
-            </div>
-        </section>
+      <!-- Upload Section -->
+      <section class="upload-section">
+        <h2>📁 Upload Your Module</h2>
+        <div id="drop-zone" class="drop-zone">
+          <div class="drop-zone-content">
+            <p>Drag &amp; drop your .mod, .ahx, or other module file here</p>
+            <p class="or">or</p>
+            <label for="file-input" class="btn btn-primary">Browse Files</label>
+            <input
+              type="file"
+              id="file-input"
+              accept=".mod,.ahx,.tfmx,.mdat,.smpl"
+              hidden
+            />
+            <p class="file-info">Max size: 10MB</p>
+          </div>
+        </div>
+      </section>
 
-        <!-- URL Download Section -->
-        <section class="url-section">
-            <h2>🌐 Download from URL</h2>
-            <div class="url-form">
-                <input type="text" id="url-input" placeholder="https://modland.com/pub/modules/..." class="input-url">
-                <button id="url-submit" class="btn btn-primary">Convert & Play</button>
-            </div>
-            <details class="url-help">
-                <summary>Where to find modules?</summary>
-                <ul>
-                    <li><a href="https://modland.com/pub/modules/" target="_blank">Modland</a> - Comprehensive module database</li>
-                    <li><a href="https://modarchive.org" target="_blank">The Mod Archive</a> - Large collection</li>
-                    <li><a href="https://amp.dascene.net" target="_blank">Amiga Music Preservation</a> - Amiga-specific</li>
-                </ul>
-            </details>
-        </section>
+      <!-- URL Download Section -->
+      <section class="url-section">
+        <h2>🌐 Download from URL</h2>
+        <div class="url-form">
+          <input
+            type="text"
+            id="url-input"
+            placeholder="https://modland.com/pub/modules/..."
+            class="input-url"
+          />
+          <button type="button" id="url-submit" class="btn btn-primary">
+            Convert &amp; Play
+          </button>
+        </div>
+        <details class="url-help">
+          <summary>Where to find modules?</summary>
+          <ul>
+            <li>
+              <a href="https://modland.com/pub/modules/" target="_blank"
+                >Modland</a
+              >
+              - Comprehensive module database
+            </li>
+            <li>
+              <a href="https://modarchive.org" target="_blank"
+                >The Mod Archive</a
+              >
+              - Large collection
+            </li>
+            <li>
+              <a href="https://amp.dascene.net" target="_blank"
+                >Amiga Music Preservation</a
+              >
+              - Amiga-specific
+            </li>
+          </ul>
+        </details>
+      </section>
 
-        <!-- TFMX Section -->
-        <section class="tfmx-section">
-            <h2>🎹 TFMX Module</h2>
-            <details>
-                <summary>TFMX modules require two files</summary>
-                <p>TFMX format needs both mdat.* (music data) and smpl.* (samples)</p>
-                <div class="tfmx-form">
-                    <input type="text" id="mdat-url" placeholder="mdat URL (music data)" class="input-url">
-                    <input type="text" id="smpl-url" placeholder="smpl URL (samples)" class="input-url">
-                    <button id="tfmx-submit" class="btn btn-primary">Convert TFMX</button>
-                </div>
-            </details>
-        </section>
+      <!-- TFMX Section -->
+      <section class="tfmx-section">
+        <h2>🎹 TFMX Module</h2>
+        <details>
+          <summary>TFMX modules require two files</summary>
+          <p>TFMX format needs both mdat.* (music data) and smpl.* (samples)</p>
+          <div class="tfmx-form">
+            <input
+              type="text"
+              id="mdat-url"
+              placeholder="mdat URL (music data)"
+              class="input-url"
+            />
+            <input
+              type="text"
+              id="smpl-url"
+              placeholder="smpl URL (samples)"
+              class="input-url"
+            />
+            <button type="button" id="tfmx-submit" class="btn btn-primary">
+              Convert TFMX
+            </button>
+          </div>
+        </details>
+      </section>
 
-        <!-- Player Section -->
-        <section id="player-section" class="player-section" style="display: none;">
-            <h2>🎧 Now Playing</h2>
-            <div class="player">
-                <div class="player-info">
-                    <p id="current-track">No track loaded</p>
-                    <p id="track-format" class="format-badge"></p>
-                </div>
-                <audio id="audio-player" controls></audio>
-                <div class="player-controls">
-                    <button id="download-btn" class="btn btn-secondary">⬇ Download WAV</button>
-                </div>
-            </div>
-        </section>
+      <!-- Player Section -->
+      <section id="player-section" class="player-section" style="display: none">
+        <h2>🎧 Now Playing</h2>
+        <div class="player">
+          <div class="player-info">
+            <p id="current-track">No track loaded</p>
+            <p id="track-format" class="format-badge"></p>
+          </div>
+          <audio id="audio-player" controls></audio>
+          <div class="player-controls">
+            <button type="button" id="download-btn" class="btn btn-secondary">
+              ⬇ Download WAV
+            </button>
+          </div>
+        </div>
+      </section>
 
-        <!-- Status Messages -->
-        <div id="status-container"></div>
+      <!-- Status Messages -->
+      <div id="status-container"></div>
 
-        <!-- Info Footer -->
-        <footer>
-            <p>Powered by <a href="https://zakalwe.fi/uade/" target="_blank">UADE</a> - Unix Amiga Delitracker Emulator</p>
-            <p>Supports 100+ Amiga music formats including ProTracker, TFMX, AHX, and more</p>
-            <p><a href="https://github.com/rib1/uade-docker" target="_blank">GitHub</a> | <a href="https://gitlab.com/uade-music-player/uade" target="_blank">UADE Repository</a></p>
-            <p id="version-info" class="version-info">Loading version...</p>
-        </footer>
+      <!-- Info Footer -->
+      <footer>
+        <p>
+          Powered by
+          <a href="https://zakalwe.fi/uade/" target="_blank">UADE</a> - Unix
+          Amiga Delitracker Emulator
+        </p>
+        <p>
+          Supports 100+ Amiga music formats including ProTracker, TFMX, AHX, and
+          more
+        </p>
+        <p>
+          <a href="https://github.com/rib1/uade-docker" target="_blank"
+            >GitHub</a
+          >
+          |
+          <a href="https://gitlab.com/uade-music-player/uade" target="_blank"
+            >UADE Repository</a
+          >
+        </p>
+        <p id="version-info" class="version-info">Loading version...</p>
+      </footer>
     </div>
 
     <script src="/static/app.js"></script>
-</body>
+  </body>
 </html>
