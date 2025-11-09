@@ -862,16 +862,20 @@ def download_file(file_id):
     # Only allow files under CONVERTED_DIR to be served
     converted_base = CONVERTED_DIR.resolve()
     # Validate flac_path containment
-    if flac_path.exists() and str(flac_path).startswith(str(converted_base)):
-        file_path = flac_path
-        mimetype = "audio/flac"
-        filename = f"uade_{file_id}.flac"
-    # Validate wav_path containment
-    elif wav_path.exists() and str(wav_path).startswith(str(converted_base)):
-        file_path = wav_path
-        mimetype = "audio/wav"
-        filename = f"uade_{file_id}.wav"
-    else:
+    try:
+        if flac_path.exists() and flac_path.relative_to(converted_base):
+            file_path = flac_path
+            mimetype = "audio/flac"
+            filename = f"uade_{file_id}.flac"
+        # Validate wav_path containment
+        elif wav_path.exists() and wav_path.relative_to(converted_base):
+            file_path = wav_path
+            mimetype = "audio/wav"
+            filename = f"uade_{file_id}.wav"
+        else:
+            return jsonify({"error": "File not found or forbidden"}), 404
+    except ValueError:
+        # Path not contained within converted_base
         return jsonify({"error": "File not found or forbidden"}), 404
 
     file_size = file_path.stat().st_size
