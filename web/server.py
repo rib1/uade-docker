@@ -114,6 +114,17 @@ EXAMPLES = [
         "url": "https://zakalwe.fi/uade/amiga-music/customs/WingsOfDeath-Levels1-7/cust.WingsOfDeath-Levels1-7",
         "type": "cust",
     },
+    {
+        "id": "led-storm",
+        "name": "Tim Follin - LED Storm",
+        "format": "Hippel-COSO (LHA)",
+        "duration": "~15min (7 tracks)",
+        "url": (
+            "http://files.exotica.org.uk/"
+            "?file=exotica%2Fmedia%2Faudio%2FUnExoticA%2FGame%2FFollin_Tim%2FL_E_D_Storm.lha"
+        ),
+        "type": "lha",
+    },
 ]
 
 
@@ -155,7 +166,8 @@ def compress_to_flac(wav_path, flac_path):
 
         if result.returncode == 0 and flac_path.exists():
             logger.info(
-                f"Compressed to FLAC: {wav_path} -> {flac_path} ({flac_path.stat().st_size / wav_path.stat().st_size:.1%} of original)"
+                f"Compressed to FLAC: {wav_path} -> {flac_path} "
+                f"({flac_path.stat().st_size / wav_path.stat().st_size:.1%} of original)"
             )
             return True
         else:
@@ -164,6 +176,66 @@ def compress_to_flac(wav_path, flac_path):
     except Exception as e:
         logger.error(f"FLAC compression exception: {e}")
         return False
+
+
+def is_lha_file(file_path):
+    """Check if file is an LHA archive by magic bytes"""
+    try:
+        with open(file_path, 'rb') as f:
+            # LHA files have signature at offset 2: '-lh' or '-lz'
+            header = f.read(20)
+            if len(header) >= 7:
+                signature = header[2:5]
+                return signature == b'-lh' or signature == b'-lz'
+        return False
+    except Exception:
+        return False
+
+
+def extract_lha(lha_path, extract_dir):
+    """Extract LHA archive and return first music file found
+    Returns: (success, error_message, music_file_path or None)
+    """
+    try:
+        extract_dir.mkdir(parents=True, exist_ok=True)
+
+        # Change to extract directory and run lha extraction
+        cmd = ["lha", "x", str(lha_path)]
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=30, cwd=str(extract_dir))
+
+        if result.returncode != 0:
+            logger.error(f"LHA extraction error: {result.stderr}")
+            return False, f"LHA extraction failed: {result.stderr}", None
+
+        # Find music files (common Amiga module extensions and custom format naming)
+        music_extensions = {
+            '.mod', '.ahx', '.hvl', '.s3m', '.xm', '.it',
+            '.med', '.okta', '.sid', '.ssd', '.dmu', '.rk',
+            '.smus', '.tfmx', '.mdat', '.smpl', '.bp', '.fc',
+            '.fred', '.gray', '.sc', '.sng', '.ss', '.sun',
+            '.ym'
+        }
+
+        music_files = []
+        for file_path in extract_dir.rglob("*"):
+            if file_path.is_file():
+                # Check by extension or by 'cust.' prefix (Hippel-COSO custom format)
+                if file_path.suffix.lower() in music_extensions or file_path.name.startswith('cust.'):
+                    music_files.append(file_path)
+
+        if not music_files:
+            return False, "No music files found in LHA archive", None
+
+        # Use the first music file found
+        music_file = music_files[0]
+        logger.info(f"Extracted LHA archive, found {len(music_files)} music file(s), using: {music_file.name}")
+        return True, None, music_file
+
+    except subprocess.TimeoutExpired:
+        return False, "LHA extraction timeout", None
+    except Exception as e:
+        logger.error(f"LHA extraction exception: {e}")
+        return False, str(e), None
 
 
 def get_cached_conversion(cache_hash, prefer_flac=False):
@@ -300,7 +372,8 @@ def convert_tfmx(mdat_url, smpl_url, output_path, use_cache=True, compress_flac=
     try:
         # Create cache key from both URLs
         if use_cache:
-            cache_key = hashlib.md5(f"{mdat_url}:{smpl_url}".encode(), usedforsecurity=False).hexdigest()  # Cache key only
+            # Cache key only
+            cache_key = hashlib.md5(f"{mdat_url}:{smpl_url}".encode(), usedforsecurity=False).hexdigest()
             cached_file = get_cached_conversion(cache_key, prefer_flac=compress_flac)
 
             if cached_file:
@@ -407,16 +480,40 @@ def upload_file():
         upload_path = UPLOAD_DIR / f"{file_id}_{filename}"
         file.save(upload_path)
 
+        # Check if it's an LHA archive
+        module_path = upload_path
+        extract_dir = None
+        if is_lha_file(upload_path):
+            logger.info(f"Detected LHA archive upload: {filename}")
+            extract_dir = UPLOAD_DIR / f"{file_id}_extracted"
+            success, error, music_file = extract_lha(upload_path, extract_dir)
+
+            if not success:
+                upload_path.unlink(missing_ok=True)
+                if extract_dir and extract_dir.exists():
+                    import shutil
+                    shutil.rmtree(extract_dir, ignore_errors=True)
+                return jsonify({"error": error}), 500
+
+            module_path = music_file
+            filename = music_file.name
+
         # Convert to WAV (and optionally FLAC)
         output_path = CONVERTED_DIR / f"{file_id}.wav"
-        success, error, final_file, player_format = convert_to_wav(upload_path, output_path, compress_flac=use_flac)
+        success, error, final_file, player_format = convert_to_wav(module_path, output_path, compress_flac=use_flac)
 
         if not success:
             upload_path.unlink(missing_ok=True)
+            if extract_dir and extract_dir.exists():
+                import shutil
+                shutil.rmtree(extract_dir, ignore_errors=True)
             return jsonify({"error": error}), 500
 
-        # Clean up input file
+        # Clean up input files
         upload_path.unlink(missing_ok=True)
+        if extract_dir and extract_dir.exists():
+            import shutil
+            shutil.rmtree(extract_dir, ignore_errors=True)
 
         return jsonify(
             {
@@ -451,29 +548,54 @@ def convert_url():
         user_agent = request.headers.get("User-Agent", "")
         use_flac = supports_flac(user_agent)
 
-        # Download file
+        # Download file (allow redirects for URLs like exotica.org.uk)
         logger.info(f"Downloading: {url}")
-        response = requests.get(url, timeout=30, verify=False)  # nosec B501 - Trade-off for HTTP module downloads
+        # nosec B501 - Trade-off for HTTP module downloads
+        response = requests.get(url, timeout=30, verify=False, allow_redirects=True)
         response.raise_for_status()
 
         # Generate unique ID
         file_id = str(uuid.uuid4())
-        filename = url.split("/")[-1].split("#")[0] or "module"
+        filename = url.split("/")[-1].split("#")[0].split("?")[0] or "module"
 
         # Save downloaded file
         cache_path = CACHE_DIR / f"{file_id}_{filename}"
         cache_path.write_bytes(response.content)
 
+        # Check if it's an LHA archive
+        module_path = cache_path
+        extract_dir = None
+        if is_lha_file(cache_path):
+            logger.info(f"Detected LHA archive: {filename}")
+            extract_dir = CACHE_DIR / f"{file_id}_extracted"
+            success, error, music_file = extract_lha(cache_path, extract_dir)
+
+            if not success:
+                cache_path.unlink(missing_ok=True)
+                if extract_dir and extract_dir.exists():
+                    import shutil
+                    shutil.rmtree(extract_dir, ignore_errors=True)
+                return jsonify({"error": error}), 500
+
+            module_path = music_file
+            filename = music_file.name
+
         # Convert to WAV (and optionally FLAC)
         output_path = CONVERTED_DIR / f"{file_id}.wav"
-        success, error, final_file, player_format = convert_to_wav(cache_path, output_path, compress_flac=use_flac)
+        success, error, final_file, player_format = convert_to_wav(module_path, output_path, compress_flac=use_flac)
 
         if not success:
             cache_path.unlink(missing_ok=True)
+            if extract_dir and extract_dir.exists():
+                import shutil
+                shutil.rmtree(extract_dir, ignore_errors=True)
             return jsonify({"error": error}), 500
 
-        # Clean up cached file
+        # Clean up cached files
         cache_path.unlink(missing_ok=True)
+        if extract_dir and extract_dir.exists():
+            import shutil
+            shutil.rmtree(extract_dir, ignore_errors=True)
 
         return jsonify(
             {
@@ -559,15 +681,37 @@ def play_example(example_id):
             )
             player_format = "TFMX"  # TFMX modules are always TFMX format
         else:
-            # Download regular module
-            response = requests.get(example["url"], timeout=30, verify=False)  # nosec B501 - Trade-off for HTTP module downloads
+            # Download regular module (allow redirects for URLs like exotica.org.uk)
+            # nosec B501 - Trade-off for HTTP module downloads
+            response = requests.get(example["url"], timeout=30, verify=False, allow_redirects=True)
             response.raise_for_status()
 
             cache_path = CACHE_DIR / f"{file_id}_{example['type']}"
             cache_path.write_bytes(response.content)
 
-            success, error, final_file, player_format = convert_to_wav(cache_path, output_path, compress_flac=use_flac)
+            # Check if it's an LHA archive
+            module_path = cache_path
+            extract_dir = None
+            if is_lha_file(cache_path):
+                logger.info(f"Detected LHA archive in example: {example['name']}")
+                extract_dir = CACHE_DIR / f"{file_id}_extracted"
+                extract_success, extract_error, music_file = extract_lha(cache_path, extract_dir)
+
+                if not extract_success:
+                    cache_path.unlink(missing_ok=True)
+                    if extract_dir and extract_dir.exists():
+                        import shutil
+                        shutil.rmtree(extract_dir, ignore_errors=True)
+                    return jsonify({"error": extract_error}), 500
+
+                module_path = music_file
+            success, error, final_file, player_format = convert_to_wav(module_path, output_path, compress_flac=use_flac)
+
+            # Clean up
             cache_path.unlink(missing_ok=True)
+            if extract_dir and extract_dir.exists():
+                import shutil
+                shutil.rmtree(extract_dir, ignore_errors=True)
 
         if not success:
             return jsonify({"error": error}), 500

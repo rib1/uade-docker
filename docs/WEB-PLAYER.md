@@ -7,6 +7,7 @@ Play Amiga music modules directly in your web browser! No desktop software requi
 - 🎵 **Play in Browser** - Upload or download modules, hear them instantly
 - 🎮 **Example Modules** - Try famous Amiga classics with one click
 - 🌐 **URL Support** - Download directly from Modland, ModArchive, etc.
+- 📦 **LHA Archive Support** - Automatically extracts classic Amiga LHA archives
 - 🎹 **TFMX Support** - Handles dual-file TFMX modules automatically
 - 💿 **Smart Compression** - Automatic FLAC compression for capable browsers (50-70% smaller files)
 - ⬇️ **Download Audio** - Save as FLAC or WAV for offline playback
@@ -136,6 +137,10 @@ Click any example module on the homepage to instantly hear classic Amiga music:
 
 Drag and drop .mod, .ahx, or other module files directly into the browser.
 
+**Supported formats:**
+- Individual modules (.mod, .ahx, .tfmx, .okta, .sid, etc.)
+- **LHA archives (.lha)** - Automatically extracted and played
+
 ### 3. Download from URL
 
 Paste a Modland or ModArchive URL to download and convert automatically.
@@ -145,7 +150,18 @@ Paste a Modland or ModArchive URL to download and convert automatically.
 ```
 https://modland.com/pub/modules/Protracker/Captain/space%20debris.mod
 https://modland.com/pub/modules/AHX/Pink/stormlord.ahx
+http://files.exotica.org.uk/?file=exotica%2Fmedia%2Faudio%2FUnExoticA%2FGame%2FFollin_Tim%2FL_E_D_Storm.lha
 ```
+
+**LHA Archive Support:**
+
+The web player automatically detects and extracts classic Amiga LHA archives. Many music collections from sites like Exotica.org.uk are distributed as LHA files:
+
+- Upload an .lha file or provide its URL
+- Player automatically extracts the archive
+- First music file found is played
+- Supports all common Amiga module formats inside archives
+- No manual extraction needed!
 
 ### 4. TFMX Modules
 
