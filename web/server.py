@@ -633,6 +633,20 @@ def handle_tfmx():
     if not data or "mdat_url" not in data or "smpl_url" not in data:
         return jsonify({"error": "Both mdat_url and smpl_url required"}), 400
 
+    # Validate URLs before processing
+    def is_safe_url(url):
+        from urllib.parse import urlparse
+        try:
+            parsed = urlparse(url)
+            return parsed.scheme in ("http", "https") and bool(parsed.netloc)
+        except Exception:
+            return False
+
+    mdat_url = data["mdat_url"]
+    smpl_url = data["smpl_url"]
+    if not (is_safe_url(mdat_url) and is_safe_url(smpl_url)):
+        return jsonify({"error": "Invalid URL(s) supplied"}), 400
+
     try:
         # Check browser FLAC support
         user_agent = request.headers.get("User-Agent", "")
@@ -642,7 +656,7 @@ def handle_tfmx():
         output_path = CONVERTED_DIR / f"{file_id}.wav"
 
         success, error, final_file = convert_tfmx(
-            data["mdat_url"], data["smpl_url"], output_path, compress_flac=use_flac
+            mdat_url, smpl_url, output_path, compress_flac=use_flac
         )
 
         if not success:
