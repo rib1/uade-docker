@@ -306,6 +306,10 @@ def convert_to_wav(input_path, output_path, use_cache=True, compress_flac=False)
     Returns: (success, error, final_file, player_format)
     """
     try:
+        # Defensive: Restrict input_path to CACHE_DIR
+        if not Path(input_path).resolve().is_relative_to(CACHE_DIR.resolve()):
+            logger.error("Aborting: attempted read outside cache directory")
+            return False, "Illegal input file path", None, None
         # Detect player format before conversion
         player_format = detect_player_format(input_path)
         # Check cache first
@@ -563,10 +567,16 @@ def convert_url():
 
         # Generate unique ID
         file_id = str(uuid.uuid4())
-        filename = url.split("/")[-1].split("#")[0].split("?")[0] or "module"
+        raw_filename = url.split("/")[-1].split("#")[0].split("?")[0] or "module"
+        # Sanitize filename from user input using Werkzeug's secure_filename
+        filename = secure_filename(raw_filename)
 
         # Save downloaded file
         cache_path = CACHE_DIR / f"{file_id}_{filename}"
+        # Restrict cache_path to CACHE_DIR
+        if not cache_path.resolve().is_relative_to(CACHE_DIR.resolve()):
+            logger.error("Aborting: attempted write outside cache directory")
+            return jsonify({"error": "Illegal file name/path"}), 400
         cache_path.write_bytes(response.content)
 
         # Check if it's an LHA archive
@@ -586,9 +596,14 @@ def convert_url():
 
             module_path = music_file
             filename = music_file.name
+        # Assign output_path before restriction check
+        output_path = CONVERTED_DIR / f"{file_id}.wav"
+        # Restrict output_path to CONVERTED_DIR
+        if not output_path.resolve().is_relative_to(CONVERTED_DIR.resolve()):
+            logger.error("Aborting: attempted write outside output directory")
+            return jsonify({"error": "Illegal output path"}), 400
 
         # Convert to WAV (and optionally FLAC)
-        output_path = CONVERTED_DIR / f"{file_id}.wav"
         success, error, final_file, player_format = convert_to_wav(module_path, output_path, compress_flac=use_flac)
 
         if not success:
