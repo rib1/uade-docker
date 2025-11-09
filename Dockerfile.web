@@ -46,10 +46,18 @@ RUN pip install --no-cache-dir \
 # Create app directory structure
 RUN mkdir -p /app /tmp/uploads /tmp/converted /tmp/cache
 
+# Create non-root user for security
+RUN useradd -m -u 1000 -s /bin/bash uade && \
+    chown -R uade:uade /app /opt/venv && \
+    chmod -R 777 /tmp/uploads /tmp/converted /tmp/cache
+
 # Copy web application
 COPY web/ /app/
 
 WORKDIR /app
+
+# Switch to non-root user
+USER uade
 
 # Set environment variables for cloud deployment
 ENV FLASK_APP=server.py
