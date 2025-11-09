@@ -648,9 +648,14 @@ def handle_tfmx():
     if not data or "mdat_url" not in data or "smpl_url" not in data:
         return jsonify({"error": "Both mdat_url and smpl_url required"}), 400
 
-    # Validate URLs before processing
+    # Validate URLs before processing (stricter, block meta/whitespace chars)
+    import re
     def is_safe_url(url):
         from urllib.parse import urlparse
+        # Reject URLs containing whitespace or shell/meta/control characters
+        forbidden = r'[ \t\n\r\x00-\x1f"\'`;|&$<>\\]'
+        if re.search(forbidden, url):
+            return False
         try:
             parsed = urlparse(url)
             return parsed.scheme in ("http", "https") and bool(parsed.netloc)
