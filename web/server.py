@@ -17,8 +17,11 @@ from flask import Flask, request, jsonify, send_from_directory, Response
 from werkzeug.utils import secure_filename
 import requests
 import re
+
 # Configure logging for cloud environments
-logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
+logging.basicConfig(
+    level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+)
 logger = logging.getLogger(__name__)
 
 app = Flask(__name__, static_folder="static")
@@ -28,7 +31,12 @@ app = Flask(__name__, static_folder="static")
 def get_git_commit():
     """Get current git commit hash"""
     try:
-        result = subprocess.run(["git", "rev-parse", "--short", "HEAD"], capture_output=True, text=True, timeout=2)
+        result = subprocess.run(
+            ["git", "rev-parse", "--short", "HEAD"],
+            capture_output=True,
+            text=True,
+            timeout=2,
+        )
         if result.returncode == 0:
             return result.stdout.strip()
     except Exception:
@@ -191,12 +199,12 @@ def compress_to_flac(wav_path, flac_path):
 def is_lha_file(file_path):
     """Check if file is an LHA archive by magic bytes"""
     try:
-        with open(file_path, 'rb') as f:
+        with open(file_path, "rb") as f:
             # LHA files have signature at offset 2: '-lh' or '-lz'
             header = f.read(20)
             if len(header) >= 7:
                 signature = header[2:5]
-                return signature == b'-lh' or signature == b'-lz'
+                return signature == b"-lh" or signature == b"-lz"
         return False
     except Exception:
         return False
@@ -211,7 +219,9 @@ def extract_lha(lha_path, extract_dir):
 
         # Change to extract directory and run lha extraction
         cmd = ["lha", "x", str(lha_path)]
-        result = subprocess.run(cmd, capture_output=True, text=True, timeout=30, cwd=str(extract_dir))
+        result = subprocess.run(
+            cmd, capture_output=True, text=True, timeout=30, cwd=str(extract_dir)
+        )
 
         if result.returncode != 0:
             logger.error(f"LHA extraction error: {result.stderr}")
@@ -219,18 +229,41 @@ def extract_lha(lha_path, extract_dir):
 
         # Find music files (common Amiga module extensions and custom format naming)
         music_extensions = {
-            '.mod', '.ahx', '.hvl', '.s3m', '.xm', '.it',
-            '.med', '.okta', '.sid', '.ssd', '.dmu', '.rk',
-            '.smus', '.tfmx', '.mdat', '.smpl', '.bp', '.fc',
-            '.fred', '.gray', '.sc', '.sng', '.ss', '.sun',
-            '.ym'
+            ".mod",
+            ".ahx",
+            ".hvl",
+            ".s3m",
+            ".xm",
+            ".it",
+            ".med",
+            ".okta",
+            ".sid",
+            ".ssd",
+            ".dmu",
+            ".rk",
+            ".smus",
+            ".tfmx",
+            ".mdat",
+            ".smpl",
+            ".bp",
+            ".fc",
+            ".fred",
+            ".gray",
+            ".sc",
+            ".sng",
+            ".ss",
+            ".sun",
+            ".ym",
         }
 
         music_files = []
         for file_path in extract_dir.rglob("*"):
             if file_path.is_file():
                 # Check by extension or by 'cust.' prefix (Hippel-COSO custom format)
-                if file_path.suffix.lower() in music_extensions or file_path.name.startswith('cust.'):
+                if (
+                    file_path.suffix.lower() in music_extensions
+                    or file_path.name.startswith("cust.")
+                ):
                     music_files.append(file_path)
 
         if not music_files:
@@ -238,7 +271,9 @@ def extract_lha(lha_path, extract_dir):
 
         # Use the first music file found
         music_file = music_files[0]
-        logger.info(f"Extracted LHA archive, found {len(music_files)} music file(s), using: {music_file.name}")
+        logger.info(
+            f"Extracted LHA archive, found {len(music_files)} music file(s), using: {music_file.name}"
+        )
         return True, None, music_file
 
     except subprocess.TimeoutExpired:
@@ -332,9 +367,17 @@ def convert_to_wav(input_path, output_path, use_cache=True, compress_flac=False)
                     shutil.copy2(cached_file, output_path)
                     return True, None, cached_file, player_format
 
-        cmd = ["/usr/local/bin/uade123", "-c", "-f", str(output_path), str(input_path)]  # Headless mode
+        cmd = [
+            "/usr/local/bin/uade123",
+            "-c",
+            "-f",
+            str(output_path),
+            str(input_path),
+        ]  # Headless mode
 
-        result = subprocess.run(cmd, capture_output=True, text=True, timeout=300)  # 5 minute timeout
+        result = subprocess.run(
+            cmd, capture_output=True, text=True, timeout=300
+        )  # 5 minute timeout
 
         if result.returncode != 0:
             logger.error(f"UADE error: {result.stderr}")
@@ -387,7 +430,9 @@ def convert_tfmx(mdat_url, smpl_url, output_path, use_cache=True, compress_flac=
         # Create cache key from both URLs
         if use_cache:
             # Cache key only
-            cache_key = hashlib.md5(f"{mdat_url}:{smpl_url}".encode(), usedforsecurity=False).hexdigest()
+            cache_key = hashlib.md5(
+                f"{mdat_url}:{smpl_url}".encode(), usedforsecurity=False
+            ).hexdigest()
             cached_file = get_cached_conversion(cache_key, prefer_flac=compress_flac)
 
             if cached_file:
@@ -453,7 +498,7 @@ def index():
 @app.route("/health")
 def health():
     """Health check for load balancers"""
-    return jsonify(
+    response = jsonify(
         {
             "status": "healthy",
             "version": GIT_COMMIT,
@@ -461,12 +506,16 @@ def health():
             "uade_available": Path("/usr/local/bin/uade123").exists(),
         }
     )
+    response.headers["Content-Type"] = "application/json; charset=utf-8"
+    return response
 
 
 @app.route("/examples")
 def get_examples():
     """Return list of example modules"""
-    return jsonify(EXAMPLES)
+    response = jsonify(EXAMPLES)
+    response.headers["Content-Type"] = "application/json; charset=utf-8"
+    return response
 
 
 @app.route("/upload", methods=["POST"])
@@ -475,11 +524,15 @@ def upload_file():
     cleanup_old_files()
 
     if "file" not in request.files:
-        return jsonify({"error": "No file provided"}), 400
+        response = jsonify({"error": "No file provided"})
+        response.headers["Content-Type"] = "application/json; charset=utf-8"
+        return response, 400
 
     file = request.files["file"]
     if file.filename == "":
-        return jsonify({"error": "No file selected"}), 400
+        response = jsonify({"error": "No file selected"})
+        response.headers["Content-Type"] = "application/json; charset=utf-8"
+        return response, 400
 
     try:
         # Check browser FLAC support
@@ -506,6 +559,7 @@ def upload_file():
                 upload_path.unlink(missing_ok=True)
                 if extract_dir and extract_dir.exists():
                     import shutil
+
                     shutil.rmtree(extract_dir, ignore_errors=True)
                 return jsonify({"error": error}), 500
 
@@ -514,22 +568,28 @@ def upload_file():
 
         # Convert to WAV (and optionally FLAC)
         output_path = CONVERTED_DIR / f"{file_id}.wav"
-        success, error, final_file, player_format = convert_to_wav(module_path, output_path, compress_flac=use_flac)
+        success, error, final_file, player_format = convert_to_wav(
+            module_path, output_path, compress_flac=use_flac
+        )
 
         if not success:
             upload_path.unlink(missing_ok=True)
             if extract_dir and extract_dir.exists():
                 import shutil
+
                 shutil.rmtree(extract_dir, ignore_errors=True)
-            return jsonify({"error": error}), 500
+            response = jsonify({"error": error})
+            response.headers["Content-Type"] = "application/json; charset=utf-8"
+            return response, 500
 
         # Clean up input files
         upload_path.unlink(missing_ok=True)
         if extract_dir and extract_dir.exists():
             import shutil
+
             shutil.rmtree(extract_dir, ignore_errors=True)
 
-        return jsonify(
+        response = jsonify(
             {
                 "success": True,
                 "file_id": file_id,
@@ -540,10 +600,14 @@ def upload_file():
                 "download_url": f"/download/{file_id}",
             }
         )
+        response.headers["Content-Type"] = "application/json; charset=utf-8"
+        return response
 
     except Exception as e:
         logger.error(f"Upload error: {e}")
-        return jsonify({"error": str(e)}), 500
+    response = jsonify({"error": str(e)})
+    response.headers["Content-Type"] = "application/json; charset=utf-8"
+    return response, 500
 
 
 @app.route("/convert-url", methods=["POST"])
@@ -553,7 +617,9 @@ def convert_url():
 
     data = request.get_json()
     if not data or "url" not in data:
-        return jsonify({"error": "No URL provided"}), 400
+        response = jsonify({"error": "No URL provided"})
+        response.headers["Content-Type"] = "application/json; charset=utf-8"
+        return response, 400
 
     url = data["url"]
 
@@ -579,7 +645,9 @@ def convert_url():
         # Restrict cache_path to CACHE_DIR
         if not cache_path.resolve().is_relative_to(CACHE_DIR.resolve()):
             logger.error("Aborting: attempted write outside cache directory")
-            return jsonify({"error": "Illegal file name/path"}), 400
+            response = jsonify({"error": "Illegal file name/path"})
+            response.headers["Content-Type"] = "application/json; charset=utf-8"
+            return response, 400
         cache_path.write_bytes(response.content)
 
         # Check if it's an LHA archive
@@ -594,8 +662,11 @@ def convert_url():
                 cache_path.unlink(missing_ok=True)
                 if extract_dir and extract_dir.exists():
                     import shutil
+
                     shutil.rmtree(extract_dir, ignore_errors=True)
-                return jsonify({"error": error}), 500
+                response = jsonify({"error": error})
+                response.headers["Content-Type"] = "application/json; charset=utf-8"
+                return response, 500
 
             module_path = music_file
             filename = music_file.name
@@ -607,12 +678,15 @@ def convert_url():
             return jsonify({"error": "Illegal output path"}), 400
 
         # Convert to WAV (and optionally FLAC)
-        success, error, final_file, player_format = convert_to_wav(module_path, output_path, compress_flac=use_flac)
+        success, error, final_file, player_format = convert_to_wav(
+            module_path, output_path, compress_flac=use_flac
+        )
 
         if not success:
             cache_path.unlink(missing_ok=True)
             if extract_dir and extract_dir.exists():
                 import shutil
+
                 shutil.rmtree(extract_dir, ignore_errors=True)
             return jsonify({"error": error}), 500
 
@@ -620,9 +694,10 @@ def convert_url():
         cache_path.unlink(missing_ok=True)
         if extract_dir and extract_dir.exists():
             import shutil
+
             shutil.rmtree(extract_dir, ignore_errors=True)
 
-        return jsonify(
+        response = jsonify(
             {
                 "success": True,
                 "file_id": file_id,
@@ -633,25 +708,34 @@ def convert_url():
                 "download_url": f"/download/{file_id}",
             }
         )
+        response.headers["Content-Type"] = "application/json; charset=utf-8"
+        return response
 
     except requests.RequestException as e:
         logger.error(f"Download error: {e}")
-        return jsonify({"error": f"Download failed: {str(e)}"}), 500
+        response = jsonify({"error": f"Download failed: {str(e)}"})
+        response.headers["Content-Type"] = "application/json; charset=utf-8"
+        return response, 500
     except Exception as e:
         logger.error(f"Convert URL error: {e}")
-        return jsonify({"error": str(e)}), 500
+        response = jsonify({"error": str(e)})
+        response.headers["Content-Type"] = "application/json; charset=utf-8"
+        return response, 500
 
 
 def sanitized_url(url):
     """Sanitize URL for safe logging (removes control/meta chars, line breaks, trims, limits length)"""
     if not isinstance(url, str):
         return "<non-string URL>"
-    url = re.sub(FORBIDDEN_CHARS, '', url)
-    url = url.replace('\r', '').replace('\n', '')  # Remove line breaks to prevent log injection
+    url = re.sub(FORBIDDEN_CHARS, "", url)
+    url = url.replace("\r", "").replace(
+        "\n", ""
+    )  # Remove line breaks to prevent log injection
     url = url.strip()
     if len(url) > 200:
-        url = url[:200] + '...'
+        url = url[:200] + "..."
     return url
+
 
 @app.route("/convert-tfmx", methods=["POST"])
 def handle_tfmx():
@@ -667,6 +751,7 @@ def handle_tfmx():
 
     def is_safe_url(url):
         from urllib.parse import urlparse
+
         # Reject URLs containing forbidden characters
         if re.search(FORBIDDEN_CHARS, url):
             return False
@@ -709,7 +794,9 @@ def handle_tfmx():
         )
 
     except Exception as e:
-        logger.error(f"TFMX error: {sanitized_url(mdat_url)}, {sanitized_url(smpl_url)}: {e}")
+        logger.error(
+            f"TFMX error: {sanitized_url(mdat_url)}, {sanitized_url(smpl_url)}: {e}"
+        )
         return jsonify({"error": str(e)}), 500
 
 
@@ -732,13 +819,18 @@ def play_example(example_id):
 
         if example["type"] == "tfmx":
             success, error, final_file = convert_tfmx(
-                example["mdat_url"], example["smpl_url"], output_path, compress_flac=use_flac
+                example["mdat_url"],
+                example["smpl_url"],
+                output_path,
+                compress_flac=use_flac,
             )
             player_format = "TFMX"  # TFMX modules are always TFMX format
         else:
             # Download regular module (allow redirects for URLs like exotica.org.uk)
             # nosec B501 - Trade-off for HTTP module downloads
-            response = requests.get(example["url"], timeout=30, verify=False, allow_redirects=True)
+            response = requests.get(
+                example["url"], timeout=30, verify=False, allow_redirects=True
+            )
             response.raise_for_status()
 
             cache_path = CACHE_DIR / f"{file_id}_{example['type']}"
@@ -750,28 +842,34 @@ def play_example(example_id):
             if is_lha_file(cache_path):
                 logger.info(f"Detected LHA archive in example: {example['name']}")
                 extract_dir = CACHE_DIR / f"{file_id}_extracted"
-                extract_success, extract_error, music_file = extract_lha(cache_path, extract_dir)
+                extract_success, extract_error, music_file = extract_lha(
+                    cache_path, extract_dir
+                )
 
                 if not extract_success:
                     cache_path.unlink(missing_ok=True)
                     if extract_dir and extract_dir.exists():
                         import shutil
+
                         shutil.rmtree(extract_dir, ignore_errors=True)
                     return jsonify({"error": extract_error}), 500
 
                 module_path = music_file
-            success, error, final_file, player_format = convert_to_wav(module_path, output_path, compress_flac=use_flac)
+            success, error, final_file, player_format = convert_to_wav(
+                module_path, output_path, compress_flac=use_flac
+            )
 
             # Clean up
             cache_path.unlink(missing_ok=True)
             if extract_dir and extract_dir.exists():
                 import shutil
+
                 shutil.rmtree(extract_dir, ignore_errors=True)
 
         if not success:
             return jsonify({"error": error}), 500
 
-        return jsonify(
+        response = jsonify(
             {
                 "success": True,
                 "file_id": file_id,
@@ -782,10 +880,14 @@ def play_example(example_id):
                 "download_url": f"/download/{file_id}",
             }
         )
+        response.headers["Content-Type"] = "application/json; charset=utf-8"
+        return response
 
     except Exception as e:
         logger.error(f"Example play error: {e}")
-        return jsonify({"error": str(e)}), 500
+    response = jsonify({"error": str(e)})
+    response.headers["Content-Type"] = "application/json; charset=utf-8"
+    return response, 500
 
 
 @app.route("/play/<file_id>")
@@ -812,7 +914,11 @@ def play_file(file_id):
         # Parse range header: bytes=start-end
         byte_range = range_header.replace("bytes=", "").split("-")
         start = int(byte_range[0]) if byte_range[0] else 0
-        end = int(byte_range[1]) if len(byte_range) > 1 and byte_range[1] else file_size - 1
+        end = (
+            int(byte_range[1])
+            if len(byte_range) > 1 and byte_range[1]
+            else file_size - 1
+        )
 
         # Limit chunk size to 20MB to stay well under Cloud Run's 32MB limit
         if end - start > 20 * 1024 * 1024:
@@ -902,7 +1008,11 @@ def download_file(file_id):
         # Parse range header
         byte_range = range_header.replace("bytes=", "").split("-")
         start = int(byte_range[0]) if byte_range[0] else 0
-        end = int(byte_range[1]) if len(byte_range) > 1 and byte_range[1] else file_size - 1
+        end = (
+            int(byte_range[1])
+            if len(byte_range) > 1 and byte_range[1]
+            else file_size - 1
+        )
 
         # Limit chunk size to 20MB to stay under Cloud Run's 32MB limit
         if end - start > 20 * 1024 * 1024:
