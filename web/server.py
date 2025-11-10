@@ -553,6 +553,7 @@ def convert_url():
         return jsonify({"error": "No URL provided"}), 400
 
     url = data["url"]
+    sanitized_url = url.replace('\r', '').replace('\n', '')
 
     try:
         # Check browser FLAC support
@@ -560,7 +561,7 @@ def convert_url():
         use_flac = supports_flac(user_agent)
 
         # Download file (allow redirects for URLs like exotica.org.uk)
-        logger.info(f"Downloading: {url}")
+        logger.info(f"Downloading: {sanitized_url}")
         # nosec B501 - Trade-off for HTTP module downloads
         response = requests.get(url, timeout=30, verify=False, allow_redirects=True)
         response.raise_for_status()
