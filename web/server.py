@@ -85,7 +85,7 @@ EXAMPLES = [
         "id": "huelsbeck-turrican2",
         "name": "Chris Huelsbeck - Turrican 2",
         "format": "TFMX",
-        "duration": "12:00",
+        "duration": "12 min (Level 0 Intro)",
         "mdat_url": "https://modland.com/pub/modules/TFMX/Chris%20Huelsbeck/mdat.turrican%202%20level%200-intro",
         "smpl_url": "https://modland.com/pub/modules/TFMX/Chris%20Huelsbeck/smpl.turrican%202%20level%200-intro",
         "type": "tfmx",
@@ -110,7 +110,7 @@ EXAMPLES = [
         "id": "wings-of-death-levels",
         "name": "Jochen Hippel - Wings of Death",
         "format": "Hippel-COSO",
-        "duration": "23:00 (Levels 1-7)",
+        "duration": "23 min (Levels 1-7)",
         "url": "https://zakalwe.fi/uade/amiga-music/customs/WingsOfDeath-Levels1-7/cust.WingsOfDeath-Levels1-7",
         "type": "cust",
     },
@@ -118,7 +118,7 @@ EXAMPLES = [
         "id": "led-storm",
         "name": "Tim Follin - LED Storm",
         "format": "Hippel-COSO (LHA)",
-        "duration": "38:00 (7 tracks)",
+        "duration": "38 min (7 tracks)",
         "url": (
             "http://files.exotica.org.uk/?file=exotica%2Fmedia%2Faudio%2FUnExoticA%2FGame%2FFollin_Tim%2FL_E_D_Storm.lha"
         ),
