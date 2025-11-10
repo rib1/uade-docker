@@ -344,9 +344,13 @@ def convert_to_wav(input_path, output_path, use_cache=True, compress_flac=False)
     Returns: (success, error, final_file, player_format)
     """
     try:
-        # Defensive: Restrict input_path to CACHE_DIR
-        if not Path(input_path).resolve().is_relative_to(CACHE_DIR.resolve()):
-            logger.error("Aborting: attempted read outside cache directory")
+        # Defensive: Restrict input_path to UPLOAD_DIR or CACHE_DIR
+        input_resolved = Path(input_path).resolve()
+        if not (
+            input_resolved.is_relative_to(CACHE_DIR.resolve())
+            or input_resolved.is_relative_to(UPLOAD_DIR.resolve())
+        ):
+            logger.error("Aborting: attempted read outside allowed directories")
             return False, "Illegal input file path", None, None
         # Detect player format before conversion
         player_format = detect_player_format(input_path)
