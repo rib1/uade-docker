@@ -91,6 +91,10 @@ RUN useradd -m -s /bin/bash uadeuser && \
     mkdir -p /output /music /tmp && \
     chown -R uadeuser:uadeuser /output /music /tmp
 
+# Workaround for UADE bug: some modules open audio device even in conversion mode.
+# Setting SUID bit allows non-root user to run uade123 as root without sudo.
+RUN chown root:uadeuser /usr/local/bin/uade123 && chmod 4750 /usr/local/bin/uade123
+
 # Switch to non-root user
 USER uadeuser
 
