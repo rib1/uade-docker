@@ -85,5 +85,14 @@ echo "Converting to WAV..."\n\
 /usr/local/bin/uade123 -c -f "$OUTPUT" "/tmp/mdat.$BASENAME"\n\
 ' > /usr/local/bin/uade-convert && chmod +x /usr/local/bin/uade-convert
 
+
+# 9. Create non-root user and set permissions
+RUN useradd -m -s /bin/bash uadeuser && \
+    mkdir -p /output /music /tmp && \
+    chown -R uadeuser:uadeuser /output /music /tmp
+
+# Switch to non-root user
+USER uadeuser
+
 # The uade123 command-line player is the primary tool to run
 ENTRYPOINT ["/usr/local/bin/uade123"]
