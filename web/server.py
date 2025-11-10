@@ -643,10 +643,11 @@ def convert_url():
 
 
 def sanitized_url(url):
-    """Sanitize URL for safe logging (removes control/meta chars, trims, limits length)"""
+    """Sanitize URL for safe logging (removes control/meta chars, line breaks, trims, limits length)"""
     if not isinstance(url, str):
         return "<non-string URL>"
     url = re.sub(FORBIDDEN_CHARS, '', url)
+    url = url.replace('\r', '').replace('\n', '')  # Remove line breaks to prevent log injection
     url = url.strip()
     if len(url) > 200:
         url = url[:200] + '...'
