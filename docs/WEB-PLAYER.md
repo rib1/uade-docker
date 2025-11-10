@@ -354,12 +354,11 @@ services:
 ## Performance
 
 - **Conversion time:** 5-30 seconds (depends on module length)
-- **FLAC compression:** Adds 1-2 seconds but reduces download by 50-70%
+- **FLAC compression:** Adds 1-2 seconds but reduces download by 50-70% for bandwidth savings
 - **Cache performance:** Instant playback on second request (MD5-based)
 - **Memory usage:** ~256MB per instance
 - **CPU usage:** Spikes during conversion/compression, idle otherwise
 - **Concurrent requests:** Handled by Gunicorn workers (4 default)
-- **Bandwidth savings:** FLAC reduces traffic by 50-70% for capable browsers
 
 ### Example File Sizes
 
@@ -395,7 +394,7 @@ GPL v2 (same as UADE)
 Contributions welcome!
 
 ```bash
-git checkout -b feature/my-feature web-player
+git checkout -b feature/my-feature main
 # Make changes
 git push origin feature/my-feature
 ```
