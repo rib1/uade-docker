@@ -26,9 +26,6 @@ The easiest way to run the UADE Web Player locally:
 git clone https://github.com/rib1/uade-docker.git
 cd uade-docker
 
-# Switch to web-player branch
-git checkout web-player
-
 # Start the web player
 docker-compose up -d
 
@@ -395,7 +392,7 @@ GPL v2 (same as UADE)
 
 ## Contributing
 
-Contributions welcome! This is the `web-player` branch.
+Contributions welcome!
 
 ```bash
 git checkout -b feature/my-feature web-player
