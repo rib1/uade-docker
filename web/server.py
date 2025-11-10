@@ -52,6 +52,9 @@ UPLOAD_DIR = Path("/tmp/uploads")
 CONVERTED_DIR = Path("/tmp/converted")
 CACHE_DIR = Path("/tmp/cache")
 
+# Shared forbidden characters regex for URL validation/sanitization
+FORBIDDEN_CHARS = r'[ \t\n\r\x00-\x1f"\'`;|&$<>\\]'
+
 for directory in [UPLOAD_DIR, CONVERTED_DIR, CACHE_DIR]:
     directory.mkdir(parents=True, exist_ok=True)
 
@@ -560,7 +563,7 @@ def convert_url():
         use_flac = supports_flac(user_agent)
 
         # Download file (allow redirects for URLs like exotica.org.uk)
-        logger.info(f"Downloading: {url}")
+        logger.info(f"Downloading: {sanitized_url(url)}")
         # nosec B501 - Trade-off for HTTP module downloads
         response = requests.get(url, timeout=30, verify=False, allow_redirects=True)
         response.raise_for_status()
@@ -639,6 +642,17 @@ def convert_url():
         return jsonify({"error": str(e)}), 500
 
 
+def sanitized_url(url):
+    """Sanitize URL for safe logging (removes control/meta chars, line breaks, trims, limits length)"""
+    if not isinstance(url, str):
+        return "<non-string URL>"
+    url = re.sub(FORBIDDEN_CHARS, '', url)
+    url = url.replace('\r', '').replace('\n', '')  # Remove line breaks to prevent log injection
+    url = url.strip()
+    if len(url) > 200:
+        url = url[:200] + '...'
+    return url
+
 @app.route("/convert-tfmx", methods=["POST"])
 def handle_tfmx():
     """Handle TFMX module conversion"""
@@ -650,11 +664,11 @@ def handle_tfmx():
 
     # Validate URLs before processing (stricter, block meta/whitespace chars)
     import re
+
     def is_safe_url(url):
         from urllib.parse import urlparse
-        # Reject URLs containing whitespace or shell/meta/control characters
-        forbidden = r'[ \t\n\r\x00-\x1f"\'`;|&$<>\\]'
-        if re.search(forbidden, url):
+        # Reject URLs containing forbidden characters
+        if re.search(FORBIDDEN_CHARS, url):
             return False
         try:
             parsed = urlparse(url)
@@ -695,7 +709,7 @@ def handle_tfmx():
         )
 
     except Exception as e:
-        logger.error(f"TFMX error: {e}")
+        logger.error(f"TFMX error: {sanitized_url(mdat_url)}, {sanitized_url(smpl_url)}: {e}")
         return jsonify({"error": str(e)}), 500
 
 
