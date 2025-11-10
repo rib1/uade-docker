@@ -1,3 +1,20 @@
+# TL;DR
+
+**Build the Docker image:**
+```powershell
+cd uade-docker
+docker build -t uade-player .
+```
+
+**Convert a module to WAV (works on Windows):**
+```powershell
+docker run --rm -v "$env:USERPROFILE\Music:/output" --entrypoint /bin/sh uade-player -c "curl -k -o /tmp/space-debris.mod 'https://modland.com/pub/modules/Protracker/Captain/space%20debris.mod' && /usr/local/bin/uade123 -c -f /output/space-debris.wav /tmp/space-debris.mod"
+```
+
+_Output: `$env:USERPROFILE\Music\space-debris.wav`_
+
+---
+
 # UADE Docker Player
 
 A Docker container for playing Amiga music modules using UADE (Unix Amiga Delitracker Emulator).
