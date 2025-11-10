@@ -72,7 +72,6 @@ To customize, edit `docker-compose.yml` or create a `docker-compose.override.yml
 
 ```yaml
 # docker-compose.override.yml
-version: "3.8"
 services:
   uade-web:
     environment:
