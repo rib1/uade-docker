@@ -747,8 +747,6 @@ def handle_tfmx():
         return jsonify({"error": "Both mdat_url and smpl_url required"}), 400
 
     # Validate URLs before processing (stricter, block meta/whitespace chars)
-    import re
-
     def is_safe_url(url):
         from urllib.parse import urlparse
 
