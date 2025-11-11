@@ -5,7 +5,7 @@
 # See: https://gitlab.com/uade-music-player/uade
 #
 # Version history maintained in: docs/UADE_VERSIONS.md
-# Image registry: gcr.io/<GCP_PROJECT_ID>/uade-cli
+# Image registry: ghcr.io/rib1/uade-cli
 # Example tags: 3.05-base.1, 3.05-base, 3.05-base.latest, latest
 #
 # Use a lightweight Debian-based image
