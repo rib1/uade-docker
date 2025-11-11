@@ -45,7 +45,8 @@ jobs:
           type=gha,mode=max,scope=web
         build-args: |
           BASE_IMAGE=ghcr.io/${{ github.repository_owner }}/uade-cli:latest
-
+          GIT_COMMIT=${{ github.sha }}
+  
     - name: Start Web Player container
       run: |
         docker run -d -p 5000:5000 --name uade-web-test ghcr.io/${{ github.repository_owner }}/uade-web-player:test
