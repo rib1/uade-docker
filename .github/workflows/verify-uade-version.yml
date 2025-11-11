@@ -42,19 +42,30 @@ jobs:
 
       - name: Determine base image to verify
         id: base-image
+        env:
+          IMAGE_URL: ${{ github.event.inputs.image_url || '' }}
         run: |
-          # If the workflow was dispatched with an image_url input, use it.
-          # Otherwise, extract ARG BASE_IMAGE from Dockerfile.web (sanitize CRLFs).
-          if [ -n "${{ github.event.inputs.image_url }}" ]; then
-            BASE_IMAGE="${{ github.event.inputs.image_url }}"
+          # Use IMAGE_URL env var set from github.event.inputs (defaults to empty string)
+          # Otherwise, try to extract ARG BASE_IMAGE from Dockerfile.web (sanitize CRLFs).
+          # If that fails, fall back to using the GCP project secret to build the GCR image URL.
+          if [ -n "$IMAGE_URL" ]; then
+            BASE_IMAGE="$IMAGE_URL"
             echo "Using provided image_url: ${BASE_IMAGE}"
           else
-            BASE_IMAGE=$(grep -oP '^ARG\s+BASE_IMAGE=\K.*' Dockerfile.web | tr -d '\r' | xargs)
-            if [ -z "${BASE_IMAGE}" ]; then
-              echo "No BASE_IMAGE found in Dockerfile.web"
-              exit 1
+            BASE_IMAGE=$(grep -oP '^ARG\s+BASE_IMAGE=\K.*' Dockerfile.web | tr -d '\r' | xargs || true)
+            if [ -n "${BASE_IMAGE}" ]; then
+              echo "Extracted BASE_IMAGE from Dockerfile.web: ${BASE_IMAGE}"
+            else
+              # Construct a reasonable default image URL using the GCP project secret and the known tag
+              if [ -n "${{ secrets.GCP_PROJECT_ID }}" ]; then
+                DEFAULT_TAG="3.05-base.1"
+                BASE_IMAGE="gcr.io/${{ secrets.GCP_PROJECT_ID }}/uade-cli:${DEFAULT_TAG}"
+                echo "No BASE_IMAGE in Dockerfile.web; falling back to gcr image: ${BASE_IMAGE}"
+              else
+                echo "No BASE_IMAGE found and GCP_PROJECT_ID secret is not set"
+                exit 1
+              fi
             fi
-            echo "Extracted BASE_IMAGE from Dockerfile.web: ${BASE_IMAGE}"
           fi
 
           echo "base_image=${BASE_IMAGE}" >> $GITHUB_OUTPUT
