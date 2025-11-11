@@ -99,7 +99,8 @@ jobs:
     
     - name: Configure Docker for GCR
       run: gcloud auth configure-docker
-
+    - name: Pull UADE web image from GHCR
+      run: docker pull ghcr.io/${{ github.repository_owner }}/uade-web-player:latest
     - name: Tag and push to Google Container Registry
       run: |
         docker tag ghcr.io/${{ github.repository_owner }}/uade-web-player:latest gcr.io/${{ env.PROJECT_ID }}/${{ env.SERVICE_NAME }}:latest
