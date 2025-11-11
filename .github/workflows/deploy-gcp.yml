@@ -83,6 +83,8 @@ jobs:
 
         # Determine expected BASE_IMAGE from Dockerfile.web (ARG BASE_IMAGE=...)
         BASE_IMAGE_FROM_DF=$(grep -oP '^ARG BASE_IMAGE=\K.*' Dockerfile.web || true)
+        # Trim CRLF and surrounding whitespace (some editors add CRLF that breaks docker tag)
+        BASE_IMAGE_FROM_DF=$(echo "$BASE_IMAGE_FROM_DF" | tr -d '\r' | xargs)
         if [ -z "$BASE_IMAGE_FROM_DF" ]; then
           # Fallback default if Dockerfile.web doesn't define ARG
           BASE_IMAGE_FROM_DF="gcr.io/${{ env.PROJECT_ID }}/uade-cli:3.05-base.1"
