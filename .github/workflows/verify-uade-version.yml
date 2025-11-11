@@ -11,6 +11,11 @@ on:
     paths:
       - 'Dockerfile'
   workflow_dispatch:
+    inputs:
+      image_url:
+        description: 'Optional: full image URL to verify (overrides Dockerfile.web)'
+        required: false
+        type: string
 
 jobs:
   verify-version:
@@ -24,14 +29,30 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      - name: Build UADE CLI image
-        uses: docker/build-push-action@v5
-        with:
-          context: .
-          file: ./Dockerfile
-          push: false
-          load: true
-          tags: uade-cli:test
+      - name: Determine base image to verify
+        id: base-image
+        run: |
+          # If the workflow was dispatched with an image_url input, use it.
+          # Otherwise, extract ARG BASE_IMAGE from Dockerfile.web (sanitize CRLFs).
+          if [ -n "${{ github.event.inputs.image_url }}" ]; then
+            BASE_IMAGE="${{ github.event.inputs.image_url }}"
+            echo "Using provided image_url: ${BASE_IMAGE}"
+          else
+            BASE_IMAGE=$(grep -oP '^ARG\s+BASE_IMAGE=\K.*' Dockerfile.web | tr -d '\r' | xargs)
+            if [ -z "${BASE_IMAGE}" ]; then
+              echo "No BASE_IMAGE found in Dockerfile.web"
+              exit 1
+            fi
+            echo "Extracted BASE_IMAGE from Dockerfile.web: ${BASE_IMAGE}"
+          fi
+
+          echo "base_image=${BASE_IMAGE}" >> $GITHUB_OUTPUT
+
+      - name: Pull pinned base image
+        run: |
+          echo "Attempting to pull base image: ${{ steps.base-image.outputs.base_image }}"
+          # Fail the job if the pinned base image is not available in the registry.
+          docker pull "${{ steps.base-image.outputs.base_image }}"
 
       - name: Extract UADE version from Dockerfile header
         id: dockerfile-version
@@ -45,8 +66,9 @@ jobs:
       - name: Get UADE binary version from container
         id: container-version
         run: |
-          # Get version from uade123 --version inside container
-          CONTAINER_VERSION=$(docker run --rm uade-cli:test uade123 --version | grep -oP 'uade123 \K[0-9.]+')
+          # Get version from uade123 --version inside the pulled base image
+          BASE_IMAGE="${{ steps.base-image.outputs.base_image }}"
+          CONTAINER_VERSION=$(docker run --rm "$BASE_IMAGE" uade123 --version | grep -oP 'uade123 \K[0-9.]+')
           echo "version=${CONTAINER_VERSION}" >> $GITHUB_OUTPUT
           echo "Container version: ${CONTAINER_VERSION}"
 
@@ -73,7 +95,8 @@ jobs:
       - name: Verify UADE functionality
         run: |
           echo "Testing UADE help command..."
-          docker run --rm uade-cli:test uade123 --help > /dev/null 2>&1
+          BASE_IMAGE="${{ steps.base-image.outputs.base_image }}"
+          docker run --rm "$BASE_IMAGE" uade123 --help > /dev/null 2>&1
           if [ $? -eq 0 ]; then
             echo "✅ UADE help command works"
           else
@@ -84,19 +107,27 @@ jobs:
       - name: Test UADE conversion availability
         run: |
           echo "Checking UADE conversion capability..."
-          docker run --rm uade-cli:test uade123 -g > /dev/null 2>&1
-          if [ $? -eq 0 ] || [ $? -eq 1 ]; then
-            # Exit code 1 is expected when no file provided, means the flag works
-            echo "✅ UADE conversion flags available"
+          # Disable errexit so a non-zero exit from docker doesn't terminate the step
+          set +e
+          BASE_IMAGE="${{ steps.base-image.outputs.base_image }}"
+          docker run --rm "$BASE_IMAGE" uade123 -g > /dev/null 2>&1
+          RC=$?
+          # Re-enable errexit for the remainder of the script
+          set -e
+
+          # Accept exit code 0 (success) or 1 (expected when no file provided)
+          if [ "$RC" -eq 0 ] || [ "$RC" -eq 1 ]; then
+            echo "✅ UADE conversion flags available (exit code: $RC)"
           else
-            echo "❌ UADE conversion flags unavailable"
+            echo "❌ UADE conversion flags unavailable (exit code: $RC)"
             exit 1
           fi
 
       - name: Print version details
         run: |
           echo "=== UADE Version Information ==="
-          docker run --rm uade-cli:test uade123 --version
+          BASE_IMAGE="${{ steps.base-image.outputs.base_image }}"
+          docker run --rm "$BASE_IMAGE" uade123 --version
           echo ""
           echo "=== Build timestamp ==="
           date -u +'%Y-%m-%d %H:%M:%S UTC'

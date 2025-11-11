@@ -35,6 +35,7 @@ jobs:
     permissions:
       contents: read
       id-token: write
+      actions: write
 
     outputs:
       image_tag: ${{ steps.version.outputs.image_tag }}
@@ -138,6 +139,20 @@ jobs:
           name: build-summary
           path: /tmp/build-summary.txt
           retention-days: 30
+
+      - name: Trigger verify-uade-version workflow
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          echo "Triggering verify-uade-version workflow on main..."
+          API_URL="https://api.github.com/repos/${{ github.repository }}/actions/workflows/verify-uade-version.yml/dispatches"
+          IMAGE_URL="${{ steps.version.outputs.image_url }}"
+          PAYLOAD=$(jq -n --arg ref "main" --arg img "$IMAGE_URL" '{ref: $ref, inputs: {image_url: $img}}')
+          echo "Dispatch payload: $PAYLOAD"
+          curl -s -X POST "$API_URL" \
+            -H "Accept: application/vnd.github+json" \
+            -H "Authorization: Bearer $GITHUB_TOKEN" \
+            -d "$PAYLOAD"
 
   test-integration:
     name: Test Base Image Integration
