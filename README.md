@@ -8,16 +8,6 @@ Docker containers for playing and converting Amiga music modules using UADE (Uni
 
 ## Two Ways to Use
 
-### 🌐 Web Player
-
-Browser-based player with drag-and-drop interface.
-
-**Live:** <https://uade-web-player-675650150969.us-central1.run.app>
-
-Features: Drag & drop files, download from URLs, **LHA archive extraction**, TFMX support, convert to WAV/FLAC, format auto-detection
-
-**[📖 Full Documentation](docs/WEB-PLAYER.md)**
-
 ### 🖥️ Command-Line
 
 Convert modules locally with Docker.
@@ -28,6 +18,16 @@ docker run --rm -v "$env:USERPROFILE\Music:/output" ghcr.io/rib1/uade-cli -c -f 
 ```
 
 **[📖 Full Documentation](docs/CLI-USAGE.md)** - Examples, PowerShell integration, TFMX helpers
+
+### 🌐 Web Player
+
+Browser-based player with drag-and-drop interface.
+
+**Live:** <https://uade-web-player-675650150969.us-central1.run.app>
+
+Features: Drag & drop files, download from URLs, **LHA archive extraction**, TFMX support, convert to WAV/FLAC, format auto-detection
+
+**[📖 Full Documentation](docs/WEB-PLAYER.md)**
 
 ## Docker Base Image Versioning
 
