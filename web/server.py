@@ -739,7 +739,6 @@ def handle_tfmx():
     # Validate URLs before processing (stricter, block meta/whitespace chars, local addresses, etc)
     def is_safe_url(url):
         from urllib.parse import urlparse
-        import ipaddress
 
         # Reject URLs containing forbidden characters
         if re.search(FORBIDDEN_CHARS, url):
@@ -760,12 +759,17 @@ def handle_tfmx():
             # Resolve IPs and check for loopback/private
             try:
                 ip = ipaddress.ip_address(hostname)
-                if ip.is_loopback or ip.is_private or ip.is_link_local or ip.is_reserved:
+                if (
+                    ip.is_loopback
+                    or ip.is_private
+                    or ip.is_link_local
+                    or ip.is_reserved
+                ):
                     return False
             except ValueError:
                 # If not an IP, could be a hostname, optionally check against other blocked patterns
                 # Forbid .local domain as extra belt-and-suspenders, optionally restrict more
-                if hostname.endswith('.local'):
+                if hostname.endswith(".local"):
                     return False
             return True
         except Exception:
