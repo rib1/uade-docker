@@ -2,9 +2,9 @@
 # Pin specific versions to enable controlled updates and prevent breaking changes
 # See docs/DOCKER_VERSIONING.md for versioning strategy
 #
-# Initial release: 2.13-base.1 (first production version, 2025-11-11)
-# Registry: Google Container Registry (GCR) - gcr.io/<GCP_PROJECT_ID>/uade-cli:2.13-base.1
-ARG BASE_IMAGE=gcr.io/uade-docker/uade-cli:2.13-base.1
+# Initial release: 3.05-base.1 (UADE binary version 3.05, 2025-11-11)
+# Registry: Google Container Registry (GCR) - gcr.io/<GCP_PROJECT_ID>/uade-cli:3.05-base.1
+ARG BASE_IMAGE=gcr.io/uade-docker/uade-cli:3.05-base.1
 FROM ${BASE_IMAGE} AS uade-base
 
 # Runtime stage - Add web server

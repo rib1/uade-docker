@@ -4,16 +4,16 @@ This file tracks all published versions of the `uade-cli` base Docker image and 
 
 ## Current Production Version
 
-**`2.13-base.1`** (initial release, first production version)
+**`3.05-base.1`** (initial release, first production version)
 
 ---
 
 ## Version History
 
-### 2.13-base.1 (2025-11-11) [INITIAL RELEASE]
+### 3.05-base.1 (2025-11-11) [INITIAL RELEASE]
 
-- **Image:** `gcr.io/<GCP_PROJECT_ID>/uade-cli:2.13-base.1`
-- **UADE Version:** 2.13 (stable)
+- **Image:** `gcr.io/<GCP_PROJECT_ID>/uade-cli:3.05-base.1`
+- **UADE Binary Version:** 3.05 (stable)
 - **Status:** Production (pinned in Dockerfile.web)
 - **Base Image:** `debian:stable-slim`
 - **Build Duration:** ~8 minutes
@@ -38,7 +38,8 @@ This file tracks all published versions of the `uade-cli` base Docker image and 
 
 **Deployment Status:**
 - Currently used by: Dockerfile.web
-- Available as: `gcr.io/<GCP_PROJECT_ID>/uade-cli:2.13-base.1`, `gcr.io/<GCP_PROJECT_ID>/uade-cli:2.13-base`, `gcr.io/<GCP_PROJECT_ID>/uade-cli:latest`
+- Available as: `gcr.io/<GCP_PROJECT_ID>/uade-cli:3.05-base.1`, `gcr.io/<GCP_PROJECT_ID>/uade-cli:3.05-base`, `gcr.io/<GCP_PROJECT_ID>/uade-cli:latest`
+- Verified binary: `uade123 3.05`
 
 ---
 

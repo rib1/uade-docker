@@ -1,0 +1,102 @@
+name: Verify UADE Version
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - 'Dockerfile'
+      - '.github/workflows/verify-uade-version.yml'
+  pull_request:
+    branches: [ main ]
+    paths:
+      - 'Dockerfile'
+  workflow_dispatch:
+
+jobs:
+  verify-version:
+    name: Verify UADE Binary Version
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build UADE CLI image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./Dockerfile
+          push: false
+          load: true
+          tags: uade-cli:test
+
+      - name: Extract UADE version from Dockerfile header
+        id: dockerfile-version
+        run: |
+          # Extract version from Dockerfile header comment
+          # Format: # UADE CLI Base Image v3.05-base.1
+          DOCKERFILE_VERSION=$(grep -oP 'UADE CLI Base Image v\K[0-9.]+' Dockerfile | head -1)
+          echo "version=${DOCKERFILE_VERSION}" >> $GITHUB_OUTPUT
+          echo "Dockerfile version: ${DOCKERFILE_VERSION}"
+
+      - name: Get UADE binary version from container
+        id: container-version
+        run: |
+          # Get version from uade123 --version inside container
+          CONTAINER_VERSION=$(docker run --rm uade-cli:test uade123 --version | grep -oP 'uade123 \K[0-9.]+')
+          echo "version=${CONTAINER_VERSION}" >> $GITHUB_OUTPUT
+          echo "Container version: ${CONTAINER_VERSION}"
+
+      - name: Verify versions match
+        run: |
+          DOCKERFILE_VERSION="${{ steps.dockerfile-version.outputs.version }}"
+          CONTAINER_VERSION="${{ steps.container-version.outputs.version }}"
+          
+          echo "Checking UADE version consistency..."
+          echo "  Dockerfile declares: ${DOCKERFILE_VERSION}"
+          echo "  Container binary is: ${CONTAINER_VERSION}"
+          
+          if [ "${DOCKERFILE_VERSION}" != "${CONTAINER_VERSION}" ]; then
+            echo "❌ VERSION MISMATCH!"
+            echo "   Dockerfile header shows v${DOCKERFILE_VERSION}"
+            echo "   But container has uade123 ${CONTAINER_VERSION}"
+            echo ""
+            echo "Fix: Update Dockerfile header to match actual version"
+            exit 1
+          fi
+          
+          echo "✅ Version match verified: ${CONTAINER_VERSION}"
+
+      - name: Verify UADE functionality
+        run: |
+          echo "Testing UADE help command..."
+          docker run --rm uade-cli:test uade123 --help > /dev/null 2>&1
+          if [ $? -eq 0 ]; then
+            echo "✅ UADE help command works"
+          else
+            echo "❌ UADE help command failed"
+            exit 1
+          fi
+
+      - name: Test UADE conversion availability
+        run: |
+          echo "Checking UADE conversion capability..."
+          docker run --rm uade-cli:test uade123 -g > /dev/null 2>&1
+          if [ $? -eq 0 ] || [ $? -eq 1 ]; then
+            # Exit code 1 is expected when no file provided, means the flag works
+            echo "✅ UADE conversion flags available"
+          else
+            echo "❌ UADE conversion flags unavailable"
+            exit 1
+          fi
+
+      - name: Print version details
+        run: |
+          echo "=== UADE Version Information ==="
+          docker run --rm uade-cli:test uade123 --version
+          echo ""
+          echo "=== Build timestamp ==="
+          date -u +'%Y-%m-%d %H:%M:%S UTC'

@@ -11,6 +11,8 @@ This document defines a versioning strategy for the UADE CLI Docker base image (
 - ✅ Quick rollback to stable versions if breaking changes occur
 - ✅ Upstream UADE changes don't automatically cascade to production
 
+**Current Version:** UADE 3.05 (binary version inside container)
+
 ---
 
 ## Versioning Scheme
@@ -22,9 +24,9 @@ uade-cli:<UADE_VERSION>-<VARIANT>.<BUILD_NUMBER>
 ```
 
 **Examples:**
-- `uade-cli:2.13-base.1` — UADE 2.13, base variant, build 1
-- `uade-cli:2.13-base.5` — UADE 2.13, base variant, build 5 (patch for this UADE version)
-- `uade-cli:2.14-base.1` — New UADE version, base variant, build 1
+- `uade-cli:3.05-base.1` — UADE 3.05, base variant, build 1
+- `uade-cli:3.05-base.5` — UADE 3.05, base variant, build 5 (patch for this UADE version)
+- `uade-cli:3.06-base.1` — New UADE version, base variant, build 1
 
 ### Components
 
