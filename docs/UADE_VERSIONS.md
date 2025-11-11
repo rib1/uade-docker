@@ -63,7 +63,7 @@ This file tracks all published versions of the `uade-cli` base Docker image and 
 
 | Dockerfile.web Version | UADE CLI Version | Release Date | Status |
 |---|---|---|---|
-| v1.0 | 2.13-base.1 | 2025-11-11 | Current production |
+| v1.0 | 3.05-base.1 | 2025-11-11 | Current production |
 
 ---
 
@@ -74,24 +74,24 @@ This file tracks all published versions of the `uade-cli` base Docker image and 
 **Create a new build number (same UADE version):**
 
 ```bash
-# Example: 2.13-base.1 → 2.13-base.2 (security patch)
-docker build -f Dockerfile -t gcr.io/<GCP_PROJECT_ID>/uade-cli:2.13-base.2 .
-docker tag gcr.io/<GCP_PROJECT_ID>/uade-cli:2.13-base.2 gcr.io/<GCP_PROJECT_ID>/uade-cli:2.13-base
-docker tag gcr.io/<GCP_PROJECT_ID>/uade-cli:2.13-base.2 gcr.io/<GCP_PROJECT_ID>/uade-cli:latest
-docker push gcr.io/<GCP_PROJECT_ID>/uade-cli:2.13-base.2
+# Example: 3.05-base.1 → 3.05-base.2 (security patch)
+docker build -f Dockerfile -t gcr.io/<GCP_PROJECT_ID>/uade-cli:3.05-base.2 .
+docker tag gcr.io/<GCP_PROJECT_ID>/uade-cli:3.05-base.2 gcr.io/<GCP_PROJECT_ID>/uade-cli:3.05-base
+docker tag gcr.io/<GCP_PROJECT_ID>/uade-cli:3.05-base.2 gcr.io/<GCP_PROJECT_ID>/uade-cli:latest
+docker push gcr.io/<GCP_PROJECT_ID>/uade-cli:3.05-base.2
 ```
 
 **Create a new UADE version (reset build to 1):**
 
 ```bash
-# Example: 2.13-base.1 → 2.14-base.1
-# 1. Update Dockerfile to clone --branch uade-2.14
+# Example: 3.05-base.1 → 3.06-base.1
+# 1. Update Dockerfile to clone --branch uade-3.06
 # 2. Build:
-docker build -f Dockerfile -t gcr.io/<GCP_PROJECT_ID>/uade-cli:2.14-base.1 .
+docker build -f Dockerfile -t gcr.io/<GCP_PROJECT_ID>/uade-cli:3.06-base.1 .
 # 3. Test (full E2E suite)
 # 4. Push:
-docker push gcr.io/<GCP_PROJECT_ID>/uade-cli:2.14-base.1
-docker tag gcr.io/<GCP_PROJECT_ID>/uade-cli:2.14-base.1 gcr.io/<GCP_PROJECT_ID>/uade-cli:latest
+docker push gcr.io/<GCP_PROJECT_ID>/uade-cli:3.06-base.1
+docker tag gcr.io/<GCP_PROJECT_ID>/uade-cli:3.06-base.1 gcr.io/<GCP_PROJECT_ID>/uade-cli:latest
 docker push gcr.io/<GCP_PROJECT_ID>/uade-cli:latest
 # 5. Update docs/UADE_VERSIONS.md
 # 6. Update Dockerfile.web (after E2E passes)
@@ -133,12 +133,12 @@ If a version has critical issues:
 **Step 1: Revert Dockerfile.web to previous version**
 
 ```dockerfile
-# If 2.13-base.2 has issues:
+# If 3.05-base.2 has issues:
 # Change:
-FROM gcr.io/<GCP_PROJECT_ID>/uade-cli:2.13-base.2
+FROM gcr.io/<GCP_PROJECT_ID>/uade-cli:3.05-base.2
 
 # To:
-FROM gcr.io/<GCP_PROJECT_ID>/uade-cli:2.13-base.1
+FROM gcr.io/<GCP_PROJECT_ID>/uade-cli:3.05-base.1
 ```
 
 **Step 2: Rebuild and test**
@@ -153,7 +153,7 @@ npm test
 
 ```bash
 git add Dockerfile.web
-git commit -m "Rollback to uade-cli:2.13-base.1 (critical fix for issue #X)"
+git commit -m "Rollback to uade-cli:3.05-base.1 (critical fix for issue #X)"
 git push origin main
 # Redeploy to Cloud Run, etc.
 ```

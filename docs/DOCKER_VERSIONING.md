@@ -31,8 +31,8 @@ uade-cli:<UADE_VERSION>-<VARIANT>.<BUILD_NUMBER>
 ### Components
 
 #### UADE_VERSION
-- Extracted from upstream UADE project releases (e.g., tags like `uade-2.13`)
-- Format: `<MAJOR>.<MINOR>` (e.g., `2.13`)
+- Extracted from upstream UADE project releases (e.g., tags like `uade-3.05`)
+- Format: `<MAJOR>.<MINOR>` (e.g., `3.05`)
 - Source: Latest stable UADE release from [UADE GitLab](https://gitlab.com/uade-music-player/uade/-/releases)
 
 #### VARIANT
@@ -45,8 +45,8 @@ uade-cli:<UADE_VERSION>-<VARIANT>.<BUILD_NUMBER>
 - Use for: Dependency updates, bug fixes, security patches
 - Resets to 1 when UADE_VERSION changes
 - Examples:
-  - `2.13-base.1` → rebuild with security patch → `2.13-base.2`
-  - `2.13-base.5` → bump to UADE 2.14 → `2.14-base.1`
+  - `3.05-base.1` → rebuild with security patch → `3.05-base.2`
+  - `3.05-base.5` → bump to UADE 3.06 → `3.06-base.1`
 
 ---
 
@@ -62,29 +62,29 @@ gcr.io/<GCP_PROJECT_ID>/uade-cli:<tag>
 
 | Tag Pattern | Purpose | Lifecycle |
 |---|---|---|
-| `2.13-base.5` | Release/production | Stable, pinned in Dockerfile.web |
-| `2.13-base.latest` | Latest patch for this UADE version | Updates when new build published |
+| `3.05-base.5` | Release/production | Stable, pinned in Dockerfile.web |
+| `3.05-base.latest` | Latest patch for this UADE version | Updates when new build published |
 | `latest` | Global latest | Always points to newest UADE version |
-| `2.13-base` | Latest build for UADE 2.13, any variant | Updates when 2.13 rebuild occurs |
+| `3.05-base` | Latest build for UADE 3.05, any variant | Updates when 3.05 rebuild occurs |
 
 ### Initial Release Tag Timeline
 
 ```
-2025-11-11: UADE 2.13 first release
-  → 2.13-base.1       (initial production, pinned in Dockerfile.web)
-  → 2.13-base
-  → 2.13-base.latest
+2025-11-11: UADE 3.05 first release
+  → 3.05-base.1       (initial production, pinned in Dockerfile.web)
+  → 3.05-base
+  → 3.05-base.latest
   → latest            (global latest)
 
-Future (when UADE 2.14 released):
-  → 2.14-base.1       (new version, build 1)
-  → 2.14-base
-  → 2.14-base.latest
+Future (when UADE 3.06 released):
+  → 3.06-base.1       (new version, build 1)
+  → 3.06-base
+  → 3.06-base.latest
   → latest
 
-Future (if security patch needed for 2.13):
-  → 2.13-base.2       (rebuild same UADE, fix patch)
-  → Updates 2.13-base, 2.13-base.latest tags
+Future (if security patch needed for 3.05):
+  → 3.05-base.2       (rebuild same UADE, fix patch)
+  → Updates 3.05-base, 3.05-base.latest tags
   → Optionally update Dockerfile.web if critical
 ```
 
@@ -101,18 +101,18 @@ Once the base image is tagged and tested, pin it explicitly:
 FROM uade-cli:latest
 
 # New (pinned, explicit version with UADE version + build number)
-FROM uade-cli:2.13-base.1
+FROM uade-cli:3.05-base.1
 ```
 
 ### When to Update Dockerfile.web Pins
 
 1. **Patch Update** (same UADE, new build number)
-   - E.g., `2.13-base.1` → `2.13-base.2`
+   - E.g., `3.05-base.1` → `3.05-base.2`
    - When: Security patches, dependency updates
    - Testing: Quick regression test (health check, basic conversion)
 
 2. **Minor Update** (new UADE version)
-   - E.g., `2.13-base.1` → `2.14-base.1`
+   - E.g., `3.05-base.1` → `3.06-base.1`
    - When: UADE upstream releases new version
    - Testing: Full E2E test suite (API, UI, integration, format detection)
 
@@ -128,21 +128,21 @@ FROM uade-cli:2.13-base.1
 
 ```powershell
 # Build specific UADE version
-docker build -f Dockerfile -t uade-cli:2.13-base.1 .
+docker build -f Dockerfile -t uade-cli:3.05-base.1 .
 
 # Tag with variant shortcuts
-docker tag uade-cli:2.13-base.1 uade-cli:2.13-base
-docker tag uade-cli:2.13-base.1 uade-cli:2.13-base.latest
-docker tag uade-cli:2.13-base.1 uade-cli:latest
+docker tag uade-cli:3.05-base.1 uade-cli:3.05-base
+docker tag uade-cli:3.05-base.1 uade-cli:3.05-base.latest
+docker tag uade-cli:3.05-base.1 uade-cli:latest
 ```
 
 ### Push to Registry
 
 ```powershell
 # Push all tags
-docker push uade-cli:2.13-base.1
-docker push uade-cli:2.13-base.latest
-docker push uade-cli:2.13-base
+docker push uade-cli:3.05-base.1
+docker push uade-cli:3.05-base.latest
+docker push uade-cli:3.05-base
 docker push uade-cli:latest
 ```
 
@@ -178,9 +178,9 @@ Track all published versions in `deployment/UADE_VERSIONS.md`:
 ```markdown
 # UADE Base Image Versions
 
-## 2.13-base.1 (2025-11-11) [INITIAL RELEASE]
-- **Image:** gcr.io/<GCP_PROJECT_ID>/uade-cli:2.13-base.1
-- **UADE Version:** 2.13 (stable)
+## 3.05-base.1 (2025-11-11) [INITIAL RELEASE]
+- **Image:** gcr.io/<GCP_PROJECT_ID>/uade-cli:3.05-base.1
+- **UADE Version:** 3.05 (stable)
 - **Base Image:** debian:stable-slim
 - **Status:** Production (Dockerfile.web pinned to this version)
 - **Changes:**

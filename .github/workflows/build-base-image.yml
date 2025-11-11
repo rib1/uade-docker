@@ -5,10 +5,10 @@ on:
   workflow_dispatch:
     inputs:
       uade_version:
-        description: 'UADE version to build (e.g., 2.13, 2.14). Default: 2.13'
+        description: 'UADE version to build (e.g., 3.05, 3.06). Default: 3.05'
         required: false
         type: string
-        default: '2.13'
+        default: '3.05'
       build_number:
         description: 'Build number for this UADE version (default: 1 for new version, increment for patches)'
         required: false
@@ -47,10 +47,10 @@ jobs:
       - name: Parse version information
         id: version
         run: |
-          # Get input values or use defaults for initial release (2.13-base.1)
+          # Get input values or use defaults for initial release (3.05-base.1)
           UADE_VERSION="${{ inputs.uade_version }}"
-          if [ -z "$UADE_VERSION" ] || [ "$UADE_VERSION" == "2.13" ]; then
-            UADE_VERSION="2.13"
+          if [ -z "$UADE_VERSION" ] || [ "$UADE_VERSION" == "3.05" ]; then
+            UADE_VERSION="3.05"
           fi
           
           BUILD_NUMBER="${{ inputs.build_number }}"
@@ -120,14 +120,14 @@ jobs:
           - gcr.io/${{ secrets.GCP_PROJECT_ID }}/uade-cli:${{ steps.version.outputs.uade_version }}-base
           - gcr.io/${{ secrets.GCP_PROJECT_ID }}/uade-cli:latest
           
-          ## For Initial Release (2.13-base.1)
+          ## For Initial Release (3.05-base.1)
           - Image is production-ready for Dockerfile.web
           - All tags point to the same image
-          - Pin Dockerfile.web to: gcr.io/${{ secrets.GCP_PROJECT_ID }}/uade-cli:2.13-base.1
+          - Pin Dockerfile.web to: gcr.io/${{ secrets.GCP_PROJECT_ID }}/uade-cli:3.05-base.1
           
           ## For Future Updates
-          - Patch releases: Increment build_number (2.13-base.2, etc.)
-          - Major updates: New UADE version (2.14-base.1, etc.)
+          - Patch releases: Increment build_number (3.05-base.2, etc.)
+          - Major updates: New UADE version (3.06-base.1, etc.)
           - Always run E2E tests before updating Dockerfile.web
           EOF
           cat /tmp/build-summary.txt

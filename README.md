@@ -40,7 +40,7 @@ This project uses semantic versioning for the UADE CLI base image to ensure stab
 
 **Quick Reference:**
 - Format: `uade-cli:<UADE_VERSION>-base.<BUILD_NUMBER>` (e.g., `3.05-base.1`)
-- UADE Version: Upstream UADE release version (e.g., 2.13)
+- UADE Version: Upstream UADE release version (e.g., 3.05)
 - Build Number: Increments for patches, security updates, or dependency changes
 - Pinned in Dockerfile.web for reproducible builds and controlled upgrades
 
