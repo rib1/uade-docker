@@ -33,13 +33,13 @@ docker run --rm -v "$env:USERPROFILE\Music:/output" ghcr.io/rib1/uade-player -c 
 
 This project uses semantic versioning for the UADE CLI base image to ensure stability and predictable updates.
 
-**Current Production:** `uade-cli:2.13-base.1`
+**Current Production:** `uade-cli:3.05-base.1`
 
 - **[Docker Versioning Schema](docs/DOCKER_VERSIONING.md)** - Complete versioning strategy, update procedures, and CI/CD pipeline
 - **[UADE Versions History](docs/UADE_VERSIONS.md)** - Release notes and changelog for all base image versions
 
 **Quick Reference:**
-- Format: `uade-cli:<UADE_VERSION>-base.<BUILD_NUMBER>` (e.g., `2.13-base.1`)
+- Format: `uade-cli:<UADE_VERSION>-base.<BUILD_NUMBER>` (e.g., `3.05-base.1`)
 - UADE Version: Upstream UADE release version (e.g., 2.13)
 - Build Number: Increments for patches, security updates, or dependency changes
 - Pinned in Dockerfile.web for reproducible builds and controlled upgrades
