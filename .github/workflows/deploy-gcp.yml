@@ -27,6 +27,7 @@ jobs:
     permissions:
       contents: read
       id-token: write
+      actions: write
     
     steps:
     - name: Checkout code
@@ -88,6 +89,15 @@ jobs:
         fi
 
         echo "Using BASE_IMAGE=${BASE_IMAGE_FROM_DF} for web build"
+
+        # Ensure jq is available (used for parsing GitHub API responses)
+        if ! command -v jq >/dev/null 2>&1; then
+          echo "Installing jq for JSON parsing"
+          apt-get update && apt-get install -y jq
+        fi
+
+        # Expose GITHUB_TOKEN from secrets to the shell (required to call Actions API)
+        GITHUB_TOKEN="${{ secrets.GITHUB_TOKEN }}"
 
         # Try to pull the base image from GCR
         if docker pull "${BASE_IMAGE_FROM_DF}" 2>/dev/null; then
