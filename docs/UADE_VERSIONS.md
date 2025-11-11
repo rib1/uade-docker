@@ -45,16 +45,16 @@ This file tracks all published versions of the `uade-cli` base Docker image and 
 
 ## Planned Updates
 
-### Next: UADE 2.14 Base Image (Pending Upstream Release)
+### Next: UADE 3.06 Base Image (Pending Upstream Release)
 
 - **Status:** Awaiting UADE upstream release
 - **Expected:** Q1 2025 (check [UADE Releases](https://gitlab.com/uade-music-player/uade/-/releases))
 
 **Process for next version:**
 1. Check upstream releases
-2. Build new base image: `2.14-base.1`
+2. Build new base image: `3.06-base.1`
 3. Run full E2E test suite
-4. Update Dockerfile.web pin to `uade-cli:2.14-base.1`
+4. Update Dockerfile.web pin to `uade-cli:3.06-base.1`
 5. Commit and tag release
 
 ---

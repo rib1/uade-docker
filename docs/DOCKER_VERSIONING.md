@@ -151,19 +151,19 @@ docker push uade-cli:latest
 When UADE upstream releases a new version, update `Dockerfile`:
 
 ```dockerfile
-# Example: Update from 2.13 to 2.14
+# Example: Update from 3.05 to 3.06
 # Before:
 RUN git clone --depth 1 https://gitlab.com/uade-music-player/uade.git
 
 # After (optional: pin to tag):
-RUN git clone --depth 1 --branch uade-2.14 https://gitlab.com/uade-music-player/uade.git
+RUN git clone --depth 1 --branch uade-3.06 https://gitlab.com/uade-music-player/uade.git
 ```
 
 **Best Practice:** Always pin to a specific tag if possible:
 
 ```dockerfile
 # Clone with specific tag (more predictable, prevents breaking changes)
-RUN git clone --depth 1 --branch uade-2.14 \
+RUN git clone --depth 1 --branch uade-3.06 \
     https://gitlab.com/uade-music-player/uade.git
 ```
 
@@ -194,13 +194,13 @@ Track all published versions in `deployment/UADE_VERSIONS.md`:
 
 ### For Patch Updates (new build number, same UADE version)
 
-Example: `2.13-base.1` → `2.13-base.2`
+Example: `3.05-base.1` → `3.05-base.2`
 
 - [ ] Identify need (security patch, bug fix, dependency update)
 - [ ] Update `Dockerfile` if needed (e.g., apt-get packages)
-- [ ] Build locally: `docker build -f Dockerfile -t uade-cli:2.13-base.2 .`
-- [ ] Run health check: `docker run --rm uade-cli:2.13-base.2 --version`
-- [ ] Push to registry: `docker push uade-cli:2.13-base.2`
+- [ ] Build locally: `docker build -f Dockerfile -t uade-cli:3.05-base.2 .`
+- [ ] Run health check: `docker run --rm uade-cli:3.05-base.2 --version`
+- [ ] Push to registry: `docker push uade-cli:3.05-base.2`
 - [ ] Update `deployment/UADE_VERSIONS.md` with changes
 - [ ] Run quick E2E regression test (health, basic conversion)
 - [ ] Optionally update `Dockerfile.web` if critical fix
@@ -208,14 +208,14 @@ Example: `2.13-base.1` → `2.13-base.2`
 
 ### For Minor Updates (new UADE version, reset build number to 1)
 
-Example: `2.13-base.1` → `2.14-base.1`
+Example: `3.05-base.1` → `3.06-base.1`
 
 - [ ] Check UADE upstream releases: [UADE GitLab](https://gitlab.com/uade-music-player/uade/-/releases)
 - [ ] Update `Dockerfile` to pin new UADE version tag
 - [ ] Update `Dockerfile` dependencies if documented in UADE release notes
-- [ ] Build locally: `docker build -f Dockerfile -t uade-cli:2.14-base.1 .`
-- [ ] Run health check: `docker run --rm uade-cli:2.14-base.1 --version`
-- [ ] Push to registry: `docker push uade-cli:2.14-base.1`
+- [ ] Build locally: `docker build -f Dockerfile -t uade-cli:3.06-base.1 .`
+- [ ] Run health check: `docker run --rm uade-cli:3.06-base.1 --version`
+- [ ] Push to registry: `docker push uade-cli:3.06-base.1`
 - [ ] Update `deployment/UADE_VERSIONS.md` with upstream changes
 - [ ] **Run full E2E test suite** against new base image
 - [ ] Create GitHub Discussion or PR for feedback
@@ -231,17 +231,17 @@ If a version has issues:
 ### Quick Rollback (revert Dockerfile.web pin)
 
 ```dockerfile
-# If 2.14-base.1 has issues, revert to previous stable:
-FROM uade-cli:2.13-base.1
+# If 3.06-base.1 has issues, revert to previous stable:
+FROM uade-cli:3.05-base.1
 ```
 
 ### Rebuild Previous Version
 
 ```bash
-# If 2.13-base.1 needs a rebuild:
-git checkout <commit-hash-for-2.13-base.1>
-docker build -f Dockerfile -t uade-cli:2.13-base.1 .
-docker push uade-cli:2.13-base.1
+# If 3.05-base.1 needs a rebuild:
+git checkout <commit-hash-for-3.05-base.1>
+docker build -f Dockerfile -t uade-cli:3.05-base.1 .
+docker push uade-cli:3.05-base.1
 ```
 
 ---

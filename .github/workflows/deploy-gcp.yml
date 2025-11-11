@@ -79,9 +79,83 @@ jobs:
       run: |
         # Pull previous image for layer caching
         docker pull gcr.io/${{ env.PROJECT_ID }}/${{ env.SERVICE_NAME }}:latest || true
-        
+
+        # Determine expected BASE_IMAGE from Dockerfile.web (ARG BASE_IMAGE=...)
+        BASE_IMAGE_FROM_DF=$(grep -oP '^ARG BASE_IMAGE=\K.*' Dockerfile.web || true)
+        if [ -z "$BASE_IMAGE_FROM_DF" ]; then
+          # Fallback default if Dockerfile.web doesn't define ARG
+          BASE_IMAGE_FROM_DF="gcr.io/${{ env.PROJECT_ID }}/uade-cli:3.05-base.1"
+        fi
+
+        echo "Using BASE_IMAGE=${BASE_IMAGE_FROM_DF} for web build"
+
+        # Try to pull the base image from GCR
+        if docker pull "${BASE_IMAGE_FROM_DF}" 2>/dev/null; then
+          echo "Pulled ${BASE_IMAGE_FROM_DF} from registry"
+        else
+          echo "Pinned base image ${BASE_IMAGE_FROM_DF} not found in registry. Triggering base-image build workflow..."
+
+          # Extract tag components (e.g. 3.05-base.1 -> UADE_VERSION=3.05, BUILD_NUMBER=1)
+          IMAGE_TAG="${BASE_IMAGE_FROM_DF##*:}"
+          UADE_VERSION=$(echo "${IMAGE_TAG}" | sed -E 's/^([0-9]+\.[0-9]+)-base\.[0-9]+/\1/')
+          BUILD_NUMBER=$(echo "${IMAGE_TAG}" | sed -E 's/^.*-base\.([0-9]+)$/\1/')
+
+          echo "Requesting build-base-image workflow for UADE_VERSION=${UADE_VERSION}, BUILD_NUMBER=${BUILD_NUMBER}"
+
+          # Trigger the build-base-image workflow via GitHub Actions API
+          DISPATCH_URL="https://api.github.com/repos/${{ github.repository }}/actions/workflows/build-base-image.yml/dispatches"
+          curl -Ssf -X POST -H "Authorization: token $GITHUB_TOKEN" -H "Accept: application/vnd.github+json" \
+            "$DISPATCH_URL" \
+            -d "{\"ref\":\"main\",\"inputs\":{\"uade_version\":\"${UADE_VERSION}\",\"build_number\":\"${BUILD_NUMBER}\",\"push_latest\":false}}" || true
+
+          # Poll the workflow runs for build-base-image until it completes or timeout
+          WORKFLOW_RUNS_URL="https://api.github.com/repos/${{ github.repository }}/actions/workflows/build-base-image.yml/runs?per_page=5"
+          MAX_RETRIES=30
+          SLEEP_SEC=10
+          COUNTER=0
+          BUILD_OK=false
+          echo "Waiting for build-base-image workflow to finish (timeout ~${MAX_RETRIES}*${SLEEP_SEC}s)..."
+          while [ $COUNTER -lt $MAX_RETRIES ]; do
+            sleep $SLEEP_SEC
+            COUNTER=$((COUNTER+1))
+            RESP=$(curl -s -H "Authorization: token $GITHUB_TOKEN" -H "Accept: application/vnd.github+json" "$WORKFLOW_RUNS_URL")
+            RUN_ID=$(echo "$RESP" | jq -r '.workflow_runs[0].id // empty')
+            if [ -z "$RUN_ID" ]; then
+              echo "No workflow run found yet (attempt $COUNTER)"
+              continue
+            fi
+            RUN_STATUS=$(echo "$RESP" | jq -r '.workflow_runs[0].status')
+            RUN_CONCLUSION=$(echo "$RESP" | jq -r '.workflow_runs[0].conclusion')
+            echo "Found run id=$RUN_ID status=$RUN_STATUS conclusion=$RUN_CONCLUSION"
+            if [ "$RUN_STATUS" = "completed" ]; then
+              if [ "$RUN_CONCLUSION" = "success" ]; then
+                BUILD_OK=true
+                break
+              else
+                echo "Triggered base build completed but failed (conclusion=$RUN_CONCLUSION)"
+                break
+              fi
+            fi
+          done
+
+          if [ "$BUILD_OK" != "true" ]; then
+            echo "Base image build did not succeed within timeout. Failing the web build to avoid using an unverified image."
+            exit 1
+          fi
+
+          # Try pulling the image again after successful base build
+          if docker pull "${BASE_IMAGE_FROM_DF}" 2>/dev/null; then
+            echo "Successfully pulled ${BASE_IMAGE_FROM_DF} after base build"
+          else
+            echo "ERROR: pinned base image ${BASE_IMAGE_FROM_DF} still not available after successful base build. Failing."
+            exit 1
+          fi
+        fi
+
+        # Build Dockerfile.web, explicitly passing BASE_IMAGE so the FROM resolves to the local tag if necessary
         docker build -f Dockerfile.web \
           --cache-from gcr.io/${{ env.PROJECT_ID }}/${{ env.SERVICE_NAME }}:latest \
+          --build-arg BASE_IMAGE="${BASE_IMAGE_FROM_DF}" \
           --build-arg GIT_COMMIT=${{ github.sha }} \
           -t gcr.io/${{ env.PROJECT_ID }}/${{ env.SERVICE_NAME }}:${{ github.sha }} \
           -t gcr.io/${{ env.PROJECT_ID }}/${{ env.SERVICE_NAME }}:latest .
