@@ -70,3 +70,15 @@ jobs:
       run: |
         docker stop uade-web-test || true
         docker rm uade-web-test || true
+
+    - name: Create and push deployment tag
+      if: success()
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      run: |
+        git config --global user.name "github-actions"
+        git config --global user.email "github-actions@github.com"
+        git fetch --tags
+        TAG="web-build-${{ github.sha }}"
+        git tag "$TAG"
+        git push origin "$TAG"

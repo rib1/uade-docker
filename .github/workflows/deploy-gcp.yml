@@ -2,7 +2,8 @@ name: Deploy to Google Cloud Run
 
 on:
   push:
-    branches: [ main ]
+    tags:
+      - 'web-build-*'
   workflow_dispatch:
     inputs:
       project_id:
@@ -30,9 +31,6 @@ jobs:
       actions: write
     
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v5
-    
     - name: Authenticate to Google Cloud
       uses: google-github-actions/auth@v3
       with:
@@ -43,96 +41,12 @@ jobs:
     
     - name: Configure Docker for GCR
       run: gcloud auth configure-docker
-    
-    - name: Check if UADE base needs rebuild
-      id: check-uade
+    - name: Pull UADE web image from GHCR
+      run: docker pull ghcr.io/rib1/uade-web-player:latest
+
+    - name: Tag and push to Google Container Registry
       run: |
-        # Check if UADE-related files changed in last commit
-        if git diff --name-only HEAD~1 HEAD 2>/dev/null | grep -E '^(Dockerfile|uade/|patches/|scripts/build-uade.sh)'; then
-          echo "uade_changed=true" >> $GITHUB_OUTPUT
-          echo "🔨 UADE base files changed - will rebuild"
-        else
-          echo "uade_changed=false" >> $GITHUB_OUTPUT
-          echo "✅ UADE base unchanged - using cache"
-        fi
-    
-    - name: Build or pull base UADE image
-      run: |
-        if [ "${{ steps.check-uade.outputs.uade_changed }}" = "true" ]; then
-          echo "Building UADE base image..."
-          docker build -t uade-player .
-          docker tag uade-player gcr.io/${{ env.PROJECT_ID }}/uade-base:latest
-          docker push gcr.io/${{ env.PROJECT_ID }}/uade-base:latest
-        else
-          echo "Pulling cached UADE base image..."
-          if docker pull gcr.io/${{ env.PROJECT_ID }}/uade-base:latest 2>/dev/null; then
-            echo "✅ Pulled cached base image"
-            docker tag gcr.io/${{ env.PROJECT_ID }}/uade-base:latest uade-player
-          else
-            echo "⚠️  Cache miss - building base image"
-            docker build -t uade-player .
-            docker tag uade-player gcr.io/${{ env.PROJECT_ID }}/uade-base:latest
-            docker push gcr.io/${{ env.PROJECT_ID }}/uade-base:latest
-          fi
-        fi
-    
-    - name: Build web player image
-      run: |
-        # Pull previous image for layer caching
-        docker pull gcr.io/${{ env.PROJECT_ID }}/${{ env.SERVICE_NAME }}:latest || true
-
-        # Determine expected BASE_IMAGE from Dockerfile.web (ARG BASE_IMAGE=...)
-        BASE_IMAGE_FROM_DF=$(grep -oP '^ARG BASE_IMAGE=\K.*' Dockerfile.web || true)
-        # Trim CRLF and surrounding whitespace (some editors add CRLF that breaks docker tag)
-        BASE_IMAGE_FROM_DF=$(echo "$BASE_IMAGE_FROM_DF" | tr -d '\r' | xargs)
-        if [ -z "$BASE_IMAGE_FROM_DF" ]; then
-          # Fallback default if Dockerfile.web doesn't define ARG
-          BASE_IMAGE_FROM_DF="gcr.io/${{ env.PROJECT_ID }}/uade-cli:3.05-base.1"
-        fi
-
-        echo "Using BASE_IMAGE=${BASE_IMAGE_FROM_DF} for web build"
-
-        # Ensure jq is available (used for parsing GitHub API responses)
-        if ! command -v jq >/dev/null 2>&1; then
-          echo "Installing jq for JSON parsing"
-          apt-get update && apt-get install -y jq
-        fi
-
-        # Expose GITHUB_TOKEN from secrets to the shell (required to call Actions API)
-        GITHUB_TOKEN="${{ secrets.GITHUB_TOKEN }}"
-
-        # Try to pull the base image from GCR
-        if docker pull "${BASE_IMAGE_FROM_DF}" 2>/dev/null; then
-          echo "Pulled ${BASE_IMAGE_FROM_DF} from registry"
-        else
-          echo "Pinned base image ${BASE_IMAGE_FROM_DF} not found in registry. Building base image locally and tagging as ${BASE_IMAGE_FROM_DF}..."
-
-          # Build the base image locally and tag it to the pinned image name
-          if docker build -f Dockerfile -t "${BASE_IMAGE_FROM_DF}" .; then
-            echo "Successfully built local base image and tagged as ${BASE_IMAGE_FROM_DF}"
-          else
-            echo "ERROR: Failed to build the local base image for ${BASE_IMAGE_FROM_DF}. Failing the web build to avoid using an unverified base."
-            exit 1
-          fi
-
-          # Optionally push the pinned base image to GCR so it's available for other runners
-          if [ -n "${{ env.PROJECT_ID }}" ]; then
-            echo "Attempting to push ${BASE_IMAGE_FROM_DF} to GCR (best-effort)..."
-            docker push "${BASE_IMAGE_FROM_DF}" || echo "Push failed or not permitted; continuing with local image"
-          fi
-        fi
-
-        # Build Dockerfile.web, explicitly passing BASE_IMAGE so the FROM resolves to the local tag if necessary
-        docker build -f Dockerfile.web \
-          --cache-from gcr.io/${{ env.PROJECT_ID }}/${{ env.SERVICE_NAME }}:latest \
-          --build-arg BASE_IMAGE="${BASE_IMAGE_FROM_DF}" \
-          --build-arg GIT_COMMIT=${{ github.sha }} \
-          -t gcr.io/${{ env.PROJECT_ID }}/${{ env.SERVICE_NAME }}:${{ github.sha }} \
-          -t gcr.io/${{ env.PROJECT_ID }}/${{ env.SERVICE_NAME }}:latest .
-    
-    - name: Push to Google Container Registry
-      run: |
-        docker push gcr.io/${{ env.PROJECT_ID }}/${{ env.SERVICE_NAME }}:${{ github.sha }}
+        docker tag ghcr.io/rib1/uade-web-player:latest gcr.io/${{ env.PROJECT_ID }}/${{ env.SERVICE_NAME }}:latest
         docker push gcr.io/${{ env.PROJECT_ID }}/${{ env.SERVICE_NAME }}:latest
     
     - name: Deploy to Cloud Run
