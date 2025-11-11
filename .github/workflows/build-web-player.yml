@@ -77,7 +77,10 @@ jobs:
   deploy:
     needs: build-web
     runs-on: ubuntu-latest
-    
+    env:
+      PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
+      SERVICE_NAME: uade-web-player
+      REGION: us-central1
     permissions:
       contents: read
       id-token: write
