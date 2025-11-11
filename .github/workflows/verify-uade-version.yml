@@ -12,8 +12,8 @@ on:
       - 'Dockerfile'
   workflow_dispatch:
     inputs:
-      image_url:
-        description: 'Optional: full image URL to verify (overrides Dockerfile.web)'
+      image:
+        description: 'Optional: image name or full image URL to verify (overrides Dockerfile.web)'
         required: false
         type: string
 
@@ -43,18 +43,45 @@ jobs:
       - name: Determine base image to verify
         id: base-image
         env:
-          IMAGE_URL: ${{ github.event.inputs.image_url || '' }}
+          IMAGE: ${{ github.event.inputs.image || '' }}
         run: |
-          # Use IMAGE_URL env var set from github.event.inputs (defaults to empty string)
+          # Use IMAGE env var set from github.event.inputs (defaults to empty string)
           # Otherwise, try to extract ARG BASE_IMAGE from Dockerfile.web (sanitize CRLFs).
           # If that fails, fall back to using the GCP project secret to build the GCR image URL.
-          if [ -n "$IMAGE_URL" ]; then
-            BASE_IMAGE="$IMAGE_URL"
-            echo "Using provided image_url: ${BASE_IMAGE}"
+          if [ -n "$IMAGE" ]; then
+            # Treat the provided image input as a name[:tag] (regardless of whether
+            # the caller provided a full path). Use only the last path segment so
+            # callers can pass full URLs, repo/name:tag, or just name:tag.
+            NAME_TAG=$(echo "$IMAGE" | awk -F'/' '{print $NF}')
+            if echo "$NAME_TAG" | grep -q ':'; then
+              :
+            else
+              # If no tag provided, default to known tag
+              NAME_TAG="${NAME_TAG}:3.05-base.1"
+            fi
+            if [ -n "${{ secrets.GCP_PROJECT_ID }}" ]; then
+              BASE_IMAGE="gcr.io/${{ secrets.GCP_PROJECT_ID }}/$NAME_TAG"
+              echo "Using image name+tag with default GCR project: ${BASE_IMAGE}"
+            else
+              # No project secret, fall back to name:tag as given
+              BASE_IMAGE="$NAME_TAG"
+              echo "GCP_PROJECT_ID not set; using provided name:tag: ${BASE_IMAGE}"
+            fi
           else
             BASE_IMAGE=$(grep -oP '^ARG\s+BASE_IMAGE=\K.*' Dockerfile.web | tr -d '\r' | xargs || true)
             if [ -n "${BASE_IMAGE}" ]; then
               echo "Extracted BASE_IMAGE from Dockerfile.web: ${BASE_IMAGE}"
+              # If Dockerfile.web still contains an old hard-coded project (uade-docker),
+              # rewrite it to use the repository secret project so CI pulls from the
+              # intended GCP project instead of the deprecated uade-docker project.
+              if echo "${BASE_IMAGE}" | grep -qE 'gcr\.io/uade-docker/'; then
+                if [ -n "${{ secrets.GCP_PROJECT_ID }}" ]; then
+                  BASE_IMAGE=$(echo "${BASE_IMAGE}" | sed "s|gcr.io/uade-docker/|gcr.io/${{ secrets.GCP_PROJECT_ID }}/|")
+                  echo "Rewrote BASE_IMAGE to use secrets.GCP_PROJECT_ID: ${BASE_IMAGE}"
+                else
+                  echo "BASE_IMAGE points to gcr.io/uade-docker but GCP_PROJECT_ID secret is not set"
+                fi
+              fi
             else
               # Construct a reasonable default image URL using the GCP project secret and the known tag
               if [ -n "${{ secrets.GCP_PROJECT_ID }}" ]; then
