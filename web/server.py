@@ -17,6 +17,7 @@ from flask import Flask, request, jsonify, send_from_directory, Response
 from werkzeug.utils import secure_filename
 import requests
 import re
+import shutil
 
 # Configure logging for cloud environments
 logging.basicConfig(
@@ -361,8 +362,6 @@ def convert_to_wav(input_path, output_path, use_cache=True, compress_flac=False)
             cached_file = get_cached_conversion(cache_hash, prefer_flac=compress_flac)
             if cached_file:
                 # Copy cached file to output path
-                import shutil
-
                 if compress_flac and cached_file.suffix == ".flac":
                     # Return FLAC from cache
                     flac_output = output_path.with_suffix(".flac")
@@ -402,8 +401,6 @@ def convert_to_wav(input_path, output_path, use_cache=True, compress_flac=False)
                 if use_cache:
                     cache_file = CONVERTED_DIR / f"{cache_hash}.flac"
                     if not cache_file.exists():
-                        import shutil
-
                         shutil.copy2(flac_output, cache_file)
                         logger.info(f"Cached FLAC conversion: {cache_hash}")
             else:
@@ -414,8 +411,6 @@ def convert_to_wav(input_path, output_path, use_cache=True, compress_flac=False)
         if use_cache and not compress_flac:
             cache_file = CONVERTED_DIR / f"{cache_hash}.wav"
             if not cache_file.exists():
-                import shutil
-
                 shutil.copy2(output_path, cache_file)
                 logger.info(f"Cached conversion: {cache_hash}")
 
@@ -442,8 +437,6 @@ def convert_tfmx(mdat_url, smpl_url, output_path, use_cache=True, compress_flac=
 
             if cached_file:
                 # Cache hit - copy cached file
-                import shutil
-
                 if compress_flac and cached_file.suffix == ".flac":
                     flac_output = output_path.with_suffix(".flac")
                     shutil.copy2(cached_file, flac_output)
@@ -471,8 +464,6 @@ def convert_tfmx(mdat_url, smpl_url, output_path, use_cache=True, compress_flac=
                 if use_cache:
                     cache_file = CONVERTED_DIR / f"{cache_key}.flac"
                     if not cache_file.exists():
-                        import shutil
-
                         shutil.copy2(flac_output, cache_file)
                         logger.info(f"Cached TFMX FLAC conversion: {cache_key}")
             else:
@@ -482,8 +473,6 @@ def convert_tfmx(mdat_url, smpl_url, output_path, use_cache=True, compress_flac=
         if use_cache and output_path.exists() and not compress_flac:
             cache_file = CONVERTED_DIR / f"{cache_key}.wav"
             if not cache_file.exists():
-                import shutil
-
                 shutil.copy2(output_path, cache_file)
                 logger.info(f"Cached TFMX conversion: {cache_key}")
 
@@ -563,8 +552,6 @@ def upload_file():
             if not success:
                 upload_path.unlink(missing_ok=True)
                 if extract_dir and extract_dir.exists():
-                    import shutil
-
                     shutil.rmtree(extract_dir, ignore_errors=True)
                 return jsonify({"error": error}), 500
 
@@ -580,8 +567,6 @@ def upload_file():
         if not success:
             upload_path.unlink(missing_ok=True)
             if extract_dir and extract_dir.exists():
-                import shutil
-
                 shutil.rmtree(extract_dir, ignore_errors=True)
             response = jsonify({"error": error})
             response.headers["Content-Type"] = "application/json; charset=utf-8"
@@ -590,8 +575,6 @@ def upload_file():
         # Clean up input files
         upload_path.unlink(missing_ok=True)
         if extract_dir and extract_dir.exists():
-            import shutil
-
             shutil.rmtree(extract_dir, ignore_errors=True)
 
         response = jsonify(
@@ -666,8 +649,6 @@ def convert_url():
             if not success:
                 cache_path.unlink(missing_ok=True)
                 if extract_dir and extract_dir.exists():
-                    import shutil
-
                     shutil.rmtree(extract_dir, ignore_errors=True)
                 response = jsonify({"error": error})
                 response.headers["Content-Type"] = "application/json; charset=utf-8"
@@ -690,16 +671,12 @@ def convert_url():
         if not success:
             cache_path.unlink(missing_ok=True)
             if extract_dir and extract_dir.exists():
-                import shutil
-
                 shutil.rmtree(extract_dir, ignore_errors=True)
             return jsonify({"error": error}), 500
 
         # Clean up cached files
         cache_path.unlink(missing_ok=True)
         if extract_dir and extract_dir.exists():
-            import shutil
-
             shutil.rmtree(extract_dir, ignore_errors=True)
 
         response = jsonify(
@@ -852,8 +829,6 @@ def play_example(example_id):
                 if not extract_success:
                     cache_path.unlink(missing_ok=True)
                     if extract_dir and extract_dir.exists():
-                        import shutil
-
                         shutil.rmtree(extract_dir, ignore_errors=True)
                     return jsonify({"error": extract_error}), 500
 
@@ -865,8 +840,6 @@ def play_example(example_id):
             # Clean up
             cache_path.unlink(missing_ok=True)
             if extract_dir and extract_dir.exists():
-                import shutil
-
                 shutil.rmtree(extract_dir, ignore_errors=True)
 
         if not success:
