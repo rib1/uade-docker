@@ -52,7 +52,7 @@ jobs:
           BUILD_NUMBER="1"
         fi
         IMAGE_TAG="${UADE_VERSION}-base.${BUILD_NUMBER}"
-        IMAGE_URL="ghcr.io/${{ github.repository_owner }}/uade-player:${IMAGE_TAG}"
+        IMAGE_URL="ghcr.io/${{ github.repository_owner }}/uade-cli:${IMAGE_TAG}"
         echo "uade_version=${UADE_VERSION}" >> $GITHUB_OUTPUT
         echo "build_number=${BUILD_NUMBER}" >> $GITHUB_OUTPUT
         echo "image_tag=${IMAGE_TAG}" >> $GITHUB_OUTPUT
@@ -75,14 +75,15 @@ jobs:
         push: true
         tags: |
           ${{ steps.version.outputs.image_url }}
-          ghcr.io/${{ github.repository_owner }}/uade-player:${{ steps.version.outputs.uade_version }}-base
-          ghcr.io/${{ github.repository_owner }}/uade-player:latest
+          ghcr.io/${{ github.repository_owner }}/uade-cli:${{ steps.version.outputs.uade_version }}-base
+          ghcr.io/${{ github.repository_owner }}/uade-cli:latest
         cache-from: type=gha,scope=cli
         cache-to: type=gha,mode=max,scope=cli
     - name: Verify image runs
       run: |
         docker run --rm ${{ steps.version.outputs.image_url }} --version
         docker run --rm ${{ steps.version.outputs.image_url }} --help
+
 
     - name: Create build summary
       run: |
@@ -95,14 +96,14 @@ jobs:
         Registry: GitHub Container Registry (GHCR)
 
         ## Tags Published to GHCR
-        - ghcr.io/${{ github.repository_owner }}/uade-player:${{ steps.version.outputs.image_tag }}
-        - ghcr.io/${{ github.repository_owner }}/uade-player:${{ steps.version.outputs.uade_version }}-base
-        - ghcr.io/${{ github.repository_owner }}/uade-player:latest
+        - ghcr.io/${{ github.repository_owner }}/uade-cli:${{ steps.version.outputs.image_tag }}
+        - ghcr.io/${{ github.repository_owner }}/uade-cli:${{ steps.version.outputs.uade_version }}-base
+        - ghcr.io/${{ github.repository_owner }}/uade-cli:latest
 
         ## For Initial Release (3.05-base.1)
         - Image is production-ready for Dockerfile.web
         - All tags point to the same image
-        - Pin Dockerfile.web to: ghcr.io/${{ github.repository_owner }}/uade-player:3.05-base.1
+        - Pin Dockerfile.web to: ghcr.io/${{ github.repository_owner }}/uade-cli:3.05-base.1
 
         ## For Future Updates
         - Patch releases: Increment build_number (3.05-base.2, etc.)
