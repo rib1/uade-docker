@@ -18,6 +18,7 @@ from werkzeug.utils import secure_filename
 import requests
 import re
 import shutil
+import ipaddress
 
 # Configure logging for cloud environments
 logging.basicConfig(
@@ -451,8 +452,8 @@ def convert_tfmx(mdat_url, smpl_url, output_path, use_cache=True, compress_flac=
                     shutil.copy2(cached_file, output_path)
                     return True, None, cached_file
 
-        # Sanitize URLs before passing to command execution
-        cmd = ["/usr/local/bin/uade-convert", sanitized_url(mdat_url), sanitized_url(smpl_url), str(output_path)]
+        # Use strictly validated, normalized URLs as arguments; don't mutate/sanitize
+        cmd = ["/usr/local/bin/uade-convert", mdat_url, smpl_url, str(output_path)]
 
         result = subprocess.run(cmd, capture_output=True, text=True, timeout=300)
 
@@ -735,23 +736,46 @@ def handle_tfmx():
     if not data or "mdat_url" not in data or "smpl_url" not in data:
         return jsonify({"error": "Both mdat_url and smpl_url required"}), 400
 
-    # Validate URLs before processing (stricter, block meta/whitespace chars)
+    # Validate URLs before processing (stricter, block meta/whitespace chars, local addresses, etc)
     def is_safe_url(url):
         from urllib.parse import urlparse
+        import ipaddress
 
         # Reject URLs containing forbidden characters
         if re.search(FORBIDDEN_CHARS, url):
             return False
         try:
             parsed = urlparse(url)
-            return parsed.scheme in ("http", "https") and bool(parsed.netloc)
+            if parsed.scheme not in ("http", "https"):
+                return False
+            if not parsed.netloc:
+                return False
+            # Disallow local hostnames and private IP addresses (prevents SSRF to internal network/services)
+            hostname = parsed.hostname
+            if not hostname:
+                return False
+            # Disallow localhost names
+            if hostname in ("localhost", "127.0.0.1", "::1"):
+                return False
+            # Resolve IPs and check for loopback/private
+            try:
+                ip = ipaddress.ip_address(hostname)
+                if ip.is_loopback or ip.is_private or ip.is_link_local or ip.is_reserved:
+                    return False
+            except ValueError:
+                # If not an IP, could be a hostname, optionally check against other blocked patterns
+                # Forbid .local domain as extra belt-and-suspenders, optionally restrict more
+                if hostname.endswith('.local'):
+                    return False
+            return True
         except Exception:
             return False
 
-    mdat_url = data["mdat_url"]
-    smpl_url = data["smpl_url"]
+    # Use normalized URLs
+    mdat_url = data["mdat_url"].strip()
+    smpl_url = data["smpl_url"].strip()
     if not (is_safe_url(mdat_url) and is_safe_url(smpl_url)):
-        return jsonify({"error": "Invalid URL(s) supplied"}), 400
+        return jsonify({"error": "Invalid or unsafe URL(s) supplied"}), 400
 
     try:
         # Check browser FLAC support
