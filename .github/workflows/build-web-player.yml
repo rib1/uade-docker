@@ -41,7 +41,7 @@ jobs:
         cache-to: |
           type=gha,mode=max,scope=web
         build-args: |
-          BASE_IMAGE=ghcr.io/${{ github.repository_owner }}/uade-player:latest
+          BASE_IMAGE=ghcr.io/${{ github.repository_owner }}/uade-cli:latest
 
     - name: Start Web Player container
       run: |
