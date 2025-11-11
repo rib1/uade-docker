@@ -178,9 +178,10 @@ jobs:
 
       - name: Build web player with new base image
         run: |
-          # Update Dockerfile.web to use new base image from GCR
-          sed -i "s|FROM uade-cli:.*|FROM ${{ needs.build.outputs.image_url }}|" Dockerfile.web
-          docker build -f Dockerfile.web -t uade-web:test .
+          # Update Dockerfile.web BASE_IMAGE ARG to use new base image from GCR
+          sed -i "s|ARG BASE_IMAGE=.*|ARG BASE_IMAGE=${{ needs.build.outputs.image_url }}|" Dockerfile.web
+          docker build -f Dockerfile.web -t uade-web:test . \
+            --build-arg BASE_IMAGE="${{ needs.build.outputs.image_url }}"
 
       - name: Start test environment
         run: |
