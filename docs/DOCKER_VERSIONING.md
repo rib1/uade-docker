@@ -140,11 +140,47 @@ docker tag uade-cli:3.05-base.1 uade-cli:latest
 
 ```powershell
 # Push all tags
-docker push uade-cli:3.05-base.1
-docker push uade-cli:3.05-base.latest
-docker push uade-cli:3.05-base
-docker push uade-cli:latest
+# Note: tag names below assume you already tagged images with the full registry prefix
+docker tag uade-cli:3.05-base.1 gcr.io/<GCP_PROJECT_ID>/uade-cli:3.05-base.1
+docker tag uade-cli:3.05-base.1 gcr.io/<GCP_PROJECT_ID>/uade-cli:3.05-base.latest
+docker tag uade-cli:3.05-base.1 gcr.io/<GCP_PROJECT_ID>/uade-cli:3.05-base
+docker tag uade-cli:3.05-base.1 gcr.io/<GCP_PROJECT_ID>/uade-cli:latest
+
+# Push to GCR (requires `gcloud auth configure-docker`)
+gcloud auth configure-docker --quiet
+docker push gcr.io/<GCP_PROJECT_ID>/uade-cli:3.05-base.1
+docker push gcr.io/<GCP_PROJECT_ID>/uade-cli:3.05-base.latest
+docker push gcr.io/<GCP_PROJECT_ID>/uade-cli:3.05-base
+docker push gcr.io/<GCP_PROJECT_ID>/uade-cli:latest
 ```
+
+### Windows / PowerShell tips
+
+If you're working from Windows PowerShell, here are the most common commands used during development and verification (replace <GCP_PROJECT_ID> with your project):
+
+```powershell
+# Authenticate to gcloud and configure Docker credential helper for GCR
+gcloud auth login
+gcloud auth configure-docker --quiet
+
+# Build and tag locally
+docker build -f Dockerfile -t gcr.io/<GCP_PROJECT_ID>/uade-cli:3.05-base.1 .
+
+# Push tag(s)
+docker push gcr.io/<GCP_PROJECT_ID>/uade-cli:3.05-base.1
+
+# List tags in GCR (requires gcloud)
+gcloud container images list-tags gcr.io/<GCP_PROJECT_ID>/uade-cli --limit=50 --format="get(tags,digest)"
+
+# Pull an image you deployed to Cloud Run and inspect UADE version
+docker pull gcr.io/<GCP_PROJECT_ID>/uade-web-player:<TAG_OR_DIGEST>
+docker run --rm gcr.io/<GCP_PROJECT_ID>/uade-web-player:<TAG_OR_DIGEST> uade123 --version
+```
+
+### Common gotchas
+
+- CRLF in Dockerfile-derived tags: Some editors add Windows CRLF characters which can be included when extracting `ARG BASE_IMAGE` from `Dockerfile.web`. This produces invalid Docker tag names (trailing `\r`). Trim CRLF and whitespace when extracting: `echo "$BASE" | tr -d '\r' | xargs`.
+- Pushing images from CI requires the runner to be authenticated and the SA to have sufficient permissions.
 
 ### Dockerfile Changes (Version Bump)
 
