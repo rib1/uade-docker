@@ -1,0 +1,167 @@
+# UADE Base Image Versions Changelog
+
+This file tracks all published versions of the `uade-cli` base Docker image and their deployment status.
+
+## Current Production Version
+
+**`2.13-base.1`** (initial release, first production version)
+
+---
+
+## Version History
+
+### 2.13-base.1 (2025-11-11) [INITIAL RELEASE]
+
+- **Image:** `docker.io/rib1/uade-cli:2.13-base.1`
+- **UADE Version:** 2.13 (stable)
+- **Status:** Production (pinned in Dockerfile.web)
+- **Base Image:** `debian:stable-slim`
+- **Build Duration:** ~8 minutes
+
+**Changes:**
+- Initial versioned release of UADE CLI base image
+- Implements semantic versioning: UADE_VERSION-base.BUILD_NUMBER
+- Enables controlled updates and prevents breaking changes from upstream
+
+**Features:**
+- Core UADE command-line tools (uade123, uade-convert)
+- Support for MOD, AHX, TFMX, S3M, XM, IT, and other formats
+- Non-root user security
+- SUID permissions for audio device access
+- Helper script: `uade-convert` for TFMX dual-file conversion
+
+**Testing:**
+- ✅ Health check: `uade123 --version` works
+- ✅ Conversion test: UADE available and functional
+- ✅ Web player integration: Dockerfile.web builds and runs successfully
+- ✅ API endpoints: Health, examples, and core functionality verified
+
+**Deployment Status:**
+- Currently used by: Dockerfile.web
+- Available as: `uade-cli:2.13-base.1`, `uade-cli:2.13-base`, `uade-cli:latest`
+
+---
+
+## Planned Updates
+
+### Next: UADE 2.14 Base Image (Pending Upstream Release)
+
+- **Status:** Awaiting UADE upstream release
+- **Expected:** Q1 2025 (check [UADE Releases](https://gitlab.com/uade-music-player/uade/-/releases))
+
+**Process for next version:**
+1. Check upstream releases
+2. Build new base image: `2.14-base.1`
+3. Run full E2E test suite
+4. Update Dockerfile.web pin to `uade-cli:2.14-base.1`
+5. Commit and tag release
+
+---
+
+## Version Pinning in Dockerfile.web
+
+| Dockerfile.web Version | UADE CLI Version | Release Date | Status |
+|---|---|---|---|
+| v1.0 | 2.13-base.1 | 2025-11-11 | Current production |
+
+---
+
+## Building New Versions
+
+### For Maintainers: Quick Reference
+
+**Create a new build number (same UADE version):**
+
+```bash
+# Example: 2.13-base.1 → 2.13-base.2 (security patch)
+docker build -f Dockerfile -t uade-cli:2.13-base.2 .
+docker tag uade-cli:2.13-base.2 uade-cli:2.13-base
+docker tag uade-cli:2.13-base.2 uade-cli:latest
+docker push uade-cli:2.13-base.2
+```
+
+**Create a new UADE version (reset build to 1):**
+
+```bash
+# Example: 2.13-base.1 → 2.14-base.1
+# 1. Update Dockerfile to clone --branch uade-2.14
+# 2. Build:
+docker build -f Dockerfile -t uade-cli:2.14-base.1 .
+# 3. Test (full E2E suite)
+# 4. Push:
+docker push uade-cli:2.14-base.1
+docker tag uade-cli:2.14-base.1 uade-cli:latest
+docker push uade-cli:latest
+# 5. Update docs/UADE_VERSIONS.md
+# 6. Update Dockerfile.web (after E2E passes)
+```
+
+---
+
+## Dependencies
+
+### System Libraries (debian:stable-slim)
+
+- **libao4:** UADE audio output
+- **libao-dev:** Build-time dependency (removed after build)
+- **ca-certificates:** TLS verification for curl
+- **curl:** Download modules from web
+- **openssl:** TLS/SSL support
+
+### Build Dependencies (removed after build)
+
+- build-essential
+- git
+- autoconf / automake
+- libtool
+- pkg-config
+- meson
+- ninja-build
+
+### Upstream Dependencies
+
+- **bencodetools:** UADE prerequisite (auto-cloned and built)
+- **libzakalwe:** UADE prerequisite (auto-cloned and built)
+
+---
+
+## Rollback Instructions
+
+If a version has critical issues:
+
+**Step 1: Revert Dockerfile.web to previous version**
+
+```dockerfile
+# If 2.13-base.2 has issues:
+# Change:
+FROM uade-cli:2.13-base.2
+
+# To:
+FROM uade-cli:2.13-base.1
+```
+
+**Step 2: Rebuild and test**
+
+```bash
+docker build -f Dockerfile.web -t uade-web:test .
+# Run E2E tests
+npm test
+```
+
+**Step 3: Commit and redeploy**
+
+```bash
+git add Dockerfile.web
+git commit -m "Rollback to uade-cli:2.13-base.1 (critical fix for issue #X)"
+git push origin main
+# Redeploy to Cloud Run, etc.
+```
+
+---
+
+## Documentation Links
+
+- **UADE Upstream Releases:** [GitLab Releases](https://gitlab.com/uade-music-player/uade/-/releases)
+- **UADE Documentation:** [GitHub](https://github.com/libsidplay/uade)
+- **Dockerfile Versioning Schema:** [DOCKER_VERSIONING.md](./DOCKER_VERSIONING.md)
+- **Base Image Issues:** [GitHub Issues](https://github.com/rib1/uade-docker/issues)
