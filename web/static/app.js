@@ -222,21 +222,35 @@ async function loadExamples() {
       const card = document.createElement("div");
       card.className = "example-card";
 
-      card.innerHTML = `
-                <h3>${example.name}</h3>
-                <div class="example-meta">
-                    <span class="format-badge">${example.format}</span>
-                    <span>${example.duration}</span>
-                </div>
-                <button class="play-btn" data-example-id="${example.id}">
-                    ▶ Play Now
-                </button>
-            `;
+      // Title
+      const h3 = document.createElement("h3");
+      h3.textContent = example.name;
+      card.appendChild(h3);
 
-      const playBtn = card.querySelector(".play-btn");
+      // Meta
+      const metaDiv = document.createElement("div");
+      metaDiv.className = "example-meta";
+
+      const formatSpan = document.createElement("span");
+      formatSpan.className = "format-badge";
+      formatSpan.textContent = example.format;
+      metaDiv.appendChild(formatSpan);
+
+      const durationSpan = document.createElement("span");
+      durationSpan.textContent = example.duration;
+      metaDiv.appendChild(durationSpan);
+
+      card.appendChild(metaDiv);
+
+      // Play button
+      const playBtn = document.createElement("button");
+      playBtn.className = "play-btn";
+      playBtn.setAttribute("data-example-id", example.id);
+      playBtn.textContent = "▶ Play Now";
       playBtn.addEventListener("click", () =>
         handleExamplePlay(example, playBtn),
       );
+      card.appendChild(playBtn);
 
       examplesGrid.appendChild(card);
     });
