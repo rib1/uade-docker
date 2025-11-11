@@ -17,7 +17,7 @@ architecture-beta
     service docker_web(server)[UADE Web Container] in local
     
     service github(internet)[GitHub Actions] in gcp
-    service gcr(database)[Container Registry] in gcp
+  service ghcr(database)[GitHub Container Registry] in gcp
     service cloudrun(server)[Cloud Run Service] in gcp
     
     service modland(internet)[Modland Archive]
@@ -26,8 +26,8 @@ architecture-beta
     cli:B --> T:docker_cli
     browser:B --> T:docker_web
     
-    github:R --> L:gcr
-    gcr:R --> L:cloudrun
+  github:R --> L:ghcr
+  ghcr:R --> L:cloudrun
     
     cloudrun:B --> T:modland
     docker_web:B --> T:modland
@@ -64,7 +64,7 @@ architecture-beta
   - Change detection for UADE base caching
   - Runs tests and health checks
 
-- **Container Registry (GCR)**
+**GitHub Container Registry (GHCR)**
   - Stores built Docker images
   - UADE base image cached for faster builds
   - Web player image with git commit tags

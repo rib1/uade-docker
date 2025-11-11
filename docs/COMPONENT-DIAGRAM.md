@@ -29,7 +29,7 @@ Container_Boundary(web_container, "Web Player Container - Built FROM CLI Base") 
     Component(static_files, "Static Assets", "HTML/CSS/JS", "Web interface and player controls")
 }
 
-ContainerDb(gcr, "Google Container Registry", "Docker Registry", "Stores container images")
+ContainerDb(ghcr, "GitHub Container Registry", "Docker Registry", "Stores container images")
 Container(cloudrun, "Cloud Run", "Serverless Platform", "Hosts web player in production")
 
 Rel(user, flask_app, "Accesses", "HTTPS")
@@ -48,8 +48,8 @@ Rel(uade_core, song_db, "Reads metadata from")
 Rel(uade_core, player_configs, "Reads settings from")
 
 Rel(user, modland, "Downloads modules from", "FTP")
-Rel(github, gcr, "Builds images to", "GitHub Actions")
-Rel(gcr, cloudrun, "Deploys from")
+Rel(github, ghcr, "Builds images to", "GitHub Actions")
+Rel(ghcr, cloudrun, "Deploys from")
 
 UpdateRelStyle(user, flask_app, $offsetY="-60")
 UpdateRelStyle(user, uade_cli, $offsetX="-120", $offsetY="60")
@@ -59,8 +59,8 @@ UpdateRelStyle(api_routes, player_service, $offsetY="-20")
 UpdateRelStyle(player_service, uade_wrapper, $offsetY="-20")
 UpdateRelStyle(uade_wrapper, uade_cli, $offsetY="-30", $offsetX="-80", $textColor="red", $lineColor="red")
 UpdateRelStyle(uade_cli, uade_core, $offsetY="-20")
-UpdateRelStyle(github, gcr, $offsetY="-40")
-UpdateRelStyle(gcr, cloudrun, $offsetY="-40")
+UpdateRelStyle(github, ghcr, $offsetY="-40")
+UpdateRelStyle(ghcr, cloudrun, $offsetY="-40")
 ```
 
 ## Component Descriptions
@@ -328,6 +328,6 @@ The Web Player Container is built using multi-stage Docker build with `FROM uade
 
 - **CLI Player**: Local Docker engine, standalone image
 - **Web Player**: Cloud Run (serverless), built FROM CLI base
-- **Registry**: Google Container Registry (gcr.io)
+- **Registry**: GitHub Container Registry (ghcr.io)
 - **Automation**: GitHub Actions workflows
 - **Image Relationship**: Web image depends on CLI image

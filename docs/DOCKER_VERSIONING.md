@@ -50,12 +50,13 @@ uade-cli:<UADE_VERSION>-<VARIANT>.<BUILD_NUMBER>
 
 ---
 
+gcr.io/<GCP_PROJECT_ID>/uade-cli:<tag>
 ## Image Registry Structure
 
 ### Image Naming
 
 ```
-gcr.io/<GCP_PROJECT_ID>/uade-cli:<tag>
+ghcr.io/rib1/uade-cli:<tag>
 ```
 
 ### Tag Strategy
@@ -141,40 +142,40 @@ docker tag uade-cli:3.05-base.1 uade-cli:latest
 ```powershell
 # Push all tags
 # Note: tag names below assume you already tagged images with the full registry prefix
-docker tag uade-cli:3.05-base.1 gcr.io/<GCP_PROJECT_ID>/uade-cli:3.05-base.1
-docker tag uade-cli:3.05-base.1 gcr.io/<GCP_PROJECT_ID>/uade-cli:3.05-base.latest
-docker tag uade-cli:3.05-base.1 gcr.io/<GCP_PROJECT_ID>/uade-cli:3.05-base
-docker tag uade-cli:3.05-base.1 gcr.io/<GCP_PROJECT_ID>/uade-cli:latest
+docker tag uade-cli:3.05-base.1 ghcr.io/rib1/uade-cli:3.05-base.1
+docker tag uade-cli:3.05-base.1 ghcr.io/rib1/uade-cli:3.05-base.latest
+docker tag uade-cli:3.05-base.1 ghcr.io/rib1/uade-cli:3.05-base
+docker tag uade-cli:3.05-base.1 ghcr.io/rib1/uade-cli:latest
 
-# Push to GCR (requires `gcloud auth configure-docker`)
-gcloud auth configure-docker --quiet
-docker push gcr.io/<GCP_PROJECT_ID>/uade-cli:3.05-base.1
-docker push gcr.io/<GCP_PROJECT_ID>/uade-cli:3.05-base.latest
-docker push gcr.io/<GCP_PROJECT_ID>/uade-cli:3.05-base
-docker push gcr.io/<GCP_PROJECT_ID>/uade-cli:latest
+# Push to GHCR (requires GitHub authentication)
+echo $CR_PAT | docker login ghcr.io -u USERNAME --password-stdin
+docker push ghcr.io/rib1/uade-cli:3.05-base.1
+docker push ghcr.io/rib1/uade-cli:3.05-base.latest
+docker push ghcr.io/rib1/uade-cli:3.05-base
+docker push ghcr.io/rib1/uade-cli:latest
 ```
 
 ### Windows / PowerShell tips
 
-If you're working from Windows PowerShell, here are the most common commands used during development and verification (replace <GCP_PROJECT_ID> with your project):
+If you're working from Windows PowerShell, here are the most common commands used during development and verification:
 
 ```powershell
-# Authenticate to gcloud and configure Docker credential helper for GCR
-gcloud auth login
-gcloud auth configure-docker --quiet
+# Authenticate to GHCR (requires a GitHub personal access token with package:write)
+$env:CR_PAT = "<your-ghcr-token>"
+echo $env:CR_PAT | docker login ghcr.io -u USERNAME --password-stdin
 
 # Build and tag locally
-docker build -f Dockerfile -t gcr.io/<GCP_PROJECT_ID>/uade-cli:3.05-base.1 .
+docker build -f Dockerfile -t ghcr.io/rib1/uade-cli:3.05-base.1 .
 
 # Push tag(s)
-docker push gcr.io/<GCP_PROJECT_ID>/uade-cli:3.05-base.1
+docker push ghcr.io/rib1/uade-cli:3.05-base.1
 
-# List tags in GCR (requires gcloud)
-gcloud container images list-tags gcr.io/<GCP_PROJECT_ID>/uade-cli --limit=50 --format="get(tags,digest)"
+# List tags in GHCR (use GitHub UI or API)
+# https://github.com/users/rib1/packages/container/uade-cli
 
-# Pull an image you deployed to Cloud Run and inspect UADE version
-docker pull gcr.io/<GCP_PROJECT_ID>/uade-web-player:<TAG_OR_DIGEST>
-docker run --rm gcr.io/<GCP_PROJECT_ID>/uade-web-player:<TAG_OR_DIGEST> uade123 --version
+# Pull an image and inspect UADE version
+docker pull ghcr.io/rib1/uade-web-player:<TAG_OR_DIGEST>
+docker run --rm ghcr.io/rib1/uade-web-player:<TAG_OR_DIGEST> uade123 --version
 ```
 
 ### Common gotchas
@@ -215,7 +216,7 @@ Track all published versions in `deployment/UADE_VERSIONS.md`:
 # UADE Base Image Versions
 
 ## 3.05-base.1 (2025-11-11) [INITIAL RELEASE]
-- **Image:** gcr.io/<GCP_PROJECT_ID>/uade-cli:3.05-base.1
+- **Image:** ghcr.io/rib1/uade-cli:3.05-base.1
 - **UADE Version:** 3.05 (stable)
 - **Base Image:** debian:stable-slim
 - **Status:** Production (Dockerfile.web pinned to this version)

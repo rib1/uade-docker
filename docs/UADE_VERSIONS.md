@@ -12,7 +12,7 @@ This file tracks all published versions of the `uade-cli` base Docker image and 
 
 ### 3.05-base.1 (2025-11-11) [INITIAL RELEASE]
 
-- **Image:** `gcr.io/<GCP_PROJECT_ID>/uade-cli:3.05-base.1`
+- **Image:** `ghcr.io/rib1/uade-cli:3.05-base.1`
 - **UADE Binary Version:** 3.05 (stable)
 - **Status:** Production (pinned in Dockerfile.web)
 - **Base Image:** `debian:stable-slim`
@@ -38,7 +38,7 @@ This file tracks all published versions of the `uade-cli` base Docker image and 
 
 **Deployment Status:**
 - Currently used by: Dockerfile.web
-- Available as: `gcr.io/<GCP_PROJECT_ID>/uade-cli:3.05-base.1`, `gcr.io/<GCP_PROJECT_ID>/uade-cli:3.05-base`, `gcr.io/<GCP_PROJECT_ID>/uade-cli:latest`
+- Available as: `ghcr.io/rib1/uade-cli:3.05-base.1`, `ghcr.io/rib1/uade-cli:3.05-base`, `ghcr.io/rib1/uade-cli:latest`
 - Verified binary: `uade123 3.05`
 
 ---
@@ -75,10 +75,10 @@ This file tracks all published versions of the `uade-cli` base Docker image and 
 
 ```bash
 # Example: 3.05-base.1 → 3.05-base.2 (security patch)
-docker build -f Dockerfile -t gcr.io/<GCP_PROJECT_ID>/uade-cli:3.05-base.2 .
-docker tag gcr.io/<GCP_PROJECT_ID>/uade-cli:3.05-base.2 gcr.io/<GCP_PROJECT_ID>/uade-cli:3.05-base
-docker tag gcr.io/<GCP_PROJECT_ID>/uade-cli:3.05-base.2 gcr.io/<GCP_PROJECT_ID>/uade-cli:latest
-docker push gcr.io/<GCP_PROJECT_ID>/uade-cli:3.05-base.2
+docker build -f Dockerfile -t ghcr.io/rib1/uade-cli:3.05-base.2 .
+docker tag ghcr.io/rib1/uade-cli:3.05-base.2 ghcr.io/rib1/uade-cli:3.05-base
+docker tag ghcr.io/rib1/uade-cli:3.05-base.2 ghcr.io/rib1/uade-cli:latest
+docker push ghcr.io/rib1/uade-cli:3.05-base.2
 ```
 
 **Create a new UADE version (reset build to 1):**
