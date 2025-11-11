@@ -23,8 +23,8 @@ Features: Drag & drop files, download from URLs, **LHA archive extraction**, TFM
 Convert modules locally with Docker.
 
 ```powershell
-docker pull ghcr.io/rib1/uade-player:latest
-docker run --rm -v "$env:USERPROFILE\Music:/output" ghcr.io/rib1/uade-player -c -f /output/music.wav /music/module.mod
+docker pull ghcr.io/rib1/uade-cli:latest
+docker run --rm -v "$env:USERPROFILE\Music:/output" ghcr.io/rib1/uade-cli -c -f /output/music.wav /music/module.mod
 ```
 
 **[📖 Full Documentation](docs/CLI-USAGE.md)** - Examples, PowerShell integration, TFMX helpers
@@ -58,7 +58,7 @@ This project uses semantic versioning for the UADE CLI base image to ensure stab
 ## Development
 
 ```bash
-docker build -t uade-player .
+docker build -t uade-cli .
 docker build -f Dockerfile.web -t uade-web-player .
 docker-compose up  # Run web player locally at http://localhost:5000
 ```
