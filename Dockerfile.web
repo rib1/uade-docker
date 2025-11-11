@@ -1,6 +1,7 @@
-# Use existing UADE image as base (if it exists) or build from original Dockerfile
-# This avoids rebuilding UADE from scratch
-ARG BASE_IMAGE=uade-player:latest
+# Use versioned UADE CLI base image for stable, tested releases
+# Pin specific versions to enable controlled updates and prevent breaking changes
+# See deployment/DOCKER_VERSIONING_SCHEMA.md for versioning strategy
+ARG BASE_IMAGE=uade-cli:2.13-base.5
 FROM ${BASE_IMAGE} AS uade-base
 
 # Runtime stage - Add web server
