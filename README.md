@@ -36,7 +36,7 @@ This project uses semantic versioning for the UADE CLI base image to ensure stab
 **Current Production:** `uade-cli:3.05-base.1`
 
 - **[Docker Versioning Schema](docs/DOCKER_VERSIONING.md)** - Complete versioning strategy, update procedures, and CI/CD pipeline
-- **[UADE Versions History](docs/UADE_VERSIONS.md)** - Release notes and changelog for all base image versions
+- **[UADE Docker Player Versions History](docs/UADE_VERSIONS.md)** - Release notes and changelog for all base image versions
 
 **Quick Reference:**
 - Format: `uade-cli:<UADE_VERSION>-base.<BUILD_NUMBER>` (e.g., `3.05-base.1`)
