@@ -29,131 +29,111 @@ on:
       - '.github/workflows/build-base-image.yml'
 
 jobs:
-  build:
-    name: Build UADE CLI Base Image
+  build-base:
     runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      id-token: write
-      actions: write
-      packages: write
-
-    outputs:
-      image_tag: ${{ steps.version.outputs.image_tag }}
-      image_url: ${{ steps.version.outputs.image_url }}
-
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
+    - name: Checkout code
+      uses: actions/checkout@v5
 
-      - name: Parse version information
-        id: version
-        run: |
-          # Get input values or use defaults for initial release (3.05-base.1)
-          UADE_VERSION="${{ inputs.uade_version }}"
-          if [ -z "$UADE_VERSION" ] || [ "$UADE_VERSION" == "3.05" ]; then
-            UADE_VERSION="3.05"
-          fi
+    - name: Parse version information
+      id: version
+      run: |
+        # Get input values or use defaults for initial release (3.05-base.1)
+        UADE_VERSION="${{ inputs.uade_version }}"
+        if [ -z "$UADE_VERSION" ] || [ "$UADE_VERSION" == "3.05" ]; then
+          UADE_VERSION="3.05"
+        fi
+        
+        BUILD_NUMBER="${{ inputs.build_number }}"
+        jobs:
+          build-base:
+            runs-on: ubuntu-latest
+            steps:
+              - name: Checkout code
+                uses: actions/checkout@v5
+
+              - name: Parse version information
+                id: version
+                run: |
+                  UADE_VERSION="${{ inputs.uade_version }}"
+                  if [ -z "$UADE_VERSION" ] || [ "$UADE_VERSION" == "3.05" ]; then
+                    UADE_VERSION="3.05"
+                  fi
+                  BUILD_NUMBER="${{ inputs.build_number }}"
+                  if [ -z "$BUILD_NUMBER" ]; then
+                    BUILD_NUMBER="1"
+                  fi
+                  IMAGE_TAG="${UADE_VERSION}-base.${BUILD_NUMBER}"
+                  IMAGE_URL="ghcr.io/${{ github.repository_owner }}/uade-player:${IMAGE_TAG}"
+                  echo "uade_version=${UADE_VERSION}" >> $GITHUB_OUTPUT
+                  echo "build_number=${BUILD_NUMBER}" >> $GITHUB_OUTPUT
+                  echo "image_tag=${IMAGE_TAG}" >> $GITHUB_OUTPUT
+                  echo "image_url=${IMAGE_URL}" >> $GITHUB_OUTPUT
+                  echo "✓ Version parsed: ${IMAGE_TAG}"
+
+              - name: Set up Docker Buildx
+                uses: docker/setup-buildx-action@v3
+
+              - name: Log in to GitHub Container Registry
+                uses: docker/login-action@v3
+                with:
+                  registry: ghcr.io
+                  username: ${{ github.actor }}
+                  password: ${{ secrets.GITHUB_TOKEN }}
+
+              - name: Build Docker image
+                run: |
+                  docker build -f Dockerfile \
+                    -t ${{ steps.version.outputs.image_url }} \
+                    -t ghcr.io/${{ github.repository_owner }}/uade-player:${{ steps.version.outputs.uade_version }}-base \
+                    -t ghcr.io/${{ github.repository_owner }}/uade-player:latest \
+                    --label org.opencontainers.image.version=${{ steps.version.outputs.image_tag }} \
+                    --label org.opencontainers.image.source=https://github.com/rib1/uade-docker \
+                    --label org.opencontainers.image.title="UADE CLI Base" \
+                    .
+
+              - name: Verify image runs
+                run: |
+                  docker run --rm ${{ steps.version.outputs.image_url }} --version
+                  docker run --rm ${{ steps.version.outputs.image_url }} --help
+
+              - name: Push image to GitHub Container Registry
+                run: |
+                  echo "Pushing to GHCR: ${{ steps.version.outputs.image_url }}"
+                  docker push ${{ steps.version.outputs.image_url }}
+                  docker push ghcr.io/${{ github.repository_owner }}/uade-player:${{ steps.version.outputs.uade_version }}-base
+                  docker push ghcr.io/${{ github.repository_owner }}/uade-player:latest
+
+              - name: Create build summary
+                run: |
+                  cat > /tmp/build-summary.txt << 'EOF'
+                  # Build Summary: UADE CLI Base Image
           
-          BUILD_NUMBER="${{ inputs.build_number }}"
-          if [ -z "$BUILD_NUMBER" ]; then
-            BUILD_NUMBER="1"
-          fi
+                  Image: ${{ steps.version.outputs.image_url }}
+                  UADE Version: ${{ steps.version.outputs.uade_version }}
+                  Build Number: ${{ steps.version.outputs.build_number }}
+                  Registry: GitHub Container Registry (GHCR)
           
-          IMAGE_TAG="${UADE_VERSION}-base.${BUILD_NUMBER}"
-          IMAGE_URL="gcr.io/${{ secrets.GCP_PROJECT_ID }}/uade-cli:${IMAGE_TAG}"
+                  ## Tags Published to GHCR
+                  - ghcr.io/${{ github.repository_owner }}/uade-player:${{ steps.version.outputs.image_tag }}
+                  - ghcr.io/${{ github.repository_owner }}/uade-player:${{ steps.version.outputs.uade_version }}-base
+                  - ghcr.io/${{ github.repository_owner }}/uade-player:latest
           
-          echo "uade_version=${UADE_VERSION}" >> $GITHUB_OUTPUT
-          echo "build_number=${BUILD_NUMBER}" >> $GITHUB_OUTPUT
-          echo "image_tag=${IMAGE_TAG}" >> $GITHUB_OUTPUT
-          echo "image_url=${IMAGE_URL}" >> $GITHUB_OUTPUT
+                  ## For Initial Release (3.05-base.1)
+                  - Image is production-ready for Dockerfile.web
+                  - All tags point to the same image
+                  - Pin Dockerfile.web to: ghcr.io/${{ github.repository_owner }}/uade-player:3.05-base.1
           
-          echo "✓ Version parsed: ${IMAGE_TAG}"
+                  ## For Future Updates
+                  - Patch releases: Increment build_number (3.05-base.2, etc.)
+                  - Major updates: New UADE version (3.06-base.1, etc.)
+                  - Always run E2E tests before updating Dockerfile.web
+                  EOF
+                  cat /tmp/build-summary.txt
 
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-
-      - name: Authenticate to Google Cloud
-        uses: google-github-actions/auth@v3
-        with:
-          credentials_json: ${{ secrets.GCP_SA_KEY }}
-
-      - name: Set up Cloud SDK
-        uses: google-github-actions/setup-gcloud@v3
-
-      - name: Configure Docker for GCR
-        run: gcloud auth configure-docker
-
-      - name: Build Docker image
-        run: |
-          docker build -f Dockerfile \
-            -t ${{ steps.version.outputs.image_url }} \
-            -t gcr.io/${{ secrets.GCP_PROJECT_ID }}/uade-cli:${{ steps.version.outputs.uade_version }}-base \
-            -t gcr.io/${{ secrets.GCP_PROJECT_ID }}/uade-cli:latest \
-            --label org.opencontainers.image.version=${{ steps.version.outputs.image_tag }} \
-            --label org.opencontainers.image.source=https://github.com/rib1/uade-docker \
-            --label org.opencontainers.image.title="UADE CLI Base" \
-            .
-
-      - name: Verify image runs
-        run: |
-          docker run --rm ${{ steps.version.outputs.image_url }} --version
-          docker run --rm ${{ steps.version.outputs.image_url }} --help
-
-      - name: Push image to Google Container Registry
-        run: |
-          echo "Pushing to GCR: ${{ steps.version.outputs.image_url }}"
-          docker push ${{ steps.version.outputs.image_url }}
-          docker push gcr.io/${{ secrets.GCP_PROJECT_ID }}/uade-cli:${{ steps.version.outputs.uade_version }}-base
-          docker push gcr.io/${{ secrets.GCP_PROJECT_ID }}/uade-cli:latest
-
-      - name: Create build summary
-        run: |
-          cat > /tmp/build-summary.txt << 'EOF'
-          # Build Summary: UADE CLI Base Image
-          
-          Image: ${{ steps.version.outputs.image_url }}
-          UADE Version: ${{ steps.version.outputs.uade_version }}
-          Build Number: ${{ steps.version.outputs.build_number }}
-          Registry: Google Container Registry (GCR)
-          
-          ## Tags Published to GCR
-          - gcr.io/${{ secrets.GCP_PROJECT_ID }}/uade-cli:${{ steps.version.outputs.image_tag }}
-          - gcr.io/${{ secrets.GCP_PROJECT_ID }}/uade-cli:${{ steps.version.outputs.uade_version }}-base
-          - gcr.io/${{ secrets.GCP_PROJECT_ID }}/uade-cli:latest
-          
-          ## For Initial Release (3.05-base.1)
-          - Image is production-ready for Dockerfile.web
-          - All tags point to the same image
-          - Pin Dockerfile.web to: gcr.io/${{ secrets.GCP_PROJECT_ID }}/uade-cli:3.05-base.1
-          
-          ## For Future Updates
-          - Patch releases: Increment build_number (3.05-base.2, etc.)
-          - Major updates: New UADE version (3.06-base.1, etc.)
-          - Always run E2E tests before updating Dockerfile.web
-          EOF
-          cat /tmp/build-summary.txt
-
-      - name: Upload build summary
-        uses: actions/upload-artifact@v4
-        with:
-          name: build-summary
-          path: /tmp/build-summary.txt
-          retention-days: 30
-
-      - name: Trigger verify-uade-version workflow
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          echo "Triggering verify-uade-version workflow on main..."
-          API_URL="https://api.github.com/repos/${{ github.repository }}/actions/workflows/verify-uade-version.yml/dispatches"
-          IMAGE_URL="${{ steps.version.outputs.image_url }}"
-          # Send only the image name:tag (strip registry/project) so verifier can use repo defaults
-          NAME_TAG="${IMAGE_URL##*/}"
-          echo "Dispatching verify workflow with image name: $NAME_TAG"
-          PAYLOAD=$(jq -n --arg ref "main" --arg img "$NAME_TAG" '{ref: $ref, inputs: {image: $img}}')
-          echo "Dispatch payload: $PAYLOAD"
-          curl -s -X POST "$API_URL" \
-            -H "Accept: application/vnd.github+json" \
-            -H "Authorization: Bearer $GITHUB_TOKEN" \
-            -d "$PAYLOAD"
+              - name: Upload build summary
+                uses: actions/upload-artifact@v4
+                with:
+                  name: build-summary
+                  path: /tmp/build-summary.txt
+                  retention-days: 30
