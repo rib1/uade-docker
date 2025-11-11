@@ -36,7 +36,7 @@ jobs:
         push: true
         load: true
         tags: |
-          uade-web-player:test
+          ghcr.io/${{ github.repository_owner }}/uade-web-player:test
           ghcr.io/${{ github.repository_owner }}/uade-web-player:latest
           ghcr.io/${{ github.repository_owner }}/uade-web-player:${{ github.sha }}
         cache-from: |
@@ -48,7 +48,7 @@ jobs:
 
     - name: Start Web Player container
       run: |
-        docker run -d -p 5000:5000 --name uade-web-test uade-web-player:test
+        docker run -d -p 5000:5000 --name uade-web-test ghcr.io/${{ github.repository_owner }}/uade-web-player:test
         sleep 10
 
     - name: Test health endpoint
