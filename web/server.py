@@ -259,7 +259,7 @@ def extract_lha(lha_path, extract_dir):
         music_files = []
         for file_path in extract_dir.rglob("*"):
             if file_path.is_file():
-                # Check by extension or by 'cust.' prefix (Hippel-COSO custom format)
+                # Check by extension or by 'cust.' prefix (custom format)
                 if (
                     file_path.suffix.lower() in music_extensions
                     or file_path.name.startswith("cust.")
@@ -354,9 +354,10 @@ def convert_to_wav(input_path, output_path, use_cache=True, compress_flac=False)
             return False, "Illegal input file path", None, None
         # Detect player format before conversion
         player_format = detect_player_format(input_path)
+        # Always compute cache_hash for later use
+        cache_hash = get_file_hash(input_path)
         # Check cache first
         if use_cache:
-            cache_hash = get_file_hash(input_path)
             cached_file = get_cached_conversion(cache_hash, prefer_flac=compress_flac)
             if cached_file:
                 # Copy cached file to output path
