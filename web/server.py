@@ -426,15 +426,21 @@ def convert_to_wav(input_path, output_path, use_cache=True, compress_flac=False)
 
 def convert_tfmx(mdat_url, smpl_url, output_path, use_cache=True, compress_flac=False):
     """Convert TFMX module using uade-convert helper with caching and FLAC compression"""
+    # Defensive: Restrict output_path to CONVERTED_DIR
+    output_resolved = Path(output_path).resolve()
+    if not output_resolved.is_relative_to(CONVERTED_DIR.resolve()):
+        logger.error("Aborting: attempted write outside converted directory")
+        return False, "Illegal output file path", None
     try:
-        # Create cache key from both URLs
+        # Create cache key from both URLs (use raw input, not sanitized)
         if use_cache:
-            # Cache key only
+            # Normalize URLs for cache key
+            norm_mdat_url = mdat_url.strip().lower()
+            norm_smpl_url = smpl_url.strip().lower()
             cache_key = hashlib.md5(
-                f"{mdat_url}:{smpl_url}".encode(), usedforsecurity=False
+                f"{norm_mdat_url}:{norm_smpl_url}".encode(), usedforsecurity=False
             ).hexdigest()
             cached_file = get_cached_conversion(cache_key, prefer_flac=compress_flac)
-
             if cached_file:
                 # Cache hit - copy cached file
                 if compress_flac and cached_file.suffix == ".flac":
@@ -445,7 +451,8 @@ def convert_tfmx(mdat_url, smpl_url, output_path, use_cache=True, compress_flac=
                     shutil.copy2(cached_file, output_path)
                     return True, None, cached_file
 
-        cmd = ["/usr/local/bin/uade-convert", mdat_url, smpl_url, str(output_path)]
+        # Sanitize URLs before passing to command execution
+        cmd = ["/usr/local/bin/uade-convert", sanitized_url(mdat_url), sanitized_url(smpl_url), str(output_path)]
 
         result = subprocess.run(cmd, capture_output=True, text=True, timeout=300)
 
