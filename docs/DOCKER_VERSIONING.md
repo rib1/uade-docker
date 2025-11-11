@@ -53,7 +53,7 @@ uade-cli:<UADE_VERSION>-<VARIANT>.<BUILD_NUMBER>
 ### Image Naming
 
 ```
-docker.io/rib1/uade-cli:<tag>
+gcr.io/<GCP_PROJECT_ID>/uade-cli:<tag>
 ```
 
 ### Tag Strategy
@@ -177,7 +177,7 @@ Track all published versions in `deployment/UADE_VERSIONS.md`:
 # UADE Base Image Versions
 
 ## 2.13-base.1 (2025-11-11) [INITIAL RELEASE]
-- **Image:** docker.io/rib1/uade-cli:2.13-base.1
+- **Image:** gcr.io/<GCP_PROJECT_ID>/uade-cli:2.13-base.1
 - **UADE Version:** 2.13 (stable)
 - **Base Image:** debian:stable-slim
 - **Status:** Production (Dockerfile.web pinned to this version)
