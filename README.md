@@ -8,6 +8,16 @@ Docker containers for playing and converting Amiga music modules using UADE (Uni
 
 ## Two Ways to Use
 
+### 🌐 Web Player
+
+Browser-based player with drag-and-drop interface.
+
+**Live:** <https://uade-web-player-675650150969.us-central1.run.app>
+
+Features: Drag & drop files, download from URLs, **LHA archive extraction**, TFMX support, convert to WAV/FLAC, format auto-detection
+
+**[📖 Full Documentation](docs/WEB-PLAYER.md)**
+
 ### 🖥️ Command-Line
 
 Convert modules locally with Docker.
@@ -19,15 +29,20 @@ docker run --rm -v "$env:USERPROFILE\Music:/output" ghcr.io/rib1/uade-player -c 
 
 **[📖 Full Documentation](docs/CLI-USAGE.md)** - Examples, PowerShell integration, TFMX helpers
 
-### 🌐 Web Player
+## Docker Base Image Versioning
 
-Browser-based player with drag-and-drop interface.
+This project uses semantic versioning for the UADE CLI base image to ensure stability and predictable updates.
 
-**Live:** <https://uade-web-player-675650150969.us-central1.run.app>
+**Current Production:** `uade-cli:2.13-base.1`
 
-Features: Drag & drop files, download from URLs, **LHA archive extraction**, TFMX support, convert to WAV/FLAC, format auto-detection
+- **[Docker Versioning Schema](docs/DOCKER_VERSIONING.md)** - Complete versioning strategy, update procedures, and CI/CD pipeline
+- **[UADE Versions History](deployment/UADE_VERSIONS.md)** - Release notes and changelog for all base image versions
 
-**[📖 Full Documentation](docs/WEB-PLAYER.md)**
+**Quick Reference:**
+- Format: `uade-cli:<UADE_VERSION>-base.<BUILD_NUMBER>` (e.g., `2.13-base.1`)
+- UADE Version: Upstream UADE release version (e.g., 2.13)
+- Build Number: Increments for patches, security updates, or dependency changes
+- Pinned in Dockerfile.web for reproducible builds and controlled upgrades
 
 ## Architecture
 

@@ -1,7 +1,9 @@
 # Use versioned UADE CLI base image for stable, tested releases
 # Pin specific versions to enable controlled updates and prevent breaking changes
 # See deployment/DOCKER_VERSIONING_SCHEMA.md for versioning strategy
-ARG BASE_IMAGE=uade-cli:2.13-base.5
+#
+# Initial release: 2.13-base.1 (first production version, 2025-11-11)
+ARG BASE_IMAGE=uade-cli:2.13-base.1
 FROM ${BASE_IMAGE} AS uade-base
 
 # Runtime stage - Add web server

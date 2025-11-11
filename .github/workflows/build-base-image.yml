@@ -5,16 +5,17 @@ on:
   workflow_dispatch:
     inputs:
       uade_version:
-        description: 'UADE version to build (e.g., 2.13 or 2.14)'
-        required: true
+        description: 'UADE version to build (e.g., 2.13, 2.14). Default: 2.13'
+        required: false
         type: string
+        default: '2.13'
       build_number:
-        description: 'Build number for this UADE version (default: 1 for new version)'
+        description: 'Build number for this UADE version (default: 1 for new version, increment for patches)'
         required: false
         type: string
         default: '1'
       push_latest:
-        description: 'Push as latest tag?'
+        description: 'Push as latest tag? (only for initial release or major updates)'
         required: false
         type: boolean
         default: false
@@ -46,15 +47,10 @@ jobs:
       - name: Parse version information
         id: version
         run: |
-          # Get input values or extract from Dockerfile
+          # Get input values or use defaults for initial release (2.13-base.1)
           UADE_VERSION="${{ inputs.uade_version }}"
-          
-          if [ -z "$UADE_VERSION" ]; then
-            # Try to extract UADE version from Dockerfile
-            UADE_VERSION=$(grep -oP 'uade-\K[\d.]+' Dockerfile | head -1)
-            if [ -z "$UADE_VERSION" ]; then
-              UADE_VERSION="2.13"  # Default fallback
-            fi
+          if [ -z "$UADE_VERSION" ] || [ "$UADE_VERSION" == "2.13" ]; then
+            UADE_VERSION="2.13"
           fi
           
           BUILD_NUMBER="${{ inputs.build_number }}"
@@ -70,7 +66,7 @@ jobs:
           echo "image_tag=${IMAGE_TAG}" >> $GITHUB_OUTPUT
           echo "image_url=${IMAGE_URL}" >> $GITHUB_OUTPUT
           
-          echo "Building: ${IMAGE_TAG}"
+          echo "✓ Version parsed: ${IMAGE_TAG}"
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -121,23 +117,27 @@ jobs:
       - name: Create build summary
         run: |
           cat > /tmp/build-summary.txt << 'EOF'
-          # Build Summary
+          # Build Summary: UADE CLI Base Image
           
           Image: ${{ steps.version.outputs.image_url }}
           UADE Version: ${{ steps.version.outputs.uade_version }}
           Build Number: ${{ steps.version.outputs.build_number }}
           
           ## Tags Published
-          - ${{ steps.version.outputs.image_tag }}
-          - ${{ steps.version.outputs.uade_version }}-base
-          - ${{ steps.version.outputs.uade_version }}-base.latest
-          - latest (if applicable)
+          - ${{ steps.version.outputs.image_tag }} (specific version+build)
+          - ${{ steps.version.outputs.uade_version }}-base (latest for this UADE version)
+          - ${{ steps.version.outputs.uade_version }}-base.latest (pinned latest patch)
+          - latest (global latest, if specified)
           
-          ## Next Steps
-          1. Run full E2E test suite against this image
-          2. Update deployment/UADE_VERSIONS.md if appropriate
-          3. Pin to Dockerfile.web after validation
-          4. Create GitHub release with test results
+          ## For Initial Release (2.13-base.1)
+          - Image is production-ready for Dockerfile.web
+          - All tags point to the same image
+          - Pin Dockerfile.web to: uade-cli:2.13-base.1
+          
+          ## For Future Updates
+          - Patch releases: Increment build_number (2.13-base.2, etc.)
+          - Major updates: New UADE version (2.14-base.1, etc.)
+          - Always run E2E tests before updating Dockerfile.web
           EOF
           cat /tmp/build-summary.txt
 

@@ -1,3 +1,12 @@
+# UADE CLI Base Image v2.13-base.1
+# Versioning: UADE_VERSION-base.BUILD_NUMBER
+# This Dockerfile builds UADE 2.13 (stable) from source
+# See: https://gitlab.com/uade-music-player/uade/-/releases/uade-2.13
+#
+# Version history maintained in: deployment/UADE_VERSIONS.md
+# Image registry: docker.io/rib1/uade-cli
+# Example tags: 2.13-base.1, 2.13-base, 2.13-base.latest, latest
+#
 # Use a lightweight Debian-based image
 FROM debian:stable-slim
 
