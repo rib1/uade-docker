@@ -34,7 +34,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
-      packages: write
+      id-token: write
 
     outputs:
       image_tag: ${{ steps.version.outputs.image_tag }}
@@ -59,7 +59,7 @@ jobs:
           fi
           
           IMAGE_TAG="${UADE_VERSION}-base.${BUILD_NUMBER}"
-          IMAGE_URL="docker.io/rib1/uade-cli:${IMAGE_TAG}"
+          IMAGE_URL="gcr.io/${{ secrets.GCP_PROJECT_ID }}/uade-cli:${IMAGE_TAG}"
           
           echo "uade_version=${UADE_VERSION}" >> $GITHUB_OUTPUT
           echo "build_number=${BUILD_NUMBER}" >> $GITHUB_OUTPUT
@@ -71,48 +71,39 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      - name: Log in to Docker Hub
-        uses: docker/login-action@v3
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v3
         with:
-          username: ${{ secrets.DOCKER_HUB_USERNAME }}
-          password: ${{ secrets.DOCKER_HUB_TOKEN }}
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
+
+      - name: Set up Cloud SDK
+        uses: google-github-actions/setup-gcloud@v3
+
+      - name: Configure Docker for GCR
+        run: gcloud auth configure-docker
 
       - name: Build Docker image
-        uses: docker/build-push-action@v5
-        with:
-          context: .
-          file: ./Dockerfile
-          push: false
-          load: true
-          tags: ${{ steps.version.outputs.image_url }}
-          labels: |
-            org.opencontainers.image.version=${{ steps.version.outputs.image_tag }}
-            org.opencontainers.image.source=https://github.com/rib1/uade-docker
-            org.opencontainers.image.title=UADE CLI Base
-            org.opencontainers.image.created=${{ github.event.head_commit.timestamp }}
+        run: |
+          docker build -f Dockerfile \
+            -t ${{ steps.version.outputs.image_url }} \
+            -t gcr.io/${{ secrets.GCP_PROJECT_ID }}/uade-cli:${{ steps.version.outputs.uade_version }}-base \
+            -t gcr.io/${{ secrets.GCP_PROJECT_ID }}/uade-cli:latest \
+            --label org.opencontainers.image.version=${{ steps.version.outputs.image_tag }} \
+            --label org.opencontainers.image.source=https://github.com/rib1/uade-docker \
+            --label org.opencontainers.image.title="UADE CLI Base" \
+            .
 
       - name: Verify image runs
         run: |
           docker run --rm ${{ steps.version.outputs.image_url }} --version
           docker run --rm ${{ steps.version.outputs.image_url }} --help
 
-      - name: Push version tags
+      - name: Push image to Google Container Registry
         run: |
+          echo "Pushing to GCR: ${{ steps.version.outputs.image_url }}"
           docker push ${{ steps.version.outputs.image_url }}
-          
-          # Also push variant tags
-          UADE_VERSION=${{ steps.version.outputs.uade_version }}
-          docker tag ${{ steps.version.outputs.image_url }} docker.io/rib1/uade-cli:${UADE_VERSION}-base
-          docker tag ${{ steps.version.outputs.image_url }} docker.io/rib1/uade-cli:${UADE_VERSION}-base.latest
-          
-          docker push docker.io/rib1/uade-cli:${UADE_VERSION}-base
-          docker push docker.io/rib1/uade-cli:${UADE_VERSION}-base.latest
-
-      - name: Push latest tag
-        if: inputs.push_latest || github.event_name == 'push'
-        run: |
-          docker tag ${{ steps.version.outputs.image_url }} docker.io/rib1/uade-cli:latest
-          docker push docker.io/rib1/uade-cli:latest
+          docker push gcr.io/${{ secrets.GCP_PROJECT_ID }}/uade-cli:${{ steps.version.outputs.uade_version }}-base
+          docker push gcr.io/${{ secrets.GCP_PROJECT_ID }}/uade-cli:latest
 
       - name: Create build summary
         run: |
@@ -122,17 +113,17 @@ jobs:
           Image: ${{ steps.version.outputs.image_url }}
           UADE Version: ${{ steps.version.outputs.uade_version }}
           Build Number: ${{ steps.version.outputs.build_number }}
+          Registry: Google Container Registry (GCR)
           
-          ## Tags Published
-          - ${{ steps.version.outputs.image_tag }} (specific version+build)
-          - ${{ steps.version.outputs.uade_version }}-base (latest for this UADE version)
-          - ${{ steps.version.outputs.uade_version }}-base.latest (pinned latest patch)
-          - latest (global latest, if specified)
+          ## Tags Published to GCR
+          - gcr.io/${{ secrets.GCP_PROJECT_ID }}/uade-cli:${{ steps.version.outputs.image_tag }}
+          - gcr.io/${{ secrets.GCP_PROJECT_ID }}/uade-cli:${{ steps.version.outputs.uade_version }}-base
+          - gcr.io/${{ secrets.GCP_PROJECT_ID }}/uade-cli:latest
           
           ## For Initial Release (2.13-base.1)
           - Image is production-ready for Dockerfile.web
           - All tags point to the same image
-          - Pin Dockerfile.web to: uade-cli:2.13-base.1
+          - Pin Dockerfile.web to: gcr.io/${{ secrets.GCP_PROJECT_ID }}/uade-cli:2.13-base.1
           
           ## For Future Updates
           - Patch releases: Increment build_number (2.13-base.2, etc.)
@@ -152,11 +143,25 @@ jobs:
     name: Test Base Image Integration
     needs: build
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
     if: github.event_name == 'push' || inputs.push_latest == true
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v3
+        with:
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
+
+      - name: Set up Cloud SDK
+        uses: google-github-actions/setup-gcloud@v3
+
+      - name: Configure Docker for GCR
+        run: gcloud auth configure-docker
 
       - name: Set up Node.js
         uses: actions/setup-node@v4
@@ -172,11 +177,9 @@ jobs:
         run: npx playwright install --with-deps chromium
 
       - name: Build web player with new base image
-        env:
-          UADE_CLI_VERSION: ${{ needs.build.outputs.image_tag }}
         run: |
-          # Update Dockerfile.web to use new base image
-          sed -i "s|FROM uade-cli:.*|FROM uade-cli:${{ needs.build.outputs.image_tag }}|" Dockerfile.web
+          # Update Dockerfile.web to use new base image from GCR
+          sed -i "s|FROM uade-cli:.*|FROM ${{ needs.build.outputs.image_url }}|" Dockerfile.web
           docker build -f Dockerfile.web -t uade-web:test .
 
       - name: Start test environment
