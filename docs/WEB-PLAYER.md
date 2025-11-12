@@ -134,6 +134,7 @@ Click any example module on the homepage to instantly hear classic Amiga music:
 Drag and drop .mod, .ahx, or other module files directly into the browser.
 
 **Supported formats:**
+
 - Individual modules (.mod, .ahx, .tfmx, .okta, .sid, etc.)
 - **LHA archives (.lha)** - Automatically extracted and played
 
@@ -143,7 +144,7 @@ Paste a Modland or ModArchive URL to download and convert automatically.
 
 **Example URLs:**
 
-```
+```url
 https://modland.com/pub/modules/Protracker/Captain/space%20debris.mod
 https://modland.com/pub/modules/AHX/Pink/stormlord.ahx
 http://files.exotica.org.uk/?file=exotica%2Fmedia%2Faudio%2FUnExoticA%2FGame%2FFollin_Tim%2FL_E_D_Storm.lha
@@ -376,7 +377,7 @@ services:
 
 ## Links
 
-- **UADE Home:** https://zakalwe.fi/uade/
+- **UADE Home:** <https://zakalwe.fi/uade/>
 - **UADE Repository:** <https://gitlab.com/uade-music-player/uade>
 - **GitHub Project:** <https://github.com/rib1/uade-docker>
 - **Modland Archive:** <https://modland.com/pub/modules/>

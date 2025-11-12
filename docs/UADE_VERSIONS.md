@@ -19,11 +19,13 @@ This file tracks all published versions of the `uade-cli` base Docker image and 
 - **Build Duration:** ~8 minutes
 
 **Changes:**
+
 - Initial versioned release of UADE CLI base image
 - Implements semantic versioning: UADE_VERSION-base.BUILD_NUMBER
 - Enables controlled updates and prevents breaking changes from upstream
 
 **Features:**
+
 - Core UADE command-line tools (uade123, uade-convert)
 - Support for MOD, AHX, TFMX, S3M, XM, IT, and other formats
 - Non-root user security
@@ -31,12 +33,14 @@ This file tracks all published versions of the `uade-cli` base Docker image and 
 - Helper script: `uade-convert` for TFMX dual-file conversion
 
 **Testing:**
+
 - ✅ Health check: `uade123 --version` works
 - ✅ Conversion test: UADE available and functional
 - ✅ Web player integration: Dockerfile.web builds and runs successfully
 - ✅ API endpoints: Health, examples, and core functionality verified
 
 **Deployment Status:**
+
 - Currently used by: Dockerfile.web
 - Available as: `ghcr.io/rib1/uade-cli:3.05-base.1`, `ghcr.io/rib1/uade-cli:3.05-base`, `ghcr.io/rib1/uade-cli:latest`
 - Verified binary: `uade123 3.05`
@@ -51,6 +55,7 @@ This file tracks all published versions of the `uade-cli` base Docker image and 
 - **Expected:** Q1 2025 (check [UADE Releases](https://gitlab.com/uade-music-player/uade/-/releases))
 
 **Process for next version:**
+
 1. Check upstream releases
 2. Build new base image: `3.06-base.1`
 3. Run full E2E test suite
@@ -130,7 +135,7 @@ docker push gcr.io/<GCP_PROJECT_ID>/uade-cli:latest
 
 If a version has critical issues:
 
-**Step 1: Revert Dockerfile.web to previous version**
+### Step 1: Revert Dockerfile.web to previous version
 
 ```dockerfile
 # If 3.05-base.2 has issues:
@@ -141,7 +146,7 @@ FROM gcr.io/<GCP_PROJECT_ID>/uade-cli:3.05-base.2
 FROM gcr.io/<GCP_PROJECT_ID>/uade-cli:3.05-base.1
 ```
 
-**Step 2: Rebuild and test**
+### Step 2: Rebuild and test
 
 ```bash
 docker build -f Dockerfile.web -t uade-web:test .
@@ -149,7 +154,7 @@ docker build -f Dockerfile.web -t uade-web:test .
 npm test
 ```
 
-**Step 3: Commit and redeploy**
+### Step 3: Commit and redeploy
 
 ```bash
 git add Dockerfile.web

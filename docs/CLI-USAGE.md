@@ -1,12 +1,14 @@
 # TL;DR
 
 **Build the Docker image:**
+
 ```powershell
 cd uade-docker
 docker build -t uade-cli .
 ```
 
 **Convert a module to WAV (works on Windows):**
+
 ```powershell
 docker run --rm -v "$env:USERPROFILE\Music:/output" --entrypoint /bin/sh uade-cli -c "curl -k -o /tmp/space-debris.mod 'https://modland.com/pub/modules/Protracker/Captain/space%20debris.mod' && /usr/local/bin/uade123 -c -f /output/space-debris.wav /tmp/space-debris.mod"
 ```

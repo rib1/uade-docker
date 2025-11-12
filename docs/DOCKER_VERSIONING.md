@@ -5,6 +5,7 @@
 This document defines a versioning strategy for the UADE CLI Docker base image (`Dockerfile`) to maintain stability, enable controlled updates, and allow predictable rolling out of UADE upstream changes to dependent services (e.g., `Dockerfile.web`).
 
 **Goal:** Decouple UADE upstream versions from application versions, enabling:
+
 - ✅ Stable base image that's tested and verified
 - ✅ Controlled updates to `Dockerfile.web` with explicit pinning
 - ✅ Regression detection via comprehensive E2E tests
@@ -19,11 +20,12 @@ This document defines a versioning strategy for the UADE CLI Docker base image (
 
 ### Format
 
-```
+```text
 uade-cli:<UADE_VERSION>-<VARIANT>.<BUILD_NUMBER>
 ```
 
 **Examples:**
+
 - `uade-cli:3.05-base.1` — UADE 3.05, base variant, build 1
 - `uade-cli:3.05-base.5` — UADE 3.05, base variant, build 5 (patch for this UADE version)
 - `uade-cli:3.06-base.1` — New UADE version, base variant, build 1
@@ -31,16 +33,19 @@ uade-cli:<UADE_VERSION>-<VARIANT>.<BUILD_NUMBER>
 ### Components
 
 #### UADE_VERSION
+
 - Extracted from upstream UADE project releases (e.g., tags like `uade-3.05`)
 - Format: `<MAJOR>.<MINOR>` (e.g., `3.05`)
 - Source: Latest stable UADE release from [UADE GitLab](https://gitlab.com/uade-music-player/uade/-/releases)
 
 #### VARIANT
+
 - Indicates the base configuration/feature set
 - **`base`** — Default variant: minimal UADE CLI with core dependencies
 - Future variants: `full` (with extra tools), `minimal` (stripped down), etc.
 
 #### BUILD_NUMBER
+
 - Increments when rebuilding the same UADE version without upstream changes
 - Use for: Dependency updates, bug fixes, security patches
 - Resets to 1 when UADE_VERSION changes
@@ -48,14 +53,11 @@ uade-cli:<UADE_VERSION>-<VARIANT>.<BUILD_NUMBER>
   - `3.05-base.1` → rebuild with security patch → `3.05-base.2`
   - `3.05-base.5` → bump to UADE 3.06 → `3.06-base.1`
 
----
-
-gcr.io/<GCP_PROJECT_ID>/uade-cli:<tag>
 ## Image Registry Structure
 
 ### Image Naming
 
-```
+```text
 ghcr.io/rib1/uade-cli:<tag>
 ```
 
@@ -70,7 +72,7 @@ ghcr.io/rib1/uade-cli:<tag>
 
 ### Initial Release Tag Timeline
 
-```
+```text
 2025-11-11: UADE 3.05 first release
   → 3.05-base.1       (initial production, pinned in Dockerfile.web)
   → 3.05-base
