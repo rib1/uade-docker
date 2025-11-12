@@ -3,12 +3,12 @@
 **Build the Docker image:**
 ```powershell
 cd uade-docker
-docker build -t uade-player .
+docker build -t uade-cli .
 ```
 
 **Convert a module to WAV (works on Windows):**
 ```powershell
-docker run --rm -v "$env:USERPROFILE\Music:/output" --entrypoint /bin/sh uade-player -c "curl -k -o /tmp/space-debris.mod 'https://modland.com/pub/modules/Protracker/Captain/space%20debris.mod' && /usr/local/bin/uade123 -c -f /output/space-debris.wav /tmp/space-debris.mod"
+docker run --rm -v "$env:USERPROFILE\Music:/output" --entrypoint /bin/sh uade-cli -c "curl -k -o /tmp/space-debris.mod 'https://modland.com/pub/modules/Protracker/Captain/space%20debris.mod' && /usr/local/bin/uade123 -c -f /output/space-debris.wav /tmp/space-debris.mod"
 ```
 
 _Output: `$env:USERPROFILE\Music\space-debris.wav`_
@@ -37,7 +37,7 @@ Open PowerShell and navigate to the directory containing the Dockerfile:
 
 ```powershell
 cd uade-docker
-docker build -t uade-player .
+docker build -t uade-cli .
 ```
 
 ## Audio Output on Windows
@@ -50,10 +50,10 @@ Convert modules to WAV files that you can play on Windows:
 
 ```powershell
 # Convert a single module to WAV (use -c for headless mode, no audio device needed)
-docker run --rm -v "C:\path\to\your\modules:/music" uade-player -c -f /music/output.wav /music/song.mod
+docker run --rm -v "C:\path\to\your\modules:/music" uade-cli -c -f /music/output.wav /music/song.mod
 
 # Convert multiple modules
-docker run --rm -v "C:\path\to\your\modules:/music" uade-player -c -f /music/output.wav /music/*.mod
+docker run --rm -v "C:\path\to\your\modules:/music" uade-cli -c -f /music/output.wav /music/*.mod
 ```
 
 Then play the WAV file with any Windows audio player.
@@ -89,7 +89,7 @@ If you're using WSL2, you can set up PulseAudio for real-time playback:
 3. Set the PULSE_SERVER environment variable
 
 ```powershell
-docker run --rm -e PULSE_SERVER=unix:/tmp/pulseaudio.socket -v "C:\path\to\modules:/music" uade-player /music/song.mod
+docker run --rm -e PULSE_SERVER=unix:/tmp/pulseaudio.socket -v "C:\path\to\modules:/music" uade-cli /music/song.mod
 ```
 
 ### Basic Usage (No Audio)
@@ -97,7 +97,7 @@ docker run --rm -e PULSE_SERVER=unix:/tmp/pulseaudio.socket -v "C:\path\to\modul
 To test without audio output:
 
 ```powershell
-docker run --rm -v "C:\path\to\your\modules:/music" uade-player /music/yourfile.mod
+docker run --rm -v "C:\path\to\your\modules:/music" uade-cli /music/yourfile.mod
 ```
 
 ### Common Options
@@ -112,16 +112,16 @@ You can pass any UADE command-line options:
 
 ```powershell
 # Show help
-docker run --rm uade-player --help
+docker run --rm uade-cli --help
 
 # Play with specific subsong
-docker run --rm -v "C:\path\to\modules:/music" uade-player -s 2 /music/song.mod
+docker run --rm -v "C:\path\to\modules:/music" uade-cli -s 2 /music/song.mod
 
 # Set frequency
-docker run --rm -v "C:\path\to\modules:/music" uade-player -f 48000 /music/song.mod
+docker run --rm -v "C:\path\to\modules:/music" uade-cli -f 48000 /music/song.mod
 
 # Shuffle playback
-docker run --rm -v "C:\path\to\modules:/music" uade-player -z /music/*.mod
+docker run --rm -v "C:\path\to\modules:/music" uade-cli -z /music/*.mod
 ```
 
 ## Downloading Modules from the Internet
@@ -133,7 +133,7 @@ You can download modules directly into the container and convert them to WAV in 
 ```powershell
 # Using curl to download (no extra packages needed)
 # Note: Use -k flag if behind corporate proxy (ZScaler, etc.)
-docker run --rm -v "C:\path\to\output:/music" --entrypoint /bin/sh uade-player -c "curl -k -o /tmp/module.mod 'https://modarchive.org/jsplayer.php?moduleid=12345#module.mod' && /usr/local/bin/uade123 -c -f /music/output.wav /tmp/module.mod"
+docker run --rm -v "C:\path\to\output:/music" --entrypoint /bin/sh uade-cli -c "curl -k -o /tmp/module.mod 'https://modarchive.org/jsplayer.php?moduleid=12345#module.mod' && /usr/local/bin/uade123 -c -f /music/output.wav /tmp/module.mod"
 ```
 
 ### Popular Module Archives
@@ -151,14 +151,14 @@ Modland provides HTTP access to their extensive Protracker module collection. Br
 ```powershell
 # Browse Modland's Protracker collection to find a module, then download and convert
 # Example: Download from 4-Mat's collection
-docker run --rm -v "$env:USERPROFILE\Music:/music" --entrypoint /bin/sh uade-player -c "curl -k -o /tmp/module.mod 'https://modland.com/pub/modules/Protracker/4-Mat/enigma.mod' && /usr/local/bin/uade123 -c -f /music/enigma.wav /tmp/module.mod"
+docker run --rm -v "$env:USERPROFILE\Music:/music" --entrypoint /bin/sh uade-cli -c "curl -k -o /tmp/module.mod 'https://modland.com/pub/modules/Protracker/4-Mat/enigma.mod' && /usr/local/bin/uade123 -c -f /music/enigma.wav /tmp/module.mod"
 ```
 
 **Bulk download multiple modules with a script:**
 
 ```powershell
 # Create a list of URLs in urls.txt, then download all:
-docker run --rm -v "$env:USERPROFILE\Music:/music" -v "C:\path\to\urls.txt:/urls.txt" --entrypoint /bin/sh uade-player -c "while read url; do filename=$(basename $url); curl -k -o /tmp/$filename $url && /usr/local/bin/uade123 -c -f /music/${filename%.mod}.wav /tmp/$filename; done < /urls.txt"
+docker run --rm -v "$env:USERPROFILE\Music:/music" -v "C:\path\to\urls.txt:/urls.txt" --entrypoint /bin/sh uade-cli -c "while read url; do filename=$(basename $url); curl -k -o /tmp/$filename $url && /usr/local/bin/uade123 -c -f /music/${filename%.mod}.wav /tmp/$filename; done < /urls.txt"
 ```
 
 > **Note:** Modland's rsync server requires authentication, but their HTTP interface is open for browsing and downloading individual files.
@@ -171,10 +171,10 @@ The Docker image includes a `uade-convert` helper script that simplifies downloa
 
 ```powershell
 # Use the built-in uade-convert helper script
-docker run --rm -v "$env:USERPROFILE\Music:/output" --entrypoint uade-convert uade-player "<mdat-url>" "<smpl-url>" /output/output.wav
+docker run --rm -v "$env:USERPROFILE\Music:/output" --entrypoint uade-convert uade-cli "<mdat-url>" "<smpl-url>" /output/output.wav
 
 # Example:
-docker run --rm -v "$env:USERPROFILE\Music:/output" --entrypoint uade-convert uade-player "https://modland.com/pub/modules/TFMX/Chris%20Huelsbeck/mdat.turrican%202%20level%200-intro" "https://modland.com/pub/modules/TFMX/Chris%20Huelsbeck/smpl.turrican%202%20level%200-intro" /output/turrican2-intro.wav
+docker run --rm -v "$env:USERPROFILE\Music:/output" --entrypoint uade-convert uade-cli "https://modland.com/pub/modules/TFMX/Chris%20Huelsbeck/mdat.turrican%202%20level%200-intro" "https://modland.com/pub/modules/TFMX/Chris%20Huelsbeck/smpl.turrican%202%20level%200-intro" /output/turrican2-intro.wav
 ```
 
 ### PowerShell Function (Recommended for Windows Users)
@@ -188,7 +188,7 @@ function Convert-TFMX {
         [string]$SmplUrl,
         [string]$OutputFile = "C:\Users\$env:USERNAME\Music\output.wav"
     )
-    docker run --rm -v "C:\Users\$env:USERNAME\Music:/output" --entrypoint uade-convert uade-player "$MdatUrl" "$SmplUrl" "/output/$(Split-Path $OutputFile -Leaf)"
+    docker run --rm -v "C:\Users\$env:USERNAME\Music:/output" --entrypoint uade-convert uade-cli "$MdatUrl" "$SmplUrl" "/output/$(Split-Path $OutputFile -Leaf)"
 }
 ```
 
@@ -211,7 +211,7 @@ All examples download and convert to WAV format ready to play on Windows.
 # You need BOTH: mdat.turrican2level0 AND smpl.turrican2level0
 
 # Convert local TFMX module to WAV (both files must be in same directory):
-docker run --rm -v "${PWD}:/music" -v "$env:USERPROFILE\Music:/output" uade-player -c -f /output/turrican2.wav /music/mdat.turrican2level0
+docker run --rm -v "${PWD}:/music" -v "$env:USERPROFILE\Music:/output" uade-cli -c -f /output/turrican2.wav /music/mdat.turrican2level0
 ```
 
 _Output: `$env:USERPROFILE\Music\turrican2.wav`_
@@ -220,14 +220,14 @@ _Output: `$env:USERPROFILE\Music\turrican2.wav`_
 
 ```powershell
 # Download and convert TFMX directly (recommended method)
-docker run --rm -v "$env:USERPROFILE\Music:/output" --entrypoint uade-convert uade-player "https://modland.com/pub/modules/TFMX/Chris%20Huelsbeck/mdat.turrican%202%20level%200-intro" "https://modland.com/pub/modules/TFMX/Chris%20Huelsbeck/smpl.turrican%202%20level%200-intro" /output/turrican2-intro.wav
+docker run --rm -v "$env:USERPROFILE\Music:/output" --entrypoint uade-convert uade-cli "https://modland.com/pub/modules/TFMX/Chris%20Huelsbeck/mdat.turrican%202%20level%200-intro" "https://modland.com/pub/modules/TFMX/Chris%20Huelsbeck/smpl.turrican%202%20level%200-intro" /output/turrican2-intro.wav
 ```
 
 **Captain - "Space Debris" (Protracker):**
 
 ```powershell
 # Download and convert Space Debris → space-debris.wav
-docker run --rm -v "$env:USERPROFILE\Music:/output" --entrypoint /bin/sh uade-player -c "curl -k -o /tmp/space-debris.mod 'https://modland.com/pub/modules/Protracker/Captain/space%20debris.mod' && /usr/local/bin/uade123 -c -f /output/space-debris.wav /tmp/space-debris.mod"
+docker run --rm -v "$env:USERPROFILE\Music:/output" --entrypoint /bin/sh uade-cli -c "curl -k -o /tmp/space-debris.mod 'https://modland.com/pub/modules/Protracker/Captain/space%20debris.mod' && /usr/local/bin/uade123 -c -f /output/space-debris.wav /tmp/space-debris.mod"
 ```
 
 _Output: `$env:USERPROFILE\Music\space-debris.wav` (306 seconds)_
@@ -239,14 +239,14 @@ _Output: `$env:USERPROFILE\Music\space-debris.wav` (306 seconds)_
 # Examples: beyond music.mod, broken dreams.mod, starwars.mod
 
 # Download "Beyond Music"
-docker run --rm -v "$env:USERPROFILE\Music:/output" --entrypoint /bin/sh uade-player -c "curl -k -o /tmp/beyond-music.mod 'https://modland.com/pub/modules/Protracker/Captain/beyond%20music.mod' && /usr/local/bin/uade123 -c -f /output/beyond-music.wav /tmp/beyond-music.mod"
+docker run --rm -v "$env:USERPROFILE\Music:/output" --entrypoint /bin/sh uade-cli -c "curl -k -o /tmp/beyond-music.mod 'https://modland.com/pub/modules/Protracker/Captain/beyond%20music.mod' && /usr/local/bin/uade123 -c -f /output/beyond-music.wav /tmp/beyond-music.mod"
 ```
 
 **Lizardking - "Doskpop" (Famous Amiga Tracker):**
 
 ```powershell
 # Download and convert "L.K's Doskpop" → doskpop.wav
-docker run --rm -v "$env:USERPROFILE\Music:/output" --entrypoint /bin/sh uade-player -c "curl -k -o /tmp/doskpop.mod 'https://modland.com/pub/modules/Protracker/Lizardking/l.k%27s%20doskpop.mod' && /usr/local/bin/uade123 -c -f /output/doskpop.wav /tmp/doskpop.mod"
+docker run --rm -v "$env:USERPROFILE\Music:/output" --entrypoint /bin/sh uade-cli -c "curl -k -o /tmp/doskpop.mod 'https://modland.com/pub/modules/Protracker/Lizardking/l.k%27s%20doskpop.mod' && /usr/local/bin/uade123 -c -f /output/doskpop.wav /tmp/doskpop.mod"
 ```
 
 _Output: `$env:USERPROFILE\Music\doskpop.wav` (146 seconds)_
@@ -257,7 +257,7 @@ _More Lizardking classics: <https://modland.com/pub/modules/Protracker/Lizardkin
 
 ```powershell
 # Download and convert "Populous" → populous.wav
-docker run --rm -v "$env:USERPROFILE\Music:/output" --entrypoint /bin/sh uade-player -c "curl -k -o /tmp/populous.mod 'https://modland.com/pub/modules/Protracker/Rob%20Hubbard/populous.mod' && /usr/local/bin/uade123 -c -f /output/populous.wav /tmp/populous.mod"
+docker run --rm -v "$env:USERPROFILE\Music:/output" --entrypoint /bin/sh uade-cli -c "curl -k -o /tmp/populous.mod 'https://modland.com/pub/modules/Protracker/Rob%20Hubbard/populous.mod' && /usr/local/bin/uade123 -c -f /output/populous.wav /tmp/populous.mod"
 ```
 
 _Rob Hubbard's work: <https://modland.com/pub/modules/Protracker/Rob%20Hubbard/>_
@@ -267,7 +267,7 @@ _Rob Hubbard's work: <https://modland.com/pub/modules/Protracker/Rob%20Hubbard/>
 ```powershell
 # Download and convert "Stormlord" → stormlord.wav
 # AHX is a pure synthesis format (no samples) - creates music from mathematical waveforms
-docker run --rm -v "$env:USERPROFILE\Music:/output" --entrypoint /bin/sh uade-player -c "curl -k -o /tmp/stormlord.ahx 'https://modland.com/pub/modules/AHX/Pink/stormlord.ahx' && /usr/local/bin/uade123 -c -f /output/stormlord.wav /tmp/stormlord.ahx"
+docker run --rm -v "$env:USERPROFILE\Music:/output" --entrypoint /bin/sh uade-cli -c "curl -k -o /tmp/stormlord.ahx 'https://modland.com/pub/modules/AHX/Pink/stormlord.ahx' && /usr/local/bin/uade123 -c -f /output/stormlord.wav /tmp/stormlord.ahx"
 ```
 
 _Output: `$env:USERPROFILE\Music\stormlord.wav` (512 seconds / 8.5 minutes from only 12KB!)_
@@ -289,7 +289,7 @@ _More Pink AHX chiptunes: <https://modland.com/pub/modules/AHX/Pink/>_
 ```powershell
 # Download both mdat and smpl files manually, then convert to WAV
 # Note: Use matching base filenames (e.g., both end with "turrican2level0")
-docker run --rm -v "$env:USERPROFILE\Music:/output" --entrypoint /bin/sh uade-player -c "curl -k -o /tmp/mdat.turrican2level0 'https://modland.com/pub/modules/TFMX/Chris%20Huelsbeck/mdat.turrican%202%20level%200-intro' && curl -k -o /tmp/smpl.turrican2level0 'https://modland.com/pub/modules/TFMX/Chris%20Huelsbeck/smpl.turrican%202%20level%200-intro' && /usr/local/bin/uade123 -c -f /output/turrican2-intro.wav /tmp/mdat.turrican2level0"
+docker run --rm -v "$env:USERPROFILE\Music:/output" --entrypoint /bin/sh uade-cli -c "curl -k -o /tmp/mdat.turrican2level0 'https://modland.com/pub/modules/TFMX/Chris%20Huelsbeck/mdat.turrican%202%20level%200-intro' && curl -k -o /tmp/smpl.turrican2level0 'https://modland.com/pub/modules/TFMX/Chris%20Huelsbeck/smpl.turrican%202%20level%200-intro' && /usr/local/bin/uade123 -c -f /output/turrican2-intro.wav /tmp/mdat.turrican2level0"
 ```
 
 > **Note:** TFMX modules require TWO files with matching names:

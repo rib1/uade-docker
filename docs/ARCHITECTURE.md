@@ -43,7 +43,7 @@ architecture-beta
 
 ### Local Docker Layer
 
-- **UADE CLI Container** (`uade-player`)
+- **UADE CLI Container** (`uade-cli`)
   - Debian stable-slim base
   - UADE player compiled from source
   - Command-line interface for module conversion
