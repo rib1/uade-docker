@@ -4,8 +4,16 @@ name: Build and Test Web Player
 on:
   push:
     branches: [ main ]
+    paths:
+      - 'web/**'
+      - 'Dockerfile.web'
+      - '.github/workflows/build-deploy-web-player.yml'
   pull_request:
     branches: [ main ]
+    paths:
+      - 'web/**'
+      - 'Dockerfile.web'
+      - '.github/workflows/build-deploy-web-player.yml'
 
 permissions:
   contents: write
