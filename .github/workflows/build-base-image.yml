@@ -27,6 +27,11 @@ on:
     paths:
       - 'Dockerfile'
       - '.github/workflows/build-base-image.yml'
+  pull_request:
+    branches: [ main ]
+    paths:
+      - 'Dockerfile'
+      - '.github/workflows/build-base-image.yml'
 permissions:
   contents: read
   packages: write
@@ -111,6 +116,22 @@ jobs:
         - Always run E2E tests before updating Dockerfile.web
         EOF
         cat /tmp/build-summary.txt
+
+    - name: Verify UADE executable work
+      run: |
+        docker run --rm ${{ steps.version.outputs.image_url }} uade123 --help
+
+    - name: Confirm UADE version matches input
+      run: |
+        EXPECTED_VERSION="${{ steps.version.outputs.uade_version }}"
+        ACTUAL_VERSION=$(docker run --rm ${{ steps.version.outputs.image_url }} uade123 --version | grep -oP 'uade123 \K[0-9.]+' || echo "unknown")
+        echo "Expected: $EXPECTED_VERSION"
+        echo "Actual:   $ACTUAL_VERSION"
+        if [ "$ACTUAL_VERSION" != "$EXPECTED_VERSION" ]; then
+          echo "❌ UADE version mismatch!"
+          exit 1
+        fi
+        echo "✅ UADE version matches input"
 
     - name: Upload build summary
       uses: actions/upload-artifact@v4

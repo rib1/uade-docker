@@ -43,26 +43,24 @@ jobs:
           # Use IMAGE env var set from github.event.inputs (defaults to empty string)
           # Otherwise, try to extract ARG BASE_IMAGE from Dockerfile.web (sanitize CRLFs).
           # If that fails, fall back to using the default GHCR image URL.
+          DEFAULT_TAG="3.05-base.1"
           if [ -n "$IMAGE" ]; then
             NAME_TAG=$(echo "$IMAGE" | awk -F'/' '{print $NF}')
             if echo "$NAME_TAG" | grep -q ':'; then
               :
             else
-              NAME_TAG="${NAME_TAG}:3.05-base.1"
+              NAME_TAG="${NAME_TAG}:${DEFAULT_TAG}"
             fi
-            BASE_IMAGE="ghcr.io/${{ github.repository_owner }}/uade-player:${NAME_TAG}"
+            BASE_IMAGE="ghcr.io/${{ github.repository_owner }}/uade-cli:${NAME_TAG}"
             echo "Using image name+tag with GHCR: ${BASE_IMAGE}"
           else
             BASE_IMAGE=$(grep -oP '^ARG\s+BASE_IMAGE=\K.*' Dockerfile.web | tr -d '\r' | xargs || true)
             if [ -n "${BASE_IMAGE}" ]; then
               echo "Extracted BASE_IMAGE from Dockerfile.web: ${BASE_IMAGE}"
-              if echo "${BASE_IMAGE}" | grep -qE 'gcr\.io/'; then
-                BASE_IMAGE=$(echo "${BASE_IMAGE}" | sed "s|gcr.io/[^/]*/|ghcr.io/${{ github.repository_owner }}/uade-player:|")
-                echo "Rewrote BASE_IMAGE to use GHCR: ${BASE_IMAGE}"
-              fi
+              BASE_IMAGE=$(echo "${BASE_IMAGE}" | sed "s|gcr.io/[^/]*/|ghcr.io/${{ github.repository_owner }}/uade-cli:|")
+              echo "Rewrote BASE_IMAGE to use GHCR: ${BASE_IMAGE}"
             else
-              DEFAULT_TAG="3.05-base.1"
-              BASE_IMAGE="ghcr.io/${{ github.repository_owner }}/uade-player:${DEFAULT_TAG}"
+              BASE_IMAGE="ghcr.io/${{ github.repository_owner }}/uade-cli:${DEFAULT_TAG}"
               echo "No BASE_IMAGE in Dockerfile.web; falling back to GHCR image: ${BASE_IMAGE}"
             fi
           fi
