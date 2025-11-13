@@ -161,7 +161,7 @@ architecture-beta
 - **Container Runtime:** Docker
 - **Orchestration:** Docker Compose (local), Cloud Run (production)
 - **CI/CD:** GitHub Actions
-- **Registry:** Google Container Registry
+- **Registry:** GitHub Container Registry
 - **Cloud Provider:** Google Cloud Platform
 
 ### Development
@@ -204,3 +204,4 @@ architecture-beta
 - Git commit tracking in responses
 - Budget alerts
 - Network egress monitoring (1GB free tier)
+
