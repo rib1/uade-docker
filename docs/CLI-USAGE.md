@@ -135,7 +135,7 @@ You can download modules directly into the container and convert them to WAV in 
 ```powershell
 # Using curl to download (no extra packages needed)
 # Note: Use -k flag if behind corporate proxy (ZScaler, etc.)
-docker run --rm -v "C:\path\to\output:/music" --entrypoint /bin/sh uade-cli -c "curl -k -o /tmp/module.mod 'https://modarchive.org/jsplayer.php?moduleid=12345#module.mod' && /usr/local/bin/uade123 -c -f /music/output.wav /tmp/module.mod"
+docker run --rm -v "C:\path\to\output:/music" --entrypoint /bin/sh uade-cli -c "curl -k -o /tmp/module.mod 'https://api.modarchive.org/downloads.php?moduleid=165296#jugi_-_ga-ze-bo.mod' && /usr/local/bin/uade123 -c -f /music/output.wav /tmp/module.mod"
 ```
 
 ### Popular Module Archives
@@ -346,7 +346,6 @@ UADE supports many Amiga music formats including:
 - Browse <https://modland.com/pub/modules/Protracker/> to find more artists
 - Modland URLs are case-sensitive
 - For TFMX modules, use the `uade-convert` helper script (see above)
-
 
 ## Troubleshooting
 
