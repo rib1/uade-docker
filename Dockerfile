@@ -1,4 +1,4 @@
-# UADE CLI Base Image v3.05-base.1
+# UADE CLI Base Image v3.05-base.2
 # Versioning: UADE_VERSION-base.BUILD_NUMBER
 # This Dockerfile builds UADE 3.05 (stable) from source
 # Binary version: uade123 3.05
@@ -62,9 +62,10 @@ RUN rm -rf /usr/src/uade-build && \
     apt-get autoremove -y && \
     apt-get install -y --no-install-recommends ca-certificates
 
-# 7. Install curl, rsync, and unzip for downloading modules
+
+# 7. Install curl, rsync, unzip, lhasa, and runtime libraries for UADE file output
 RUN apt-get update && \
-    apt-get install -y --no-install-recommends curl rsync unzip && \
+    apt-get install -y --no-install-recommends curl rsync unzip lhasa libao4 libsndfile1 && \
     rm -rf /var/lib/apt/lists/*
 
 # 8. Create helper script for downloading and converting TFMX modules
@@ -96,7 +97,10 @@ echo "Converting to WAV..."\n\
 ' > /usr/local/bin/uade-convert && chmod +x /usr/local/bin/uade-convert
 
 
-# 9. Create non-root user and set permissions
+# 9. Set UADE_DRIVER to SDL to avoid AO device errors
+ENV UADE_DRIVER=SDL
+
+# 10. Create non-root user and set permissions
 RUN useradd -m -s /bin/bash uadeuser && \
     mkdir -p /output /music /tmp && \
     chown -R uadeuser:uadeuser /output /music /tmp
@@ -109,4 +113,6 @@ RUN chown root:uadeuser /usr/local/bin/uade123 && chmod 4750 /usr/local/bin/uade
 USER uadeuser
 
 # The uade123 command-line player is the primary tool to run
+# Note: Trivy DS026 HEALTHCHECK is intentionally omitted for this CLI base image.
+# Reason: The container exits after running, so health checks are not applicable.
 ENTRYPOINT ["/usr/local/bin/uade123"]

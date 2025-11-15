@@ -46,15 +46,16 @@ jobs:
     - name: Parse version information
       id: version
       run: |
-        # Get input values or use defaults for initial release (3.05-base.1)
+        # Get input values or use defaults from Dockerfile comment
         UADE_VERSION="${{ inputs.uade_version }}"
+        DOCKERFILE_VERSION=$(grep -m1 -oP 'UADE CLI Base Image v\K[0-9.]+-base\.[0-9]+' Dockerfile)
         if [ -z "$UADE_VERSION" ] || [ "$UADE_VERSION" == "3.05" ]; then
-          UADE_VERSION="3.05"
+          UADE_VERSION=$(echo "$DOCKERFILE_VERSION" | grep -oP '^[0-9.]+' )
         fi
         
         BUILD_NUMBER="${{ inputs.build_number }}"
         if [ -z "$BUILD_NUMBER" ]; then
-          BUILD_NUMBER="1"
+          BUILD_NUMBER=$(echo "$DOCKERFILE_VERSION" | grep -oP '(?<=-base\.)[0-9]+')
         fi
         IMAGE_TAG="${UADE_VERSION}-base.${BUILD_NUMBER}"
         IMAGE_URL="ghcr.io/${{ github.repository_owner }}/uade-cli:${IMAGE_TAG}"
