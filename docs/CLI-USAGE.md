@@ -314,7 +314,7 @@ docker run --rm -v "$env:USERPROFILE\Music:/output" --entrypoint /bin/sh uade-cl
 docker run --rm -v "$env:USERPROFILE\Music:/output" --entrypoint /bin/sh uade-cli -c "curl -L -k -o /tmp/Project-X.lha 'http://files.exotica.org.uk/?file=exotica/media%2Faudio%2FUnExoticA%2FGame%2FBrimble_Allister%2FProject-X.lha' && cd /tmp && lha x Project-X.lha && /usr/local/bin/uade123 -c -f /output/bp.PX1.wav /tmp/Project-X/bp.PX1"
 ```
 
-_Output: `$env:USERPROFILE\Music\mod.1812sampled.wav` and  `$env:USERPROFILE\Music\/bp.PX1.wav` (WAV files ready to play on Windows)_
+_Output: `$env:USERPROFILE\Music\mod.1812sampled.wav` and  `$env:USERPROFILE\Music\bp.PX1.wav` (WAV files ready to play on Windows)_
 
 # Example: Extract and convert from a ZIP archive
 
