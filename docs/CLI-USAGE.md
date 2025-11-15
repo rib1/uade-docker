@@ -160,7 +160,7 @@ docker run --rm -v "$env:USERPROFILE\Music:/music" --entrypoint /bin/sh uade-cli
 
 ```powershell
 # Create a list of URLs in urls.txt, then download all:
-docker run --rm -v "$env:USERPROFILE\Music:/music" -v "C:\path\to\urls.txt:/urls.txt" --entrypoint /bin/sh uade-cli -c "while read url; do filename=$(basename $url); curl -k -o /tmp/$filename $url && /usr/local/bin/uade123 -c -f /music/${filename%.mod}.wav /tmp/$filename; done < /urls.txt"
+docker run --rm -v "$env:USERPROFILE\Music:/output" -v "C:\path\to\urls.txt:/urls.txt" --entrypoint /bin/sh uade-cli -c "while read url; do filename=$(basename $url); curl -k -o /tmp/$filename $url && /usr/local/bin/uade123 -c -f /music/${filename%.mod}.wav /tmp/$filename; done < /urls.txt"
 ```
 
 > **Note:** Modland's rsync server requires authentication, but their HTTP interface is open for browsing and downloading individual files.
@@ -276,17 +276,15 @@ _Output: `$env:USERPROFILE\Music\stormlord.wav` (512 seconds / 8.5 minutes from 
 
 _More Pink AHX chiptunes: <https://modland.com/pub/modules/AHX/Pink/>_
 
-> **Note:** AHX (Abyss' Highest eXperience) is a tracked chiptune format that uses pure synthesis instead of samples. This allows extremely small file sizes while producing complex, high-quality chip music.
-
-> **Important:**
+> **Note**
 >
-> - All URLs above are tested and working
-> - Browse <https://modland.com/pub/modules/Protracker/> to find more artists
-> - ModArchive API is unreliable (often returns XM/IT files instead of MOD)
-> - Modland URLs are case-sensitive
-> - For TFMX modules, use the `uade-convert` helper script (see above)
+>- AHX (Abyss' Highest eXperience) is a tracked chiptune format that uses pure synthesis instead of samples. This allows extremely small file sizes while producing complex, high-quality chip music.
+>- All URLs above are tested and working
+>- Browse <https://modland.com/pub/modules/Protracker/> to find more artists
+>- Modland URLs are case-sensitive
+>- For TFMX modules, use the `uade-convert` helper script (see above)
 
-**Manual TFMX download (advanced):**
+**Manual TFMX download:**
 
 ```powershell
 # Download both mdat and smpl files manually, then convert to WAV
@@ -300,6 +298,35 @@ docker run --rm -v "$env:USERPROFILE\Music:/output" --entrypoint /bin/sh uade-cl
 > - `smpl.*` = the sample/instrument data
 >
 > Both files must be in the same directory for UADE to play them. Browse Modland's TFMX collection: <https://modland.com/pub/modules/TFMX/Chris%20Huelsbeck/>
+
+## Example: Extract and Convert from LHA Archive
+
+You can extract Amiga modules from an LHA archive and convert them to WAV in one command:
+
+```powershell
+# Download, extract, and convert a module from an LHA archive
+# This example uses Project-X.lha from Exotica
+
+docker run --rm -v "$env:USERPROFILE\Music:/output" --entrypoint /bin/sh uade-cli -c "curl -L -k -o /tmp/Project-X.lha 'http://files.exotica.org.uk/?file=exotica/media%2Faudio%2FUnExoticA%2FGame%2FBrimble_Allister%2FProject-X.lha' && cd /tmp && lha x Project-X.lha && /usr/local/bin/uade123 -c -f /output/mod.1812sampled.wav /tmp/Project-X/mod.1812sampled"
+
+# You can also extract and convert other modules from the same archive, for example `bp.PX1`:
+
+docker run --rm -v "$env:USERPROFILE\Music:/output" --entrypoint /bin/sh uade-cli -c "curl -L -k -o /tmp/Project-X.lha 'http://files.exotica.org.uk/?file=exotica/media%2Faudio%2FUnExoticA%2FGame%2FBrimble_Allister%2FProject-X.lha' && cd /tmp && lha x Project-X.lha && /usr/local/bin/uade123 -c -f /output/bp.PX1.wav /tmp/Project-X/bp.PX1"
+```
+
+_Output: `$env:USERPROFILE\Music\mod.1812sampled.wav` and  `$env:USERPROFILE\Music\/bp.PX1.wav` (WAV files ready to play on Windows)_
+
+# Example: Extract and convert from a ZIP archive
+
+```powershell
+docker run --rm -v "$env:USERPROFILE\Music:/output" --entrypoint /bin/sh uade-cli -c "curl -L -k -o /tmp/chip_shop.zip 'https://files.scene.org/get:fi-https/music/artists/4-mat/chip_shop.zip' && cd /tmp && unzip chip_shop.zip && /usr/local/bin/uade123 -c -f /output/Chip_Shop.wav /tmp/Chip_Shop.mod"
+```
+
+_Output: `$env:USERPROFILE\Music\Chip_Shop.wav` (WAV file ready to play on Windows)_
+
+You can list all extracted modules and convert any of them by changing the filename in the UADE command.
+
+---
 
 ## Supported Formats
 

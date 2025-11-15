@@ -62,9 +62,10 @@ RUN rm -rf /usr/src/uade-build && \
     apt-get autoremove -y && \
     apt-get install -y --no-install-recommends ca-certificates
 
-# 7. Install curl, rsync, and unzip for downloading modules
+
+# 7. Install curl, rsync, unzip, lhasa, and runtime libraries for UADE file output
 RUN apt-get update && \
-    apt-get install -y --no-install-recommends curl rsync unzip && \
+    apt-get install -y --no-install-recommends curl rsync unzip lhasa libao4 libsndfile1 && \
     rm -rf /var/lib/apt/lists/*
 
 # 8. Create helper script for downloading and converting TFMX modules
@@ -96,7 +97,10 @@ echo "Converting to WAV..."\n\
 ' > /usr/local/bin/uade-convert && chmod +x /usr/local/bin/uade-convert
 
 
-# 9. Create non-root user and set permissions
+# 9. Set UADE_DRIVER to SDL to avoid AO device errors
+ENV UADE_DRIVER=SDL
+
+# 10. Create non-root user and set permissions
 RUN useradd -m -s /bin/bash uadeuser && \
     mkdir -p /output /music /tmp && \
     chown -R uadeuser:uadeuser /output /music /tmp
