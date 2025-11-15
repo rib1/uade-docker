@@ -113,4 +113,6 @@ RUN chown root:uadeuser /usr/local/bin/uade123 && chmod 4750 /usr/local/bin/uade
 USER uadeuser
 
 # The uade123 command-line player is the primary tool to run
+# Note: Trivy DS026 HEALTHCHECK is intentionally omitted for this CLI base image.
+# Reason: The container exits after running, so health checks are not applicable.
 ENTRYPOINT ["/usr/local/bin/uade123"]
