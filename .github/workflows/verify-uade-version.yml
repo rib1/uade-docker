@@ -57,8 +57,6 @@ jobs:
             BASE_IMAGE=$(grep -oP '^ARG\s+BASE_IMAGE=\K.*' Dockerfile.web | tr -d '\r' | xargs || true)
             if [ -n "${BASE_IMAGE}" ]; then
               echo "Extracted BASE_IMAGE from Dockerfile.web: ${BASE_IMAGE}"
-              BASE_IMAGE=$(echo "${BASE_IMAGE}" | sed "s|gcr.io/[^/]*/|ghcr.io/${{ github.repository_owner }}/uade-cli:|")
-              echo "Rewrote BASE_IMAGE to use GHCR: ${BASE_IMAGE}"
             else
               BASE_IMAGE="ghcr.io/${{ github.repository_owner }}/uade-cli:${DEFAULT_TAG}"
               echo "No BASE_IMAGE in Dockerfile.web; falling back to GHCR image: ${BASE_IMAGE}"

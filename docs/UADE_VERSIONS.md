@@ -123,12 +123,12 @@ docker push ghcr.io/rib1/uade-cli:3.05-base.2
 # Example: 3.05-base.1 → 3.06-base.1
 # 1. Update Dockerfile to clone --branch uade-3.06
 # 2. Build:
-docker build -f Dockerfile -t gcr.io/<GCP_PROJECT_ID>/uade-cli:3.06-base.1 .
+docker build -f Dockerfile -t ghcr.io/rib1/uade-cli:3.06-base.1 .
 # 3. Test (full E2E suite)
 # 4. Push:
-docker push gcr.io/<GCP_PROJECT_ID>/uade-cli:3.06-base.1
-docker tag gcr.io/<GCP_PROJECT_ID>/uade-cli:3.06-base.1 gcr.io/<GCP_PROJECT_ID>/uade-cli:latest
-docker push gcr.io/<GCP_PROJECT_ID>/uade-cli:latest
+docker push ghcr.io/rib1/uade-cli:3.06-base.1
+docker tag ghcr.io/rib1/uade-cli:3.06-base.1 ghcr.io/rib1/uade-cli:latest
+docker push ghcr.io/rib1/uade-cli:latest
 # 5. Update docs/UADE_VERSIONS.md
 # 6. Update Dockerfile.web (after E2E passes)
 ```
@@ -171,10 +171,10 @@ If a version has critical issues:
 ```dockerfile
 # If 3.05-base.2 has issues:
 # Change:
-FROM gcr.io/<GCP_PROJECT_ID>/uade-cli:3.05-base.2
+FROM ghcr.io/rib1/uade-cli:3.05-base.2
 
 # To:
-FROM gcr.io/<GCP_PROJECT_ID>/uade-cli:3.05-base.1
+FROM ghcr.io/rib1/uade-cli:3.05-base.1
 ```
 
 ### Step 2: Rebuild and test
