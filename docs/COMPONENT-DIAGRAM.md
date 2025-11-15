@@ -30,7 +30,7 @@ Container_Boundary(web_container, "Web Player Container - Built FROM CLI Base") 
 }
 
 ContainerDb(ghcr, "GitHub Container Registry", "Docker Registry", "Stores container images")
-Container(cloudrun, "Cloud Run", "Serverless Platform", "Hosts web player in production")
+Container(cloudrun, "Cloud Run", "Serverless Platform", "Hosts web player in Web Runtime")
 
 Rel(user, flask_app, "Accesses", "HTTPS")
 Rel(user, uade_cli, "Executes", "CLI")
@@ -126,7 +126,7 @@ The Web Player Container is built using multi-stage Docker build with `FROM uade
   - HTTP server and request routing
   - Session management
   - Error handling and logging
-  - Integration with Gunicorn for production
+  - Integration with Gunicorn as http server in Web player
 
 #### Web Routes
 

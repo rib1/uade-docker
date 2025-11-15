@@ -10,7 +10,7 @@ This document defines a versioning strategy for the UADE CLI Docker base image (
 - ✅ Controlled updates to `Dockerfile.web` with explicit pinning
 - ✅ Regression detection via comprehensive E2E tests
 - ✅ Quick rollback to stable versions if breaking changes occur
-- ✅ Upstream UADE changes don't automatically cascade to production
+- ✅ Upstream UADE changes don't automatically cascade to stable version
 
 **Current Version:** UADE 3.05 (binary version inside container)
 
@@ -65,7 +65,7 @@ ghcr.io/rib1/uade-cli:<tag>
 
 | Tag Pattern | Purpose | Lifecycle |
 |---|---|---|
-| `3.05-base.5` | Release/production | Stable, pinned in Dockerfile.web |
+| `3.05-base.5` | Release/stable (version) | Stable, pinned in Dockerfile.web |
 | `3.05-base.latest` | Latest patch for this UADE version | Updates when new build published |
 | `latest` | Global latest | Always points to newest UADE version |
 | `3.05-base` | Latest build for UADE 3.05, any variant | Updates when 3.05 rebuild occurs |
@@ -74,7 +74,7 @@ ghcr.io/rib1/uade-cli:<tag>
 
 ```text
 2025-11-11: UADE 3.05 first release
-  → 3.05-base.1       (initial production, pinned in Dockerfile.web)
+  → 3.05-base.1       (initial stable version, pinned in Dockerfile.web)
   → 3.05-base
   → 3.05-base.latest
   → latest            (global latest)
@@ -221,7 +221,7 @@ Track all published versions in `deployment/UADE_VERSIONS.md`:
 - **Image:** ghcr.io/rib1/uade-cli:3.05-base.1
 - **UADE Version:** 3.05 (stable)
 - **Base Image:** debian:stable-slim
-- **Status:** Production (Dockerfile.web pinned to this version)
+- **Status:** Stable version (Dockerfile.web pinned to this version)
 - **Changes:**
   - Initial versioned release with semantic versioning schema
   - Enables controlled updates and prevents breaking changes
@@ -291,7 +291,7 @@ docker push uade-cli:3.05-base.1
 |---------|-------------------|
 | **Stability** | Explicit versioning with UADE version + build number |
 | **Predictability** | Pinned versions in Dockerfile.web, not auto-updated |
-| **Testability** | Each version has defined E2E test requirements before production |
+| **Testability** | Each version has defined E2E test requirements before stable version |
 | **Rollback** | Quick revert to previous stable version in Dockerfile.web |
 | **Isolation** | UADE upstream breaking changes don't auto-cascade to web player |
 | **Traceability** | Clear changelog linking versions to release notes |

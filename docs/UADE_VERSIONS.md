@@ -2,9 +2,9 @@
 
 This file tracks all published versions of the `uade-cli` base Docker image and their deployment status.
 
-## Current Production Version
+## Current Stable Version
 
-**`3.05-base.1`** (initial release, first production version)
+**`3.05-base.1`** (initial release, first stable version)
 
 ---
 
@@ -14,7 +14,7 @@ This file tracks all published versions of the `uade-cli` base Docker image and 
 
 - **Image:** `ghcr.io/rib1/uade-cli:3.05-base.1`
 - **UADE Binary Version:** 3.05 (stable)
-- **Status:** Production (pinned in Dockerfile.web)
+- **Status:** Stable version (pinned in Dockerfile.web)
 - **Base Image:** `debian:stable-slim`
 - **Build Duration:** ~8 minutes
 
@@ -68,7 +68,7 @@ This file tracks all published versions of the `uade-cli` base Docker image and 
 
 | Dockerfile.web Version | UADE CLI Version | Release Date | Status |
 |---|---|---|---|
-| v1.0 | 3.05-base.1 | 2025-11-11 | Current production |
+| v1.0 | 3.05-base.1 | 2025-11-11 | Current stable version |
 
 ---
 

@@ -159,7 +159,7 @@ architecture-beta
 ### Infrastructure
 
 - **Container Runtime:** Docker
-- **Orchestration:** Docker Compose (local), Cloud Run (production)
+- **Orchestration:** Docker Compose (local), Cloud Run (Web Runtime)
 - **CI/CD:** GitHub Actions
 - **Registry:** GitHub Container Registry
 - **Cloud Provider:** Google Cloud Platform

@@ -37,7 +37,7 @@ docker-compose up -d
 - Automatic build and startup
 - Health checks with auto-restart
 - Persistent storage for uploads/conversions
-- Production environment configuration
+- Web runtime environment configuration
 - Read-only source code mount for security
 - Cleanup of old files (1 hour interval)
 
