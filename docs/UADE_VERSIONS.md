@@ -4,7 +4,7 @@ This file tracks all published versions of the `uade-cli` base Docker image and 
 
 ## Current Stable Version
 
-**`3.05-base.1`** (initial release, first stable version)
+**`3.05-base.2`** (lha and zip extract support)
 
 ---
 
@@ -43,6 +43,37 @@ This file tracks all published versions of the `uade-cli` base Docker image and 
 
 - Currently used by: Dockerfile.web
 - Available as: `ghcr.io/rib1/uade-cli:3.05-base.1`, `ghcr.io/rib1/uade-cli:3.05-base`, `ghcr.io/rib1/uade-cli:latest`
+- Verified binary: `uade123 3.05`
+
+---
+
+### 3.05-base.2 (2025-11-15) [LHA/UNZIP SUPPORT]
+
+- **Image:** `ghcr.io/rib1/uade-cli:3.05-base.2`
+- **UADE Binary Version:** 3.05 (stable)
+- **Status:** Stable version
+- **Base Image:** `debian:stable-slim`
+- **Build Duration:** ~8 minutes
+
+**Changes:**
+
+- Added `lhasa` and `unzip` to base image for LHA and ZIP archive extraction
+- Updated documentation with tested LHA and ZIP extraction examples
+- Version bump to v3.05-base.2
+
+**Features:**
+
+- All features from 3.05-base.1
+- Extract and convert Amiga modules directly from LHA and ZIP archives in one command
+
+**Testing:**
+
+- ✅ LHA extraction and conversion tested (Project-X.lha)
+- ✅ ZIP extraction and conversion tested (chip_shop.zip)
+
+**Deployment Status:**
+
+- Available as: `ghcr.io/rib1/uade-cli:3.05-base.2`, `ghcr.io/rib1/uade-cli:3.05-base`, `ghcr.io/rib1/uade-cli:latest`
 - Verified binary: `uade123 3.05`
 
 ---

@@ -1,4 +1,4 @@
-# UADE CLI Base Image v3.05-base.1
+# UADE CLI Base Image v3.05-base.2
 # Versioning: UADE_VERSION-base.BUILD_NUMBER
 # This Dockerfile builds UADE 3.05 (stable) from source
 # Binary version: uade123 3.05
