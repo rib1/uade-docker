@@ -153,7 +153,7 @@ Modland provides HTTP access to their extensive Protracker module collection. Br
 ```powershell
 # Browse Modland's Protracker collection to find a module, then download and convert
 # Example: Download from 4-Mat's collection
-docker run --rm -v "$env:USERPROFILE\Music:/music" --entrypoint /bin/sh uade-cli -c "curl -k -o /tmp/module.mod 'https://modland.com/pub/modules/Protracker/4-Mat/enigma.mod' && /usr/local/bin/uade123 -c -f /music/enigma.wav /tmp/module.mod"
+docker run --rm -v "$env:USERPROFILE\Music:/music" --entrypoint /bin/sh uade-cli -c "curl -k -o /tmp/module.mod 'https://modland.com/pub/modules/Protracker/4-Mat/agony-beginning.mod' && /usr/local/bin/uade123 -c -f /music/agony-beginning.wav /tmp/module.mod"
 ```
 
 **Bulk download multiple modules with a script:**
@@ -279,10 +279,6 @@ _More Pink AHX chiptunes: <https://modland.com/pub/modules/AHX/Pink/>_
 > **Note**
 >
 >- AHX (Abyss' Highest eXperience) is a tracked chiptune format that uses pure synthesis instead of samples. This allows extremely small file sizes while producing complex, high-quality chip music.
->- All URLs above are tested and working
->- Browse <https://modland.com/pub/modules/Protracker/> to find more artists
->- Modland URLs are case-sensitive
->- For TFMX modules, use the `uade-convert` helper script (see above)
 
 **Manual TFMX download:**
 
@@ -346,6 +342,11 @@ UADE supports many Amiga music formats including:
 - Docker on Windows doesn't support direct audio output - use WAV conversion (see Audio Output section)
 - The container runs as a command-line tool and exits after playback
 - Use absolute paths when mounting Windows directories
+- All URLs above are tested and working
+- Browse <https://modland.com/pub/modules/Protracker/> to find more artists
+- Modland URLs are case-sensitive
+- For TFMX modules, use the `uade-convert` helper script (see above)
+
 
 ## Troubleshooting
 
