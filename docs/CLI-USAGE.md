@@ -160,7 +160,7 @@ docker run --rm -v "$env:USERPROFILE\Music:/music" --entrypoint /bin/sh uade-cli
 
 ```powershell
 # Create a list of URLs in urls.txt, then download all:
-docker run --rm -v "$env:USERPROFILE\Music:/output" -v "C:\path\to\urls.txt:/urls.txt" --entrypoint /bin/sh uade-cli -c "while read url; do filename=$(basename $url); curl -k -o /tmp/$filename $url && /usr/local/bin/uade123 -c -f /music/${filename%.mod}.wav /tmp/$filename; done < /urls.txt"
+docker run --rm -v "$env:USERPROFILE\Music:/music" -v "C:\path\to\urls.txt:/urls.txt" --entrypoint /bin/sh uade-cli -c "while read url; do filename=$(basename $url); curl -k -o /tmp/$filename $url && /usr/local/bin/uade123 -c -f /music/${filename%.mod}.wav /tmp/$filename; done < /urls.txt"
 ```
 
 > **Note:** Modland's rsync server requires authentication, but their HTTP interface is open for browsing and downloading individual files.
