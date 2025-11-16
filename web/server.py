@@ -903,7 +903,12 @@ def play_example(example_id):
 
 @app.route("/play/<file_id>")
 def play_file(file_id):
-    """Stream audio file for playback (FLAC or WAV) with range request support"""
+    """
+    Stream audio file for playback (FLAC or WAV) with range request support.
+
+    Note: Only single range requests (e.g., 'Range: bytes=0-99') are supported.
+    Multiple ranges (e.g., 'bytes=0-99,200-299') are not supported and will result in a 416 response.
+    """
     # Try FLAC first, then WAV
     flac_path = CONVERTED_DIR / f"{file_id}.flac"
     wav_path = CONVERTED_DIR / f"{file_id}.wav"
@@ -923,13 +928,26 @@ def play_file(file_id):
     range_header = request.headers.get("Range")
     if range_header:
         # Parse range header: bytes=start-end
-        byte_range = range_header.replace("bytes=", "").split("-")
-        start = int(byte_range[0]) if byte_range[0] else 0
-        end = (
-            int(byte_range[1])
-            if len(byte_range) > 1 and byte_range[1]
-            else file_size - 1
-        )
+        range_match = re.match(r"^bytes=(\d*)-(\d*)$", range_header.strip())
+        if not range_match:
+            # Malformed or multiple ranges not supported
+            return Response("", 416)  # Range Not Satisfiable
+
+        start_str, end_str = range_match.groups()
+        try:
+            start = int(start_str) if start_str else 0
+        except ValueError:
+            return Response("", 416)
+        try:
+            end = int(end_str) if end_str else file_size - 1
+        except ValueError:
+            return Response("", 416)
+
+        # Validation: start/end must be within file bounds
+        if start < 0 or end < 0 or end < start or start >= file_size:
+            return Response("", 416)
+        if end >= file_size:
+            end = file_size - 1
 
         # Limit chunk size to 20MB to stay well under Cloud Run's 32MB limit
         if end - start > 20 * 1024 * 1024:
@@ -953,6 +971,7 @@ def play_file(file_id):
         response.headers["Content-Range"] = f"bytes {start}-{end}/{file_size}"
         response.headers["Content-Length"] = str(length)
         response.headers["Accept-Ranges"] = "bytes"
+        response.headers["X-Single-Range-Only"] = "true"  # Document limitation for clients
         response.headers["Cache-Control"] = "public, max-age=3600"
         return response
     else:
