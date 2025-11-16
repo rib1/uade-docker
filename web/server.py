@@ -905,104 +905,19 @@ def play_example(example_id):
 def play_file(file_id):
     """
     Stream audio file for playback (FLAC or WAV) with range request support.
-
-    Note: Only single range requests (e.g., 'Range: bytes=0-99') are supported.
-    Multiple ranges (e.g., 'bytes=0-99,200-299') are not supported and will result in a 416 response.
     """
-    # Try FLAC first, then WAV
-    flac_path = CONVERTED_DIR / f"{file_id}.flac"
-    wav_path = CONVERTED_DIR / f"{file_id}.wav"
-
-    if flac_path.exists():
-        file_path = flac_path
-        mimetype = "audio/flac"
-    elif wav_path.exists():
-        file_path = wav_path
-        mimetype = "audio/wav"
-    else:
-        return jsonify({"error": "File not found"}), 404
-
-    file_size = file_path.stat().st_size
-
-    # Handle range requests for large files (Cloud Run has 32MB response limit)
-    range_header = request.headers.get("Range")
-    if range_header:
-        # Parse range header: bytes=start-end
-        range_match = re.match(r"^bytes=(\d*)-(\d*)$", range_header.strip())
-        if not range_match:
-            # Malformed or multiple ranges not supported
-            return Response("", 416)  # Range Not Satisfiable
-
-        start_str, end_str = range_match.groups()
-        try:
-            start = int(start_str) if start_str else 0
-        except ValueError:
-            return Response("", 416)
-        try:
-            end = int(end_str) if end_str else file_size - 1
-        except ValueError:
-            return Response("", 416)
-
-        # Validation: start/end must be within file bounds
-        if start < 0 or end < 0 or end < start or start >= file_size:
-            return Response("", 416)
-        if end >= file_size:
-            end = file_size - 1
-
-        # Limit chunk size to 20MB to stay well under Cloud Run's 32MB limit
-        if end - start > 20 * 1024 * 1024:
-            end = start + 20 * 1024 * 1024 - 1
-
-        length = end - start + 1
-
-        def generate_range():
-            with open(file_path, "rb") as f:
-                f.seek(start)
-                remaining = length
-                while remaining > 0:
-                    chunk_size = min(8192, remaining)
-                    chunk = f.read(chunk_size)
-                    if not chunk:
-                        break
-                    remaining -= len(chunk)
-                    yield chunk
-
-        response = Response(generate_range(), 206, mimetype=mimetype)
-        response.headers["Content-Range"] = f"bytes {start}-{end}/{file_size}"
-        response.headers["Content-Length"] = str(length)
-        response.headers["Accept-Ranges"] = "bytes"
-        response.headers["X-Single-Range-Only"] = "true"  # Document limitation for clients
-        response.headers["Cache-Control"] = "public, max-age=3600"
-        return response
-    else:
-        # For small files or initial request, send full file
-        # If file is larger than 20MB, suggest range requests
-        if file_size > 20 * 1024 * 1024:
-            response = Response("", 206, mimetype=mimetype)
-            response.headers["Content-Range"] = f"bytes 0-0/{file_size}"
-            response.headers["Content-Length"] = "0"
-            response.headers["Accept-Ranges"] = "bytes"
-            return response
-
-        def generate():
-            with open(file_path, "rb") as f:
-                while True:
-                    chunk = f.read(8192)
-                    if not chunk:
-                        break
-                    yield chunk
-
-        response = Response(generate(), mimetype=mimetype)
-        response.headers["Content-Length"] = str(file_size)
-        response.headers["Accept-Ranges"] = "bytes"
-        response.headers["Cache-Control"] = "public, max-age=3600"
-        return response
-
+    return serve_audio_file(file_id, as_attachment=False)
 
 @app.route("/download/<file_id>")
 def download_file(file_id):
     """Download audio file (FLAC or WAV) - large files may require a download manager"""
-    # Validate file_id as a strict identifier (alphanumerics, dash, underscore)
+    return serve_audio_file(file_id, as_attachment=True)
+
+def serve_audio_file(file_id, as_attachment=False):
+    """
+    Shared logic for serving audio files (FLAC/WAV) with range support.
+    If as_attachment is True, sets Content-Disposition for download.
+    """
     if not re.fullmatch(r"[a-zA-Z0-9_-]+", file_id):
         return jsonify({"error": "Invalid file_id"}), 400
     # Sanitize file_id to ensure a safe filename
@@ -1013,13 +928,11 @@ def download_file(file_id):
 
     # Only allow files under CONVERTED_DIR to be served
     converted_base = CONVERTED_DIR.resolve()
-    # Validate flac_path containment
     try:
         if flac_path.exists() and flac_path.relative_to(converted_base):
             file_path = flac_path
             mimetype = "audio/flac"
             filename = f"uade_{safe_file_id}.flac"
-        # Validate wav_path containment
         elif wav_path.exists() and wav_path.relative_to(converted_base):
             file_path = wav_path
             mimetype = "audio/wav"
@@ -1034,57 +947,96 @@ def download_file(file_id):
 
     # Handle range requests for large downloads (Cloud Run has 32MB response limit)
     range_header = request.headers.get("Range")
-    if range_header:
-        # Parse range header
-        byte_range = range_header.replace("bytes=", "").split("-")
-        start = int(byte_range[0]) if byte_range[0] else 0
-        end = (
-            int(byte_range[1])
-            if len(byte_range) > 1 and byte_range[1]
-            else file_size - 1
-        )
-
-        # Limit chunk size to 20MB to stay under Cloud Run's 32MB limit
-        if end - start > 20 * 1024 * 1024:
-            end = start + 20 * 1024 * 1024 - 1
-
-        length = end - start + 1
-
-        def generate_range():
-            with open(file_path, "rb") as f:
-                f.seek(start)
-                remaining = length
-                while remaining > 0:
-                    chunk_size = min(8192, remaining)
-                    chunk = f.read(chunk_size)
-                    if not chunk:
-                        break
-                    remaining -= len(chunk)
-                    yield chunk
-
-        response = Response(generate_range(), 206, mimetype=mimetype)
+    range_info = parse_range_header(range_header, file_size)
+    if range_info:
+        start, end, length = range_info
+        response = Response(stream_file_range(file_path, start, length), 206, mimetype=mimetype)
+        # Custom header to indicate that only single range requests are supported (for client-side handling)
+        response.headers["X-Single-Range-Only"] = "true"
         response.headers["Content-Range"] = f"bytes {start}-{end}/{file_size}"
         response.headers["Content-Length"] = str(length)
         response.headers["Accept-Ranges"] = "bytes"
-        response.headers["Content-Disposition"] = f'attachment; filename="{filename}"'
+        if as_attachment:
+            response.headers["Content-Disposition"] = f'attachment; filename="{filename}"'
+        else:
+            response.headers["Cache-Control"] = "public, max-age=3600"
         return response
+    elif range_header:
+        # Malformed or invalid range
+        return Response("", 416)
     else:
+        if not as_attachment and file_size > 20 * 1024 * 1024:
+            # For large files without range header, return minimal 206 response to prompt client to use range requests
+            response = Response("", 206, mimetype=mimetype)
+            # Custom header to indicate that only single range requests are supported (for client-side handling)
+            response.headers["X-Single-Range-Only"] = "true"
+            response.headers["Content-Range"] = f"bytes 0-0/{file_size}"
+            response.headers["Content-Length"] = "0"
+            response.headers["Accept-Ranges"] = "bytes"
+            return response
         # For requests without range header, stream the entire file
-        # Browsers will automatically use range requests for large files when needed
-        def generate():
-            with open(file_path, "rb") as f:
-                while True:
-                    chunk = f.read(8192)
-                    if not chunk:
-                        break
-                    yield chunk
-
-        response = Response(generate(), mimetype=mimetype)
+        # Browsers will automatically use range requests for large files when needed        
+        response = Response(stream_full_file(file_path), mimetype=mimetype)
         response.headers["Content-Length"] = str(file_size)
-        response.headers["Content-Disposition"] = f'attachment; filename="{filename}"'
         response.headers["Accept-Ranges"] = "bytes"
+        if as_attachment:
+            response.headers["Content-Disposition"] = f'attachment; filename="{filename}"'
+        else:
+            response.headers["Cache-Control"] = "public, max-age=3600"
         return response
 
+def stream_full_file(file_path, chunk_size=8192):
+    """Yield the entire file in chunks (used for small file streaming)"""
+    with open(file_path, "rb") as f:
+        while True:
+            chunk = f.read(chunk_size)
+            if not chunk:
+                break
+            yield chunk
+
+def stream_file_range(file_path, start, length, chunk_size=8192):
+    """Yield a byte range from a file (used for range requests)"""
+    with open(file_path, "rb") as f:
+        f.seek(start)
+        remaining = length
+        while remaining > 0:
+            this_chunk = min(chunk_size, remaining)
+            chunk = f.read(this_chunk)
+            if not chunk:
+                break
+            remaining -= len(chunk)
+            yield chunk
+
+def parse_range_header(range_header, file_size):
+    """
+    Parse and validate a Range header for a file of given size.
+    Returns (start, end, length) if valid, else None.
+    Only supports single range: bytes=start-end
+    """
+    if not range_header:
+        return None
+    range_match = re.match(r"^bytes=(\d*)-(\d*)$", range_header.strip())
+    if not range_match:
+        return None
+    start_str, end_str = range_match.groups()
+    try:
+        start = int(start_str) if start_str else 0
+    except ValueError:
+        return None
+    try:
+        end = int(end_str) if end_str else file_size - 1
+    except ValueError:
+        return None
+    # Validation: start/end must be within file bounds
+    if start < 0 or end < 0 or end < start or start >= file_size:
+        return None
+    if end >= file_size:
+        end = file_size - 1
+    # Limit chunk size to 20MB to stay well under Cloud Run's 32MB limit
+    if end - start > 20 * 1024 * 1024:
+        end = start + 20 * 1024 * 1024 - 1
+    length = end - start + 1
+    return start, end, length
 
 if __name__ == "__main__":
     logger.info(f"Starting UADE Web Player on port {PORT}")
