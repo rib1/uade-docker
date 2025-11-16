@@ -295,7 +295,7 @@ docker run --rm -v "$env:USERPROFILE\Music:/output" --entrypoint /bin/sh uade-cl
 >
 > Both files must be in the same directory for UADE to play them. Browse Modland's TFMX collection: <https://modland.com/pub/modules/TFMX/Chris%20Huelsbeck/>
 
-## Example: Extract and Convert from LHA Archive
+**Example: Extract and Convert from LHA Archive**
 
 You can extract Amiga modules from an LHA archive and convert them to WAV in one command:
 
@@ -312,7 +312,7 @@ docker run --rm -v "$env:USERPROFILE\Music:/output" --entrypoint /bin/sh uade-cl
 
 _Output: `$env:USERPROFILE\Music\mod.1812sampled.wav` and  `$env:USERPROFILE\Music\bp.PX1.wav` (WAV files ready to play on Windows)_
 
-# Example: Extract and convert from a ZIP archive
+**Example: Extract and convert from a ZIP archive**
 
 ```powershell
 docker run --rm -v "$env:USERPROFILE\Music:/output" --entrypoint /bin/sh uade-cli -c "curl -L -k -o /tmp/chip_shop.zip 'https://files.scene.org/get:fi-https/music/artists/4-mat/chip_shop.zip' && cd /tmp && unzip chip_shop.zip && /usr/local/bin/uade123 -c -f /output/Chip_Shop.wav /tmp/Chip_Shop.mod"
