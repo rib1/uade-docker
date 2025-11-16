@@ -52,6 +52,8 @@ docker-compose down
 
 # Rebuild after code changes
 docker-compose up -d --build
+# To inject the current git commit hash into the container, run:
+$env:GIT_COMMIT = (git rev-parse HEAD); docker-compose up -d --build
 
 # View service status
 docker-compose ps
