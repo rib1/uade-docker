@@ -54,6 +54,7 @@ architecture-beta
   - Flask web application + Gunicorn
   - Python 3 with virtual environment
   - Supports file upload and URL downloads
+  - Automatic extraction of LHA and ZIP archives (finds and plays first music file inside)
   - Non-root user (uid=1000)
 
 ### Google Cloud Platform Layer
@@ -64,12 +65,14 @@ architecture-beta
   - Change detection for UADE base caching
   - Runs tests and health checks
 
-**GitHub Container Registry (GHCR)**
+- **GitHub Container Registry (GHCR)**
+
   - Stores built Docker images
   - UADE base image cached for faster builds
   - Web player image with git commit tags
 
 - **Cloud Run Service**
+
   - Serverless container deployment
   - Auto-scaling (0-10 instances)
   - Minimal service account (zero permissions)
@@ -98,10 +101,11 @@ architecture-beta
 1. User uploads module or provides URL
 2. Flask server receives request
 3. Downloads module (if URL provided)
-4. Calls UADE player subprocess
-5. Converts to WAV or FLAC
-6. Streams audio back to browser
-7. Cleans up temporary files (1 hour TTL)
+4. If file is an LHA or ZIP archive, automatically extracts and finds first supported music file
+5. Calls UADE player subprocess
+6. Converts to WAV or FLAC
+7. Streams audio back to browser
+8. Cleans up temporary files (1 hour TTL)
 
 ### Deployment Workflow
 
@@ -204,4 +208,3 @@ architecture-beta
 - Git commit tracking in responses
 - Budget alerts
 - Network egress monitoring (1GB free tier)
-

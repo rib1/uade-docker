@@ -19,6 +19,7 @@ import requests
 import re
 import shutil
 import ipaddress
+import zipfile
 
 # Configure logging for cloud environments
 logging.basicConfig(
@@ -74,7 +75,7 @@ music_extensions = {
     "ahx",
     "aon",
     "bp",
-    "bp3"
+    "bp3",
     "bd",
     "bds",
     "bsi",
@@ -247,6 +248,20 @@ def compress_to_flac(wav_path, flac_path):
         return False
 
 
+def find_music_file(extract_dir):
+    """Find and return the first music file in a directory matching known extensions or prefixes."""
+    music_files = []
+    for file_path in extract_dir.rglob("*"):
+        if file_path.is_file():
+            ext = file_path.suffix.lower()[1:]
+            prefix = file_path.name.lower().split(".")[0]
+            if ext in music_extensions or prefix in music_extensions:
+                music_files.append(file_path)
+    if not music_files:
+        return None, 0
+    return music_files[0], len(music_files)
+
+
 def is_lha_file(file_path):
     """Check if file is an LHA archive by magic bytes"""
     try:
@@ -257,6 +272,17 @@ def is_lha_file(file_path):
                 signature = header[2:5]
                 return signature == b"-lh" or signature == b"-lz"
         return False
+    except Exception:
+        return False
+
+
+def is_zip_file(file_path):
+    """Check if file is a ZIP archive by magic bytes"""
+    try:
+        with open(file_path, "rb") as f:
+            header = f.read(4)
+            # ZIP files start with PK\x03\x04 or PK\x05\x06 or PK\x07\x08
+            return header[:2] == b"PK"
     except Exception:
         return False
 
@@ -278,23 +304,12 @@ def extract_lha(lha_path, extract_dir):
             logger.error(f"LHA extraction error: {result.stderr}")
             return False, f"LHA extraction failed: {result.stderr}", None
 
-        music_files = []
-        for file_path in extract_dir.rglob("*"):
-            if file_path.is_file():
-                name_lower = file_path.name.lower()
-                ext = file_path.suffix.lower()[1:]
-                prefix = name_lower.split(".")[0]
-                # Check by extension
-                if ext in music_extensions or prefix in music_extensions:
-                    music_files.append(file_path)
-
-        if not music_files:
+        music_file, count = find_music_file(extract_dir)
+        if not music_file:
             return False, "No music files found in LHA archive", None
 
-        # Use the first music file found
-        music_file = music_files[0]
         logger.info(
-            f"Extracted LHA archive, found {len(music_files)} music file(s), using: {music_file.name}"
+            f"Extracted LHA archive, found {count} music file(s), using: {music_file.name}"
         )
         return True, None, music_file
 
@@ -302,6 +317,31 @@ def extract_lha(lha_path, extract_dir):
         return False, "LHA extraction timeout", None
     except Exception as e:
         logger.error(f"LHA extraction exception: {e}")
+        return False, str(e), None
+
+
+def extract_zip(zip_path, extract_dir):
+    """Extract ZIP archive and return first music file found
+    Returns: (success, error_message, music_file_path or None)
+    """
+    try:
+        extract_dir.mkdir(parents=True, exist_ok=True)
+        with zipfile.ZipFile(zip_path, "r") as zip_ref:
+            zip_ref.extractall(extract_dir)
+
+        music_file, count = find_music_file(extract_dir)
+        if not music_file:
+            return False, "No music files found in ZIP archive", None
+
+        logger.info(
+            f"Extracted ZIP archive, found {count} music file(s), using: {music_file.name}"
+        )
+        return True, None, music_file
+
+    except zipfile.BadZipFile:
+        return False, "ZIP extraction failed: Bad ZIP file", None
+    except Exception as e:
+        logger.error(f"ZIP extraction exception: {e}")
         return False, str(e), None
 
 
@@ -361,7 +401,9 @@ def detect_player_format(input_path):
         return "Module"
 
 
-def convert_to_wav(input_path, output_path, use_cache=True, compress_flac=False):
+def process_audio_conversion(
+    input_path, output_path, use_cache=True, compress_flac=False
+):
     """Convert module to WAV using UADE with optional caching and FLAC compression
     Returns: (success, error, final_file, player_format)
     """
@@ -569,7 +611,7 @@ def upload_file():
         upload_path = UPLOAD_DIR / f"{file_id}_{filename}"
         file.save(upload_path)
 
-        # Check if it's an LHA archive
+        # Check if it's an LHA or ZIP archive
         module_path = upload_path
         extract_dir = None
         if is_lha_file(upload_path):
@@ -585,10 +627,23 @@ def upload_file():
 
             module_path = music_file
             filename = music_file.name
+        elif is_zip_file(upload_path):
+            logger.info(f"Detected ZIP archive upload: {filename}")
+            extract_dir = UPLOAD_DIR / f"{file_id}_extracted"
+            success, error, music_file = extract_zip(upload_path, extract_dir)
+
+            if not success:
+                upload_path.unlink(missing_ok=True)
+                if extract_dir and extract_dir.exists():
+                    shutil.rmtree(extract_dir, ignore_errors=True)
+                return jsonify({"error": error}), 500
+
+            module_path = music_file
+            filename = music_file.name
 
         # Convert to WAV (and optionally FLAC)
         output_path = CONVERTED_DIR / f"{file_id}.wav"
-        success, error, final_file, player_format = convert_to_wav(
+        success, error, final_file, player_format = process_audio_conversion(
             module_path, output_path, compress_flac=use_flac
         )
 
@@ -666,13 +721,28 @@ def convert_url():
             return response, 400
         cache_path.write_bytes(response.content)
 
-        # Check if it's an LHA archive
+        # Check if it's an LHA or ZIP archive
         module_path = cache_path
         extract_dir = None
         if is_lha_file(cache_path):
             logger.info(f"Detected LHA archive: {filename}")
             extract_dir = CACHE_DIR / f"{file_id}_extracted"
             success, error, music_file = extract_lha(cache_path, extract_dir)
+
+            if not success:
+                cache_path.unlink(missing_ok=True)
+                if extract_dir and extract_dir.exists():
+                    shutil.rmtree(extract_dir, ignore_errors=True)
+                response = jsonify({"error": error})
+                response.headers["Content-Type"] = "application/json; charset=utf-8"
+                return response, 500
+
+            module_path = music_file
+            filename = music_file.name
+        elif is_zip_file(cache_path):
+            logger.info(f"Detected ZIP archive: {filename}")
+            extract_dir = CACHE_DIR / f"{file_id}_extracted"
+            success, error, music_file = extract_zip(cache_path, extract_dir)
 
             if not success:
                 cache_path.unlink(missing_ok=True)
@@ -692,7 +762,7 @@ def convert_url():
             return jsonify({"error": "Illegal output path"}), 400
 
         # Convert to WAV (and optionally FLAC)
-        success, error, final_file, player_format = convert_to_wav(
+        success, error, final_file, player_format = process_audio_conversion(
             module_path, output_path, compress_flac=use_flac
         )
 
@@ -871,7 +941,7 @@ def play_example(example_id):
             cache_path = CACHE_DIR / f"{file_id}_{example['type']}"
             cache_path.write_bytes(response.content)
 
-            # Check if it's an LHA archive
+            # Check if it's an LHA or ZIP archive
             module_path = cache_path
             extract_dir = None
             if is_lha_file(cache_path):
@@ -888,7 +958,21 @@ def play_example(example_id):
                     return jsonify({"error": extract_error}), 500
 
                 module_path = music_file
-            success, error, final_file, player_format = convert_to_wav(
+            elif is_zip_file(cache_path):
+                logger.info(f"Detected ZIP archive in example: {example['name']}")
+                extract_dir = CACHE_DIR / f"{file_id}_extracted"
+                extract_success, extract_error, music_file = extract_zip(
+                    cache_path, extract_dir
+                )
+
+                if not extract_success:
+                    cache_path.unlink(missing_ok=True)
+                    if extract_dir and extract_dir.exists():
+                        shutil.rmtree(extract_dir, ignore_errors=True)
+                    return jsonify({"error": extract_error}), 500
+
+                module_path = music_file
+            success, error, final_file, player_format = process_audio_conversion(
                 module_path, output_path, compress_flac=use_flac
             )
 
