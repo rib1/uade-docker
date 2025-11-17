@@ -45,20 +45,24 @@ jobs:
 
     - name: Parse version information
       id: version
+      env:
+        GITHUB_REPOSITORY_OWNER: ${{ github.repository_owner }}
+        INPUT_UADE_VERSION: ${{ inputs.uade_version }}
+        INPUT_BUILD_NUMBER: ${{ inputs.build_number }}
       run: |
         # Get input values or use defaults from Dockerfile comment
-        UADE_VERSION="${{ inputs.uade_version }}"
+        UADE_VERSION="$INPUT_UADE_VERSION"
         DOCKERFILE_VERSION=$(grep -m1 -oP 'UADE CLI Base Image v\K[0-9.]+-base\.[0-9]+' Dockerfile)
         if [ -z "$UADE_VERSION" ] || [ "$UADE_VERSION" == "3.05" ]; then
           UADE_VERSION=$(echo "$DOCKERFILE_VERSION" | grep -oP '^[0-9.]+' )
         fi
-        
-        BUILD_NUMBER="${{ inputs.build_number }}"
+
+        BUILD_NUMBER="$INPUT_BUILD_NUMBER"
         if [ -z "$BUILD_NUMBER" ]; then
           BUILD_NUMBER=$(echo "$DOCKERFILE_VERSION" | grep -oP '(?<=-base\.)[0-9]+')
         fi
         IMAGE_TAG="${UADE_VERSION}-base.${BUILD_NUMBER}"
-        IMAGE_URL="ghcr.io/${{ github.repository_owner }}/uade-cli:${IMAGE_TAG}"
+        IMAGE_URL="ghcr.io/${GITHUB_REPOSITORY_OWNER}/uade-cli:${IMAGE_TAG}"
         echo "uade_version=${UADE_VERSION}" >> $GITHUB_OUTPUT
         echo "build_number=${BUILD_NUMBER}" >> $GITHUB_OUTPUT
         echo "image_tag=${IMAGE_TAG}" >> $GITHUB_OUTPUT

@@ -362,7 +362,10 @@ async function loadVersionInfo() {
     const versionElement = document.getElementById("version-info");
 
     if (data.version && data.version !== "unknown") {
-      versionElement.innerHTML = `Version: <a href="https://github.com/rib1/uade-docker/commit/${data.version}" target="_blank" style="color: #666; text-decoration: none;">${data.version}</a>`;
+      // Set static markup, then safely set user data
+      versionElement.innerHTML = `Version: <a href="https://github.com/rib1/uade-docker/commit/${encodeURIComponent(data.version)}" target="_blank" style="color: #666; text-decoration: none;"></a>`;
+      const link = versionElement.querySelector('a');
+      link.textContent = data.version;
     } else {
       versionElement.textContent = "";
     }
