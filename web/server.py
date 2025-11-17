@@ -68,23 +68,39 @@ FORBIDDEN_CHARS = r'[ \t\n\r\x00-\x1f"\'`;|&$<>\\]'
 for directory in [UPLOAD_DIR, CONVERTED_DIR, CACHE_DIR]:
     directory.mkdir(parents=True, exist_ok=True)
 
-# Find music files (common Amiga module extensions and custom format naming)
+# Find music files (common Amiga module extensions and prefixes)
 music_extensions = {
+    "aam",
     "ahx",
+    "aon",
     "bp",
-    "bsd",
+    "bp3"
+    "bd",
+    "bds",
+    "bsi",
     "bss",
     "cm",
     "cust",
+    "digi",
     "dll",
     "dmu",
     "dw",
     "fc",
     "fred",
     "gray",
+    "hip",
+    "hip7",
+    "hipc",
     "hvl",
+    "instr",
+    "jt",
     "mdat",
     "med",
+    "mmd0",
+    "mmd1",
+    "mmd2",
+    "mmd3",
+    "mmdc",
     "mod",
     "okta",
     "rk",
@@ -96,6 +112,7 @@ music_extensions = {
     "ss",
     "ssd",
     "sun",
+    "tf",
     "tfmx",
     "ym",
 }
