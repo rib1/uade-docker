@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 UADE Web Player - Flask Server
-Converts Amiga music modules to WAV for browser playback
+Converts Amiga music modules to FLAC or WAV for browser playback
 Cloud-ready with proper logging, error handling, and cleanup
 """
 
@@ -908,10 +908,12 @@ def play_file(file_id):
     """
     return serve_audio_file(file_id, as_attachment=False)
 
+
 @app.route("/download/<file_id>")
 def download_file(file_id):
     """Download audio file (FLAC or WAV) - large files may require a download manager"""
     return serve_audio_file(file_id, as_attachment=True)
+
 
 def serve_audio_file(file_id, as_attachment=False):
     """
@@ -950,14 +952,18 @@ def serve_audio_file(file_id, as_attachment=False):
     range_info = parse_range_header(range_header, file_size)
     if range_info:
         start, end, length = range_info
-        response = Response(stream_file_range(file_path, start, length), 206, mimetype=mimetype)
+        response = Response(
+            stream_file_range(file_path, start, length), 206, mimetype=mimetype
+        )
         # Custom header to indicate that only single range requests are supported (for client-side handling)
         response.headers["X-Single-Range-Only"] = "true"
         response.headers["Content-Range"] = f"bytes {start}-{end}/{file_size}"
         response.headers["Content-Length"] = str(length)
         response.headers["Accept-Ranges"] = "bytes"
         if as_attachment:
-            response.headers["Content-Disposition"] = f'attachment; filename="{filename}"'
+            response.headers["Content-Disposition"] = (
+                f'attachment; filename="{filename}"'
+            )
         else:
             response.headers["Cache-Control"] = "public, max-age=3600"
         return response
@@ -975,15 +981,18 @@ def serve_audio_file(file_id, as_attachment=False):
             response.headers["Accept-Ranges"] = "bytes"
             return response
         # For requests without range header, stream the entire file
-        # Browsers will automatically use range requests for large files when needed        
+        # Browsers will automatically use range requests for large files when needed
         response = Response(stream_full_file(file_path), mimetype=mimetype)
         response.headers["Content-Length"] = str(file_size)
         response.headers["Accept-Ranges"] = "bytes"
         if as_attachment:
-            response.headers["Content-Disposition"] = f'attachment; filename="{filename}"'
+            response.headers["Content-Disposition"] = (
+                f'attachment; filename="{filename}"'
+            )
         else:
             response.headers["Cache-Control"] = "public, max-age=3600"
         return response
+
 
 def stream_full_file(file_path, chunk_size=8192):
     """Yield the entire file in chunks (used for small file streaming)"""
@@ -993,6 +1002,7 @@ def stream_full_file(file_path, chunk_size=8192):
             if not chunk:
                 break
             yield chunk
+
 
 def stream_file_range(file_path, start, length, chunk_size=8192):
     """Yield a byte range from a file (used for range requests)"""
@@ -1006,6 +1016,7 @@ def stream_file_range(file_path, start, length, chunk_size=8192):
                 break
             remaining -= len(chunk)
             yield chunk
+
 
 def parse_range_header(range_header, file_size):
     """
@@ -1037,6 +1048,7 @@ def parse_range_header(range_header, file_size):
         end = start + 20 * 1024 * 1024 - 1
     length = end - start + 1
     return start, end, length
+
 
 if __name__ == "__main__":
     logger.info(f"Starting UADE Web Player on port {PORT}")
