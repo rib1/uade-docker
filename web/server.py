@@ -68,6 +68,38 @@ FORBIDDEN_CHARS = r'[ \t\n\r\x00-\x1f"\'`;|&$<>\\]'
 for directory in [UPLOAD_DIR, CONVERTED_DIR, CACHE_DIR]:
     directory.mkdir(parents=True, exist_ok=True)
 
+# Find music files (common Amiga module extensions and custom format naming)
+music_extensions = {
+    "ahx",
+    "bp",
+    "bsd",
+    "bss",
+    "cm",
+    "cust",
+    "dll",
+    "dmu",
+    "dw",
+    "fc",
+    "fred",
+    "gray",
+    "hvl",
+    "mdat",
+    "med",
+    "mod",
+    "okta",
+    "rk",
+    "sc",
+    "sid",
+    "smpl",
+    "smus",
+    "sng",
+    "ss",
+    "ssd",
+    "sun",
+    "tfmx",
+    "ym",
+}
+
 # Example modules - keeping it simple with proven working examples
 EXAMPLES = [
     {
@@ -229,43 +261,14 @@ def extract_lha(lha_path, extract_dir):
             logger.error(f"LHA extraction error: {result.stderr}")
             return False, f"LHA extraction failed: {result.stderr}", None
 
-        # Find music files (common Amiga module extensions and custom format naming)
-        music_extensions = {
-            ".mod",
-            ".ahx",
-            ".hvl",
-            ".s3m",
-            ".xm",
-            ".it",
-            ".med",
-            ".okta",
-            ".sid",
-            ".ssd",
-            ".dmu",
-            ".rk",
-            ".smus",
-            ".tfmx",
-            ".mdat",
-            ".smpl",
-            ".bp",
-            ".fc",
-            ".fred",
-            ".gray",
-            ".sc",
-            ".sng",
-            ".ss",
-            ".sun",
-            ".ym",
-        }
-
         music_files = []
         for file_path in extract_dir.rglob("*"):
             if file_path.is_file():
-                # Check by extension or by 'cust.' prefix (custom format)
-                if (
-                    file_path.suffix.lower() in music_extensions
-                    or file_path.name.startswith("cust.")
-                ):
+                name_lower = file_path.name.lower()
+                ext = file_path.suffix.lower()[1:]
+                prefix = name_lower.split(".")[0]
+                # Check by extension
+                if ext in music_extensions or prefix in music_extensions:
                     music_files.append(file_path)
 
         if not music_files:
