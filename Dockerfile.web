@@ -30,7 +30,6 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 # Copy UADE binaries and libraries from base image
 COPY --from=uade-base /usr/local/bin/uade123 /usr/local/bin/
-COPY --from=uade-base /usr/local/bin/uade-convert /usr/local/bin/
 COPY --from=uade-base /usr/local/share/uade /usr/local/share/uade
 COPY --from=uade-base /usr/local/lib/ /usr/local/lib/
 

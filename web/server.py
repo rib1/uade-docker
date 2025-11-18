@@ -19,7 +19,6 @@ from typing import Final
 import requests
 import re
 import shutil
-import ipaddress
 import zipfile
 
 # Configure logging for cloud environments
@@ -27,6 +26,7 @@ logging.basicConfig(
     level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
 )
 logger = logging.getLogger(__name__)
+logger.propagate = False
 
 app = Flask(__name__, static_folder="static")
 
@@ -484,70 +484,6 @@ def process_audio_conversion(
         return False, str(e), None, None
 
 
-def convert_tfmx(mdat_url, smpl_url, output_path, use_cache=True, compress_flac=False):
-    """Convert TFMX module using uade-convert helper with caching and FLAC compression"""
-    # Defensive: Restrict output_path to CONVERTED_DIR
-    output_resolved = Path(output_path).resolve()
-    if not output_resolved.is_relative_to(CONVERTED_DIR.resolve()):
-        logger.error("Aborting: attempted write outside converted directory")
-        return False, "Illegal output file path", None
-    try:
-        # Create cache key from both URLs (use raw input, not sanitized)
-        if use_cache:
-            # Normalize URLs for cache key
-            norm_mdat_url = mdat_url.strip().lower()
-            norm_smpl_url = smpl_url.strip().lower()
-            cache_key = hashlib.md5(
-                f"{norm_mdat_url}:{norm_smpl_url}".encode(), usedforsecurity=False
-            ).hexdigest()
-            cached_file = get_cached_conversion(cache_key, prefer_flac=compress_flac)
-            if cached_file:
-                # Cache hit - copy cached file
-                if compress_flac and cached_file.suffix == ".flac":
-                    flac_output = output_path.with_suffix(".flac")
-                    shutil.copy2(cached_file, flac_output)
-                    return True, None, flac_output
-                else:
-                    shutil.copy2(cached_file, output_path)
-                    return True, None, cached_file
-
-        # Use strictly validated, normalized URLs as arguments; don't mutate/sanitize
-        cmd = ["/usr/local/bin/uade-convert", mdat_url, smpl_url, str(output_path)]
-
-        result = subprocess.run(cmd, capture_output=True, text=True, timeout=300)
-
-        if result.returncode != 0:
-            logger.error(f"TFMX conversion error: {result.stderr}")
-            return False, f"TFMX conversion failed: {result.stderr}", None
-
-        final_output = output_path
-
-        # Compress to FLAC if requested
-        if compress_flac and output_path.exists():
-            flac_output = output_path.with_suffix(".flac")
-            if compress_to_flac(output_path, flac_output):
-                final_output = flac_output
-                # Cache the FLAC version
-                if use_cache:
-                    cache_file = CONVERTED_DIR / f"{cache_key}.flac"
-                    if not cache_file.exists():
-                        shutil.copy2(flac_output, cache_file)
-                        logger.info(f"Cached TFMX FLAC conversion: {cache_key}")
-            else:
-                logger.warning("FLAC compression failed for TFMX, using WAV")
-
-        # Save WAV to cache if not using FLAC
-        if use_cache and output_path.exists() and not compress_flac:
-            cache_file = CONVERTED_DIR / f"{cache_key}.wav"
-            if not cache_file.exists():
-                shutil.copy2(output_path, cache_file)
-                logger.info(f"Cached TFMX conversion: {cache_key}")
-
-        return True, None, final_output
-
-    except Exception as e:
-        logger.error(f"TFMX exception: {e}")
-        return False, str(e), None
 
 
 @app.route("/")
@@ -699,41 +635,46 @@ def convert_url():
         # Generate unique ID
         file_id = str(uuid.uuid4())
 
-        # Download file (allow redirects for URLs like exotica.org.uk)
-        logger.info(f"Downloading: {sanitized_url(url)}")
-        # nosec B501 - Trade-off for HTTP module downloads
-        response = requests.get(url, timeout=30, verify=False, allow_redirects=True)
-        response.raise_for_status()
-
+        # --- Caching logic for main module file ---
+        # Compute cache hash from URL
+        url_hash = hashlib.md5(url.encode(), usedforsecurity=False).hexdigest()
+        cached_module_path = UPLOAD_DIR / f"cache_{url_hash}"
         raw_filename = url.split("/")[-1].split("#")[0].split("?")[0] or "module"
-        # Sanitize filename from user input using Werkzeug's secure_filename
         filename = secure_filename(raw_filename)
 
-        # Save downloaded file
-        module_path = UPLOAD_DIR / f"{filename}_{file_id}"
-        # Restrict module_path to UPLOAD_DIR
-        if not module_path.resolve().is_relative_to(UPLOAD_DIR.resolve()):
-            logger.error("Aborting: attempted write outside upload directory")
-            response = jsonify({"error": "Illegal file name/path"})
-            response.headers["Content-Type"] = "application/json; charset=utf-8"
-            return response, 400
-        module_path.write_bytes(response.content)
-        logger.info(f"module_path: {module_path}")
+        if cached_module_path.exists():
+            logger.info(f"Cache hit for module: {url}")
+            module_path = cached_module_path
+        else:
+            logger.info(f"Downloading: {sanitized_url(url)}")
+            # nosec B501 - Trade-off for HTTP module downloads
+            response = requests.get(url, timeout=30, verify=False, allow_redirects=True)
+            response.raise_for_status()
+            # Save downloaded file to cache
+            cached_module_path.write_bytes(response.content)
+            module_path = cached_module_path
+            logger.info(f"Cached module_path: {module_path}")
 
-        # Download sample file if provided
+        # --- Caching logic for TFMX sample file ---
         sample_path = None
         if sample_url:
-            logger.info(f"Downloading TFMX sample: {sanitized_url(sample_url)}")
-            sample_response = requests.get(sample_url, timeout=30, verify=False, allow_redirects=True)
-            sample_response.raise_for_status()
+            sample_url_hash = hashlib.md5(sample_url.encode(), usedforsecurity=False).hexdigest()
             # Ensure filename matches mdat except for prefix
             if filename.startswith("mdat"):
                 smplfilename = "smpl" + filename[4:]
             else:
                 smplfilename = "smpl." + filename
-            sample_path = UPLOAD_DIR / f"{smplfilename}_{file_id}"
-            sample_path.write_bytes(sample_response.content)
-            logger.info(f"sample_path: {sample_path}")
+            cached_sample_path = UPLOAD_DIR / f"cache_{sample_url_hash}"
+            if cached_sample_path.exists():
+                logger.info(f"Cache hit for TFMX sample: {sample_url}")
+                sample_path = cached_sample_path
+            else:
+                logger.info(f"Downloading TFMX sample: {sanitized_url(sample_url)}")
+                sample_response = requests.get(sample_url, timeout=30, verify=False, allow_redirects=True)
+                sample_response.raise_for_status()
+                cached_sample_path.write_bytes(sample_response.content)
+                sample_path = cached_sample_path
+                logger.info(f"Cached sample_path: {sample_path}")
 
         # Check if it's an LHA or ZIP archive
         extract_dir = None
@@ -742,7 +683,7 @@ def convert_url():
             extract_dir = UPLOAD_DIR / f"{file_id}_extracted"
             success, error, music_file = extract_lha(module_path, extract_dir)
             if not success:
-                module_path.unlink(missing_ok=True)
+                # Do not delete cached_module_path on error
                 if extract_dir and extract_dir.exists():
                     shutil.rmtree(extract_dir, ignore_errors=True)
                 response = jsonify({"error": error})
@@ -755,7 +696,7 @@ def convert_url():
             extract_dir = UPLOAD_DIR / f"{file_id}_extracted"
             success, error, music_file = extract_zip(module_path, extract_dir)
             if not success:
-                module_path.unlink(missing_ok=True)
+                # Do not delete cached_module_path on error
                 if extract_dir and extract_dir.exists():
                     shutil.rmtree(extract_dir, ignore_errors=True)
                 response = jsonify({"error": error})
@@ -770,10 +711,7 @@ def convert_url():
             module_path, output_path, compress_flac=use_flac
         )
 
-        # Clean up downloaded and extracted files
-        module_path.unlink(missing_ok=True)
-        if sample_path and sample_path.exists():
-            sample_path.unlink(missing_ok=True)
+        # Clean up extracted files only (do not delete cached files)
         if extract_dir and extract_dir.exists():
             shutil.rmtree(extract_dir, ignore_errors=True)
         if not success:
@@ -819,92 +757,6 @@ def sanitized_url(url):
     return url
 
 
-@app.route("/convert-tfmx", methods=["POST"])
-def handle_tfmx():
-    """Handle TFMX module conversion"""
-    cleanup_old_files()
-
-    data = request.get_json()
-    if not data or "mdat_url" not in data or "smpl_url" not in data:
-        return jsonify({"error": "Both mdat_url and smpl_url required"}), 400
-
-    # Validate URLs before processing (stricter, block meta/whitespace chars, local addresses, etc)
-    def is_safe_url(url):
-        from urllib.parse import urlparse
-
-        # Reject URLs containing forbidden characters
-        if re.search(FORBIDDEN_CHARS, url):
-            return False
-        try:
-            parsed = urlparse(url)
-            if parsed.scheme not in ("http", "https"):
-                return False
-            if not parsed.netloc:
-                return False
-            # Disallow local hostnames and private IP addresses (prevents SSRF to internal network/services)
-            hostname = parsed.hostname
-            if not hostname:
-                return False
-            # Disallow localhost names
-            if hostname in ("localhost", "127.0.0.1", "::1"):
-                return False
-            # Resolve IPs and check for loopback/private
-            try:
-                ip = ipaddress.ip_address(hostname)
-                if (
-                    ip.is_loopback
-                    or ip.is_private
-                    or ip.is_link_local
-                    or ip.is_reserved
-                ):
-                    return False
-            except ValueError:
-                # If not an IP, could be a hostname, optionally check against other blocked patterns
-                # Forbid .local domain as extra belt-and-suspenders, optionally restrict more
-                if hostname.endswith(".local"):
-                    return False
-            return True
-        except Exception:
-            return False
-
-    # Use normalized URLs
-    mdat_url = data["mdat_url"].strip()
-    smpl_url = data["smpl_url"].strip()
-    if not (is_safe_url(mdat_url) and is_safe_url(smpl_url)):
-        return jsonify({"error": "Invalid or unsafe URL(s) supplied"}), 400
-
-    try:
-        # Check browser FLAC support
-        user_agent = request.headers.get("User-Agent", "")
-        use_flac = supports_flac(user_agent)
-
-        file_id = str(uuid.uuid4())
-        output_path = CONVERTED_DIR / f"{file_id}.wav"
-
-        success, error, final_file = convert_tfmx(
-            mdat_url, smpl_url, output_path, compress_flac=use_flac
-        )
-
-        if not success:
-            return jsonify({"error": error}), 500
-
-        return jsonify(
-            {
-                "success": True,
-                "file_id": file_id,
-                "filename": "tfmx_module",
-                "player_format": "TFMX",
-                "audio_format": final_file.suffix[1:] if final_file else "wav",
-                "play_url": f"/play/{file_id}",
-                "download_url": f"/download/{file_id}",
-            }
-        )
-
-    except Exception as e:
-        logger.error(
-            f"TFMX error: {sanitized_url(mdat_url)}, {sanitized_url(smpl_url)}: {e}"
-        )
-        return jsonify({"error": str(e)}), 500
 
 
 @app.route("/play-example/<example_id>", methods=["POST"])
