@@ -26,7 +26,6 @@ logging.basicConfig(
     level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
 )
 logger = logging.getLogger(__name__)
-logger.propagate = False
 
 app = Flask(__name__, static_folder="static")
 
@@ -636,23 +635,21 @@ def convert_url():
         file_id = str(uuid.uuid4())
 
         # --- Caching logic for main module file ---
-        # Compute cache hash from URL
-        url_hash = hashlib.md5(url.encode(), usedforsecurity=False).hexdigest()
-        cached_module_path = UPLOAD_DIR / f"cache_{url_hash}"
         raw_filename = url.split("/")[-1].split("#")[0].split("?")[0] or "module"
         filename = secure_filename(raw_filename)
+        # Compute cache hash from URL
+        url_hash = hashlib.md5(url.encode(), usedforsecurity=False).hexdigest()
+        module_path = UPLOAD_DIR / f"{filename}_{url_hash}"
 
-        if cached_module_path.exists():
-            logger.info(f"Cache hit for module: {url}")
-            module_path = cached_module_path
+        if module_path.exists():
+            logger.info(f"Cache hit for module: {sanitized_url(url)}, using cached file: {module_path}")
         else:
             logger.info(f"Downloading: {sanitized_url(url)}")
             # nosec B501 - Trade-off for HTTP module downloads
             response = requests.get(url, timeout=30, verify=False, allow_redirects=True)
             response.raise_for_status()
             # Save downloaded file to cache
-            cached_module_path.write_bytes(response.content)
-            module_path = cached_module_path
+            module_path.write_bytes(response.content)
             logger.info(f"Cached module_path: {module_path}")
 
         # --- Caching logic for TFMX sample file ---
@@ -664,17 +661,20 @@ def convert_url():
                 smplfilename = "smpl" + filename[4:]
             else:
                 smplfilename = "smpl." + filename
-            cached_sample_path = UPLOAD_DIR / f"cache_{sample_url_hash}"
+            sample_path = UPLOAD_DIR / f"{smplfilename}_{url_hash}"
+            cached_sample_path = UPLOAD_DIR / f"{smplfilename}_{sample_url_hash}"
             if cached_sample_path.exists():
-                logger.info(f"Cache hit for TFMX sample: {sample_url}")
-                sample_path = cached_sample_path
+                if sample_path.exists() or sample_path.is_symlink():
+                    sample_path.unlink(missing_ok=True)
+                os.symlink(cached_sample_path, sample_path)
+                logger.info(f"Cache hit for TFMX sample: {sanitized_url(sample_url)}, using cached file {cached_sample_path}, linking to {sample_path}")
             else:
                 logger.info(f"Downloading TFMX sample: {sanitized_url(sample_url)}")
                 sample_response = requests.get(sample_url, timeout=30, verify=False, allow_redirects=True)
                 sample_response.raise_for_status()
                 cached_sample_path.write_bytes(sample_response.content)
-                sample_path = cached_sample_path
-                logger.info(f"Cached sample_path: {sample_path}")
+                os.symlink(cached_sample_path, sample_path)
+                logger.info(f"Cached sample_path: {cached_sample_path}, linking to {sample_path}")
 
         # Check if it's an LHA or ZIP archive
         extract_dir = None
