@@ -13,7 +13,7 @@ Play Amiga music modules directly in your web browser! No desktop software requi
 - ⬇️ **Download Audio** - Save as FLAC or WAV for offline playback
 - 🚀 **Cloud Ready** - Designed for Kubernetes, EKS Auto Mode, and cloud platforms
 - 📱 **Mobile Friendly** - Works on phones and tablets
-- ⚡ **Performance** - MD5-based caching for instant replay
+- ⚡ **Performance** - MD5-based file and URL caching for instant replay and computing and bandwidth savings
 
 ## Quick Start
 
@@ -291,6 +291,7 @@ Older or unsupported browsers automatically receive WAV files as fallback. No co
 - Automatic cleanup of files older than 1 hour
 - Separate directories: uploads, conversions, cache
 - UUID-based filenames (no collisions)
+- URL-based caching: If the same URL is requested again, the cached file is reused instantly.
 - MD5-based caching for instant replay
 
 ## Security
