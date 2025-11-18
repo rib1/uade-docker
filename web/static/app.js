@@ -146,7 +146,7 @@ async function handleUrlConvert() {
         data.play_url,
         data.download_url,
         data.player_format || "Module",
-        data.audio_format || "wav",
+        data.audio_format || "wav"
       );
       urlInput.value = "";
     } else {
@@ -177,14 +177,15 @@ async function handleTfmxConvert() {
   tfmxSubmit.disabled = true;
 
   try {
-    const response = await fetch("/convert-tfmx", {
+    // Call convert-url with both URLs
+    const response = await fetch("/convert-url", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        mdat_url: mdatUrl,
-        smpl_url: smplUrl,
+        url: mdatUrl,
+        sample_url: smplUrl,
       }),
     });
 
@@ -194,11 +195,11 @@ async function handleTfmxConvert() {
       showStatus("✓ TFMX converted successfully", "success");
       playFile(
         data.file_id,
-        "TFMX Module",
+        data.filename,
         data.play_url,
         data.download_url,
-        "TFMX",
-        data.audio_format || "wav",
+        data.player_format || "TFMX",
+        data.audio_format || "wav"
       );
       mdatInput.value = "";
       smplInput.value = "";
@@ -279,8 +280,8 @@ async function handleExamplePlay(example, button) {
         example.name,
         data.play_url,
         data.download_url,
-        example.format,
-        data.audio_format || "wav",
+        data.player_format || example.format,
+        data.audio_format || "wav"
       );
       button.innerHTML = "✓ Playing";
 

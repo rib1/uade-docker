@@ -15,6 +15,7 @@ from pathlib import Path
 from datetime import datetime
 from flask import Flask, request, jsonify, send_from_directory, Response
 from werkzeug.utils import secure_filename
+from typing import Final
 import requests
 import re
 import shutil
@@ -59,18 +60,17 @@ PORT = int(os.getenv("PORT", 5000))
 app.config["MAX_CONTENT_LENGTH"] = MAX_UPLOAD_SIZE
 
 # Temp directories
-UPLOAD_DIR = Path("/tmp/uploads")
-CONVERTED_DIR = Path("/tmp/converted")
-CACHE_DIR = Path("/tmp/cache")
+UPLOAD_DIR: Final = Path("/tmp/uploads")
+CONVERTED_DIR: Final = Path("/tmp/converted")
 
 # Shared forbidden characters regex for URL validation/sanitization
-FORBIDDEN_CHARS = r'[ \t\n\r\x00-\x1f"\'`;|&$<>\\]'
+FORBIDDEN_CHARS: Final = r'[ \t\n\r\x00-\x1f"\'`;|&$<>\\]'
 
-for directory in [UPLOAD_DIR, CONVERTED_DIR, CACHE_DIR]:
+for directory in [UPLOAD_DIR, CONVERTED_DIR]:
     directory.mkdir(parents=True, exist_ok=True)
 
 # Find music files (common Amiga module extensions and prefixes)
-music_extensions = {
+music_extensions: Final = {
     "aam",
     "ahx",
     "aon",
@@ -119,7 +119,7 @@ music_extensions = {
 }
 
 # Example modules - keeping it simple with proven working examples
-EXAMPLES = [
+EXAMPLES: Final = [
     {
         "id": "captain-space-debris",
         "name": "Captain - Space Debris",
@@ -202,7 +202,7 @@ def cleanup_old_files():
     """Remove files older than CLEANUP_INTERVAL"""
     try:
         cutoff = time.time() - CLEANUP_INTERVAL
-        for directory in [UPLOAD_DIR, CONVERTED_DIR, CACHE_DIR]:
+        for directory in [UPLOAD_DIR, CONVERTED_DIR]:
             for filepath in directory.glob("*"):
                 if filepath.stat().st_mtime < cutoff:
                     filepath.unlink()
@@ -408,12 +408,9 @@ def process_audio_conversion(
     Returns: (success, error, final_file, player_format)
     """
     try:
-        # Defensive: Restrict input_path to UPLOAD_DIR or CACHE_DIR
+        # Defensive: Restrict input_path to UPLOAD_DIR
         input_resolved = Path(input_path).resolve()
-        if not (
-            input_resolved.is_relative_to(CACHE_DIR.resolve())
-            or input_resolved.is_relative_to(UPLOAD_DIR.resolve())
-        ):
+        if not (input_resolved.is_relative_to(UPLOAD_DIR.resolve())):
             logger.error("Aborting: attempted read outside allowed directories")
             return False, "Illegal input file path", None, None
         # Detect player format before conversion
@@ -608,7 +605,7 @@ def upload_file():
         filename = secure_filename(file.filename)
 
         # Save uploaded file
-        upload_path = UPLOAD_DIR / f"{file_id}_{filename}"
+        upload_path = UPLOAD_DIR / f"{filename}_{file_id}"
         file.save(upload_path)
 
         # Check if it's an LHA or ZIP archive
@@ -683,7 +680,7 @@ def upload_file():
 
 @app.route("/convert-url", methods=["POST"])
 def convert_url():
-    """Download from URL and convert"""
+    """Download from URL and convert, supports optional sample URL for TFMX"""
     cleanup_old_files()
 
     data = request.get_json()
@@ -693,11 +690,14 @@ def convert_url():
         return response, 400
 
     url = data["url"]
+    sample_url = data.get("sample_url")
 
     try:
         # Check browser FLAC support
         user_agent = request.headers.get("User-Agent", "")
         use_flac = supports_flac(user_agent)
+        # Generate unique ID
+        file_id = str(uuid.uuid4())
 
         # Download file (allow redirects for URLs like exotica.org.uk)
         logger.info(f"Downloading: {sanitized_url(url)}")
@@ -705,77 +705,79 @@ def convert_url():
         response = requests.get(url, timeout=30, verify=False, allow_redirects=True)
         response.raise_for_status()
 
-        # Generate unique ID
-        file_id = str(uuid.uuid4())
         raw_filename = url.split("/")[-1].split("#")[0].split("?")[0] or "module"
         # Sanitize filename from user input using Werkzeug's secure_filename
         filename = secure_filename(raw_filename)
 
         # Save downloaded file
-        cache_path = CACHE_DIR / f"{file_id}_{filename}"
-        # Restrict cache_path to CACHE_DIR
-        if not cache_path.resolve().is_relative_to(CACHE_DIR.resolve()):
-            logger.error("Aborting: attempted write outside cache directory")
+        module_path = UPLOAD_DIR / f"{filename}_{file_id}"
+        # Restrict module_path to UPLOAD_DIR
+        if not module_path.resolve().is_relative_to(UPLOAD_DIR.resolve()):
+            logger.error("Aborting: attempted write outside upload directory")
             response = jsonify({"error": "Illegal file name/path"})
             response.headers["Content-Type"] = "application/json; charset=utf-8"
             return response, 400
-        cache_path.write_bytes(response.content)
+        module_path.write_bytes(response.content)
+        logger.info(f"module_path: {module_path}")
+
+        # Download sample file if provided
+        sample_path = None
+        if sample_url:
+            logger.info(f"Downloading TFMX sample: {sanitized_url(sample_url)}")
+            sample_response = requests.get(sample_url, timeout=30, verify=False, allow_redirects=True)
+            sample_response.raise_for_status()
+            # Ensure filename matches mdat except for prefix
+            if filename.startswith("mdat"):
+                smplfilename = "smpl" + filename[4:]
+            else:
+                smplfilename = "smpl." + filename
+            sample_path = UPLOAD_DIR / f"{smplfilename}_{file_id}"
+            sample_path.write_bytes(sample_response.content)
+            logger.info(f"sample_path: {sample_path}")
 
         # Check if it's an LHA or ZIP archive
-        module_path = cache_path
         extract_dir = None
-        if is_lha_file(cache_path):
+        if is_lha_file(module_path):
             logger.info(f"Detected LHA archive: {filename}")
-            extract_dir = CACHE_DIR / f"{file_id}_extracted"
-            success, error, music_file = extract_lha(cache_path, extract_dir)
-
+            extract_dir = UPLOAD_DIR / f"{file_id}_extracted"
+            success, error, music_file = extract_lha(module_path, extract_dir)
             if not success:
-                cache_path.unlink(missing_ok=True)
+                module_path.unlink(missing_ok=True)
                 if extract_dir and extract_dir.exists():
                     shutil.rmtree(extract_dir, ignore_errors=True)
                 response = jsonify({"error": error})
                 response.headers["Content-Type"] = "application/json; charset=utf-8"
                 return response, 500
-
-            module_path = music_file
             filename = music_file.name
-        elif is_zip_file(cache_path):
+            module_path = music_file
+        elif is_zip_file(module_path):
             logger.info(f"Detected ZIP archive: {filename}")
-            extract_dir = CACHE_DIR / f"{file_id}_extracted"
-            success, error, music_file = extract_zip(cache_path, extract_dir)
-
+            extract_dir = UPLOAD_DIR / f"{file_id}_extracted"
+            success, error, music_file = extract_zip(module_path, extract_dir)
             if not success:
-                cache_path.unlink(missing_ok=True)
+                module_path.unlink(missing_ok=True)
                 if extract_dir and extract_dir.exists():
                     shutil.rmtree(extract_dir, ignore_errors=True)
                 response = jsonify({"error": error})
                 response.headers["Content-Type"] = "application/json; charset=utf-8"
                 return response, 500
-
-            module_path = music_file
             filename = music_file.name
-        # Assign output_path before restriction check
-        output_path = CONVERTED_DIR / f"{file_id}.wav"
-        # Restrict output_path to CONVERTED_DIR
-        if not output_path.resolve().is_relative_to(CONVERTED_DIR.resolve()):
-            logger.error("Aborting: attempted write outside output directory")
-            return jsonify({"error": "Illegal output path"}), 400
+            module_path = music_file
 
+        output_path = CONVERTED_DIR / f"{file_id}.wav"
         # Convert to WAV (and optionally FLAC)
         success, error, final_file, player_format = process_audio_conversion(
             module_path, output_path, compress_flac=use_flac
         )
 
-        if not success:
-            cache_path.unlink(missing_ok=True)
-            if extract_dir and extract_dir.exists():
-                shutil.rmtree(extract_dir, ignore_errors=True)
-            return jsonify({"error": error}), 500
-
-        # Clean up cached files
-        cache_path.unlink(missing_ok=True)
+        # Clean up downloaded and extracted files
+        module_path.unlink(missing_ok=True)
+        if sample_path and sample_path.exists():
+            sample_path.unlink(missing_ok=True)
         if extract_dir and extract_dir.exists():
             shutil.rmtree(extract_dir, ignore_errors=True)
+        if not success:
+            return jsonify({"error": error}), 500
 
         response = jsonify(
             {
@@ -914,95 +916,22 @@ def play_example(example_id):
     if not example:
         return jsonify({"error": "Example not found"}), 404
 
-    try:
-        # Check browser FLAC support
-        user_agent = request.headers.get("User-Agent", "")
-        use_flac = supports_flac(user_agent)
+    # Prepare payload for convert_url
+    if example["type"] == "tfmx":
+        payload = {
+            "url": example["mdat_url"],
+            "sample_url": example["smpl_url"]
+        }
+    else:
+        payload = {"url": example["url"]}
 
-        file_id = str(uuid.uuid4())
-        output_path = CONVERTED_DIR / f"{file_id}.wav"
-
-        if example["type"] == "tfmx":
-            success, error, final_file = convert_tfmx(
-                example["mdat_url"],
-                example["smpl_url"],
-                output_path,
-                compress_flac=use_flac,
-            )
-            player_format = "TFMX"  # TFMX modules are always TFMX format
-        else:
-            # Download regular module (allow redirects for URLs like exotica.org.uk)
-            # nosec B501 - Trade-off for HTTP module downloads
-            response = requests.get(
-                example["url"], timeout=30, verify=False, allow_redirects=True
-            )
-            response.raise_for_status()
-
-            cache_path = CACHE_DIR / f"{file_id}_{example['type']}"
-            cache_path.write_bytes(response.content)
-
-            # Check if it's an LHA or ZIP archive
-            module_path = cache_path
-            extract_dir = None
-            if is_lha_file(cache_path):
-                logger.info(f"Detected LHA archive in example: {example['name']}")
-                extract_dir = CACHE_DIR / f"{file_id}_extracted"
-                extract_success, extract_error, music_file = extract_lha(
-                    cache_path, extract_dir
-                )
-
-                if not extract_success:
-                    cache_path.unlink(missing_ok=True)
-                    if extract_dir and extract_dir.exists():
-                        shutil.rmtree(extract_dir, ignore_errors=True)
-                    return jsonify({"error": extract_error}), 500
-
-                module_path = music_file
-            elif is_zip_file(cache_path):
-                logger.info(f"Detected ZIP archive in example: {example['name']}")
-                extract_dir = CACHE_DIR / f"{file_id}_extracted"
-                extract_success, extract_error, music_file = extract_zip(
-                    cache_path, extract_dir
-                )
-
-                if not extract_success:
-                    cache_path.unlink(missing_ok=True)
-                    if extract_dir and extract_dir.exists():
-                        shutil.rmtree(extract_dir, ignore_errors=True)
-                    return jsonify({"error": extract_error}), 500
-
-                module_path = music_file
-            success, error, final_file, player_format = process_audio_conversion(
-                module_path, output_path, compress_flac=use_flac
-            )
-
-            # Clean up
-            cache_path.unlink(missing_ok=True)
-            if extract_dir and extract_dir.exists():
-                shutil.rmtree(extract_dir, ignore_errors=True)
-
-        if not success:
-            return jsonify({"error": error}), 500
-
-        response = jsonify(
-            {
-                "success": True,
-                "file_id": file_id,
-                "example": example,
-                "player_format": player_format,
-                "audio_format": final_file.suffix[1:] if final_file else "wav",
-                "play_url": f"/play/{file_id}",
-                "download_url": f"/download/{file_id}",
-            }
-        )
-        response.headers["Content-Type"] = "application/json; charset=utf-8"
-        return response
-
-    except Exception as e:
-        logger.error(f"Example play error: {e}")
-    response = jsonify({"error": str(e)})
-    response.headers["Content-Type"] = "application/json; charset=utf-8"
-    return response, 500
+    # Directly call convert_url with the payload
+    # Save and restore request._cached_json to avoid side effects
+    old_json = getattr(request, '_cached_json', None)
+    request._cached_json = (payload, None)
+    result = convert_url()
+    request._cached_json = old_json
+    return result
 
 
 @app.route("/play/<file_id>")
