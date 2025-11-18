@@ -46,10 +46,10 @@ RUN pip install --no-cache-dir \
     gunicorn==21.2.0
 
 # Create app directory structure and non-root user
-RUN mkdir -p /app /tmp/uploads /tmp/converted /tmp/cache && \
+RUN mkdir -p /app /tmp/modules /tmp/converted && \
     useradd -m -u 1000 -s /bin/bash uade && \
     chown -R uade:uade /app /opt/venv && \
-    chmod -R 777 /tmp/uploads /tmp/converted /tmp/cache
+    chmod -R 777 /tmp/modules /tmp/converted
 
 # Copy web application
 COPY web/ /app/

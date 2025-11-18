@@ -58,14 +58,13 @@ PORT = int(os.getenv("PORT", 5000))
 
 app.config["MAX_CONTENT_LENGTH"] = MAX_UPLOAD_SIZE
 
-# Temp directories
-UPLOAD_DIR: Final = Path("/tmp/uploads")
+MODULES_DIR: Final = Path("/tmp/modules")
 CONVERTED_DIR: Final = Path("/tmp/converted")
 
 # Shared forbidden characters regex for URL validation/sanitization
 FORBIDDEN_CHARS: Final = r'[ \t\n\r\x00-\x1f"\'`;|&$<>\\]'
 
-for directory in [UPLOAD_DIR, CONVERTED_DIR]:
+for directory in [MODULES_DIR, CONVERTED_DIR]:
     directory.mkdir(parents=True, exist_ok=True)
 
 # Find music files (common Amiga module extensions and prefixes)
@@ -174,17 +173,17 @@ EXAMPLES: Final = [
         "format": "Hippel-COSO",
         "duration": "23 min (Levels 1-7)",
         "url": "https://zakalwe.fi/uade/amiga-music/customs/WingsOfDeath-Levels1-7/cust.WingsOfDeath-Levels1-7",
-        "type": "cust",
+        "type": "hipc",
     },
     {
         "id": "led-storm",
         "name": "Tim Follin - LED Storm",
-        "format": "Hippel-COSO (LHA)",
+        "format": "Custom (LHA)",
         "duration": "38 min (7 tracks)",
         "url": (
             "http://files.exotica.org.uk/?file=exotica%2Fmedia%2Faudio%2FUnExoticA%2FGame%2FFollin_Tim%2FL_E_D_Storm.lha"
         ),
-        "type": "lha",
+        "type": "cust",
     },
     {
         "id": "hoffman-way-too-rude",
@@ -201,7 +200,7 @@ def cleanup_old_files():
     """Remove files older than CLEANUP_INTERVAL"""
     try:
         cutoff = time.time() - CLEANUP_INTERVAL
-        for directory in [UPLOAD_DIR, CONVERTED_DIR]:
+        for directory in [MODULES_DIR, CONVERTED_DIR]:
             for filepath in directory.glob("*"):
                 if filepath.stat().st_mtime < cutoff:
                     filepath.unlink()
@@ -382,11 +381,14 @@ def detect_player_format(input_path):
     """Detect the player format of a module using uade123 -g"""
     try:
         cmd = ["/usr/local/bin/uade123", "-g", str(input_path)]  # Get info only
-
         result = subprocess.run(cmd, capture_output=True, text=True, timeout=10)
 
+        # Check for 'uade:is_custom': True in output
+        if "'uade:is_custom': True" in result.stdout:
+            return "Custom"
+
         # Parse output to extract player name
-        # uade123 -g output format: "playername: PlayerName"
+        # output format: "playername: PlayerName"
         for line in result.stdout.splitlines():
             if line.startswith("playername:"):
                 player_name = line.split(":", 1)[1].strip()
@@ -409,7 +411,7 @@ def process_audio_conversion(
     try:
         # Defensive: Restrict input_path to UPLOAD_DIR
         input_resolved = Path(input_path).resolve()
-        if not (input_resolved.is_relative_to(UPLOAD_DIR.resolve())):
+        if not (input_resolved.is_relative_to(MODULES_DIR.resolve())):
             logger.error("Aborting: attempted read outside allowed directories")
             return False, "Illegal input file path", None, None
         # Detect player format before conversion
@@ -483,8 +485,6 @@ def process_audio_conversion(
         return False, str(e), None, None
 
 
-
-
 @app.route("/")
 def index():
     """Serve main page"""
@@ -540,7 +540,7 @@ def upload_file():
         filename = secure_filename(file.filename)
 
         # Save uploaded file
-        upload_path = UPLOAD_DIR / f"{filename}_{file_id}"
+        upload_path = MODULES_DIR / f"{filename}_{file_id}"
         file.save(upload_path)
 
         # Check if it's an LHA or ZIP archive
@@ -548,7 +548,7 @@ def upload_file():
         extract_dir = None
         if is_lha_file(upload_path):
             logger.info(f"Detected LHA archive upload: {filename}")
-            extract_dir = UPLOAD_DIR / f"{file_id}_extracted"
+            extract_dir = MODULES_DIR / f"{file_id}_extracted"
             success, error, music_file = extract_lha(upload_path, extract_dir)
 
             if not success:
@@ -561,7 +561,7 @@ def upload_file():
             filename = music_file.name
         elif is_zip_file(upload_path):
             logger.info(f"Detected ZIP archive upload: {filename}")
-            extract_dir = UPLOAD_DIR / f"{file_id}_extracted"
+            extract_dir = MODULES_DIR / f"{file_id}_extracted"
             success, error, music_file = extract_zip(upload_path, extract_dir)
 
             if not success:
@@ -579,18 +579,15 @@ def upload_file():
             module_path, output_path, compress_flac=use_flac
         )
 
-        if not success:
-            upload_path.unlink(missing_ok=True)
-            if extract_dir and extract_dir.exists():
-                shutil.rmtree(extract_dir, ignore_errors=True)
-            response = jsonify({"error": error})
-            response.headers["Content-Type"] = "application/json; charset=utf-8"
-            return response, 500
-
         # Clean up input files
         upload_path.unlink(missing_ok=True)
         if extract_dir and extract_dir.exists():
             shutil.rmtree(extract_dir, ignore_errors=True)
+
+        if not success:
+            response = jsonify({"error": error})
+            response.headers["Content-Type"] = "application/json; charset=utf-8"
+            return response, 500
 
         response = jsonify(
             {
@@ -639,10 +636,12 @@ def convert_url():
         filename = secure_filename(raw_filename)
         # Compute cache hash from URL
         url_hash = hashlib.md5(url.encode(), usedforsecurity=False).hexdigest()
-        module_path = UPLOAD_DIR / f"{filename}_{url_hash}"
+        module_path = MODULES_DIR / f"{filename}_{url_hash}"
 
         if module_path.exists():
-            logger.info(f"Cache hit for module: {sanitized_url(url)}, using cached file: {module_path}")
+            logger.info(
+                f"Cache hit for module: {sanitized_url(url)}, using cached file: {module_path}"
+            )
         else:
             logger.info(f"Downloading: {sanitized_url(url)}")
             # nosec B501 - Trade-off for HTTP module downloads
@@ -655,32 +654,40 @@ def convert_url():
         # --- Caching logic for TFMX sample file ---
         sample_path = None
         if sample_url:
-            sample_url_hash = hashlib.md5(sample_url.encode(), usedforsecurity=False).hexdigest()
+            sample_url_hash = hashlib.md5(
+                sample_url.encode(), usedforsecurity=False
+            ).hexdigest()
             # Ensure filename matches mdat except for prefix
             if filename.startswith("mdat"):
                 smplfilename = "smpl" + filename[4:]
             else:
                 smplfilename = "smpl." + filename
-            sample_path = UPLOAD_DIR / f"{smplfilename}_{url_hash}"
-            cached_sample_path = UPLOAD_DIR / f"{smplfilename}_{sample_url_hash}"
+            sample_path = MODULES_DIR / f"{smplfilename}_{url_hash}"
+            cached_sample_path = MODULES_DIR / f"{smplfilename}_{sample_url_hash}"
             if cached_sample_path.exists():
                 if sample_path.exists() or sample_path.is_symlink():
                     sample_path.unlink(missing_ok=True)
                 os.symlink(cached_sample_path, sample_path)
-                logger.info(f"Cache hit for TFMX sample: {sanitized_url(sample_url)}, using cached file {cached_sample_path}, linking to {sample_path}")
+                logger.info(
+                    f"Cache hit for TFMX sample: {sanitized_url(sample_url)}, using cached file {cached_sample_path}, linking to {sample_path}"
+                )
             else:
                 logger.info(f"Downloading TFMX sample: {sanitized_url(sample_url)}")
-                sample_response = requests.get(sample_url, timeout=30, verify=False, allow_redirects=True)
+                sample_response = requests.get(
+                    sample_url, timeout=30, verify=False, allow_redirects=True
+                )
                 sample_response.raise_for_status()
                 cached_sample_path.write_bytes(sample_response.content)
                 os.symlink(cached_sample_path, sample_path)
-                logger.info(f"Cached sample_path: {cached_sample_path}, linking to {sample_path}")
+                logger.info(
+                    f"Cached sample_path: {cached_sample_path}, linking to {sample_path}"
+                )
 
         # Check if it's an LHA or ZIP archive
         extract_dir = None
         if is_lha_file(module_path):
             logger.info(f"Detected LHA archive: {filename}")
-            extract_dir = UPLOAD_DIR / f"{file_id}_extracted"
+            extract_dir = MODULES_DIR / f"{file_id}_extracted"
             success, error, music_file = extract_lha(module_path, extract_dir)
             if not success:
                 # Do not delete cached_module_path on error
@@ -693,7 +700,7 @@ def convert_url():
             module_path = music_file
         elif is_zip_file(module_path):
             logger.info(f"Detected ZIP archive: {filename}")
-            extract_dir = UPLOAD_DIR / f"{file_id}_extracted"
+            extract_dir = MODULES_DIR / f"{file_id}_extracted"
             success, error, music_file = extract_zip(module_path, extract_dir)
             if not success:
                 # Do not delete cached_module_path on error
@@ -757,8 +764,6 @@ def sanitized_url(url):
     return url
 
 
-
-
 @app.route("/play-example/<example_id>", methods=["POST"])
 def play_example(example_id):
     """Convert and play predefined example"""
@@ -770,16 +775,13 @@ def play_example(example_id):
 
     # Prepare payload for convert_url
     if example["type"] == "tfmx":
-        payload = {
-            "url": example["mdat_url"],
-            "sample_url": example["smpl_url"]
-        }
+        payload = {"url": example["mdat_url"], "sample_url": example["smpl_url"]}
     else:
         payload = {"url": example["url"]}
 
     # Directly call convert_url with the payload
     # Save and restore request._cached_json to avoid side effects
-    old_json = getattr(request, '_cached_json', None)
+    old_json = getattr(request, "_cached_json", None)
     request._cached_json = (payload, None)
     result = convert_url()
     request._cached_json = old_json

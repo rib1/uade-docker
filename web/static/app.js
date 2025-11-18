@@ -317,6 +317,14 @@ function playFile(
   currentTrack.textContent = filename;
   trackFormat.textContent = format || "Module";
 
+  // Show infobox for Custom modules
+  const customInfo = document.getElementById("custom-info");
+  if (format === "Custom") {
+    customInfo.style.display = "block";
+  } else {
+    customInfo.style.display = "none";
+  }
+
   // Update download button text with correct format
   downloadBtn.textContent =
     audioFormat === "flac" ? "⬇ Download FLAC" : "⬇ Download WAV";
