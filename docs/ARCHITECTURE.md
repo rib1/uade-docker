@@ -100,12 +100,13 @@ architecture-beta
 
 1. User uploads module or provides URL
 2. Flask server receives request
-3. Downloads module (if URL provided)
-4. If file is an LHA or ZIP archive, automatically extracts and finds first supported music file
-5. Calls UADE player subprocess
-6. Converts to WAV or FLAC
-7. Streams audio back to browser
-8. Cleans up temporary files (1 hour TTL)
+3. For URL requests, calculates MD5 hash of the URL and checks if the file is already cached
+4. If cached, uses the local file; if not, downloads and caches the file using the hash
+5. If file is an LHA or ZIP archive, automatically extracts and finds first supported music file
+6. Calls UADE player subprocess
+7. Converts to WAV or FLAC
+8. Streams audio back to browser
+9. Cleans up temporary files and symlinks (1 hour TTL)
 
 ### Deployment Workflow
 
@@ -191,6 +192,7 @@ architecture-beta
 - 4 threads per worker
 - Connection pooling
 - Temporary file cleanup (hourly)
+- URL-based caching: Downloads from URLs are cached (including TFMX sample) using an MD5 hash of the URL. If a file has already been downloaded, it is reused from the cache, reducing bandwidth and improving performance.
 - Cache directory for downloads
 
 ### Cloud Run
