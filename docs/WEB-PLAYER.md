@@ -11,7 +11,7 @@ Play Amiga music modules directly in your web browser! No desktop software requi
 - 🎹 **TFMX Support** - Handles dual-file TFMX modules automatically
 - 💿 **Smart Compression** - Automatic FLAC compression for capable browsers (50-70% smaller files)
 - ⬇️ **Download Audio** - Save as FLAC or WAV for offline playback
-- 🚀 **Cloud Ready** - Designed for Kubernetes, EKS Auto Mode, and cloud platforms
+- 🚀 **Cloud Ready & Stateless Caching** - Designed for Kubernetes, EKS Auto Mode, cloud platforms, and multi-instance deployments with remote cache support (S3/GCS/local)
 - 📱 **Mobile Friendly** - Works on phones and tablets
 - ⚡ **Performance** - MD5-based file and URL caching for instant replay and computing and bandwidth savings
 
@@ -242,7 +242,28 @@ FLASK_ENV: production # Flask environment
 PORT: 5000 # Server port
 MAX_UPLOAD_SIZE: 10485760 # Max upload (10MB)
 CLEANUP_INTERVAL: 3600 # File cleanup (1 hour)
+CACHE_CLEANUP_INTERVAL: # Cache cleanup interval (24 hours)
 RATE_LIMIT: 10 # Max conversions/min per IP
+```
+
+### Stateless Caching Support
+
+UADE Web Player supports stateless, multi-instance deployments using a remote cache for converted files. This enables instant replay and deduplication across all instances, whether running locally, in Docker, or in the cloud.
+
+**Remote cache options:**
+
+- Local filesystem (default): `file:///tmp/cache`
+- AWS S3 bucket: `s3://your-bucket/cache`
+- Google Cloud Storage: `gcs://your-bucket/cache`
+
+**Configuration:**
+
+Set the `CACHE_URI` environment variable to your desired cache location:
+
+```yaml
+CACHE_URI: file:///tmp/cache        # Local cache (default)
+CACHE_URI: s3://your-bucket/cache   # AWS S3 remote cache
+CACHE_URI: gcs://your-bucket/cache  # Google Cloud Storage remote cache
 ```
 
 ## Browser Compatibility
@@ -292,7 +313,7 @@ Older or unsupported browsers automatically receive WAV files as fallback. No co
 - Separate directories: uploads, conversions, cache
 - UUID-based filenames (no collisions)
 - URL-based caching: If the same URL is requested again, the cached file is reused instantly.
-- MD5-based caching for instant replay
+- MD5-based Stateless Remote Cache: Converted files are stored in a remote cache (S3/GCS/local) for instant replay and deduplication across all instances
 
 ## Security
 
@@ -327,6 +348,28 @@ Older or unsupported browsers automatically receive WAV files as fallback. No co
 - Check container has write access to `/tmp`
 - Verify CLEANUP_INTERVAL environment variable
 
+**Remote cache issues (S3/GCS/local):**
+
+- **Permission denied / Access errors:**
+  - Ensure your IAM/user/role has read/write access to the bucket/prefix.
+  - For S3, check bucket policy and credentials (AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY).
+  - For GCS, check service account permissions and `GOOGLE_APPLICATION_CREDENTIALS`.
+- **File not found / cache misses:**
+  - Confirm `CACHE_URI` is set correctly (e.g., `s3://your-bucket/cache`).
+  - Make sure the cache prefix exists and is writable.
+  - Check for typos in bucket or path names.
+- **Performance issues:**
+  - Remote cache may be slower than local disk; use local cache for development/testing.
+  - For S3/GCS, avoid frequent small file operations; batch uploads if possible.
+- **fsspec errors:**
+  - Ensure `s3fs` (for S3) or `gcsfs` (for GCS) is installed in your environment.
+  - Check Python logs for detailed error messages.
+- **Multi-instance consistency:**
+  - All instances must use the same `CACHE_URI` value.
+  - Remote cache should be globally accessible and not ephemeral.
+
+If issues persist, run with debug logging enabled and check cloud provider logs for more details.
+
 ## Development
 
 ### Local Development
@@ -335,7 +378,7 @@ Older or unsupported browsers automatically receive WAV files as fallback. No co
 # Install Python dependencies
 python -m venv venv
 venv\Scripts\activate
-pip install flask werkzeug requests gunicorn
+pip install flask werkzeug requests gunicorn fsspec s3fs gcsfs
 
 # Run development server (requires UADE installed)
 cd web

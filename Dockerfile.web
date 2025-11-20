@@ -43,13 +43,16 @@ RUN pip install --no-cache-dir \
     flask==3.0.0 \
     werkzeug==3.0.1 \
     requests==2.31.0 \
-    gunicorn==21.2.0
+    gunicorn==21.2.0 \
+    fsspec==2025.10.0 \
+    gcsfs==2025.10.0 \
+    s3fs==2025.10.0
 
 # Create app directory structure and non-root user
-RUN mkdir -p /app /tmp/modules /tmp/converted && \
+RUN mkdir -p /app /tmp/modules /tmp/converted /tmp/cache && \
     useradd -m -u 1000 -s /bin/bash uade && \
     chown -R uade:uade /app /opt/venv && \
-    chmod -R 777 /tmp/modules /tmp/converted
+    chmod -R 777 /tmp/modules /tmp/converted /tmp/cache
 
 # Copy web application
 COPY web/ /app/

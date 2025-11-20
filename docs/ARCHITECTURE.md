@@ -168,6 +168,11 @@ architecture-beta
 - **CI/CD:** GitHub Actions
 - **Registry:** GitHub Container Registry
 - **Cloud Provider:** Google Cloud Platform
+- **Remote Cache Support:**
+  - Stateless cache for converted files can use local disk, AWS S3, or Google Cloud Storage
+  - Uses fsspec, s3fs, and gcsfs for unified access
+  - Docker image and local development require these Python dependencies for remote cache
+  - Multi-instance deployments share cache for instant replay and deduplication
 
 ### Development
 
@@ -193,7 +198,7 @@ architecture-beta
 - Connection pooling
 - Temporary file cleanup (hourly)
 - URL-based caching: Downloads from URLs are cached (including TFMX sample) using an MD5 hash of the URL. If a file has already been downloaded, it is reused from the cache, reducing bandwidth and improving performance.
-- Cache directory for downloads
+- Cache directory for downloads (can be local or remote S3/GCS, see Infrastructure)
 
 ### Cloud Run
 

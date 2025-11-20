@@ -12,13 +12,14 @@ import subprocess
 import logging
 import hashlib
 from pathlib import Path
-from datetime import datetime
+from datetime import datetime, timezone
 from flask import Flask, request, jsonify, send_from_directory, Response
 from werkzeug.utils import secure_filename
 from typing import Final
 import requests
 import re
 import shutil
+import fsspec
 import zipfile
 
 # Configure logging for cloud environments
@@ -53,13 +54,37 @@ logger.info(f"Starting UADE Web Player (commit: {GIT_COMMIT})")
 # Configuration from environment variables (cloud-ready)
 MAX_UPLOAD_SIZE = int(os.getenv("MAX_UPLOAD_SIZE", 10485760))  # 10MB
 CLEANUP_INTERVAL = int(os.getenv("CLEANUP_INTERVAL", 3600))  # 1 hour
+CACHE_CLEANUP_INTERVAL = int(os.getenv("CACHE_CLEANUP_INTERVAL", 86400))  # 24 hours
 RATE_LIMIT = int(os.getenv("RATE_LIMIT", 10))
 PORT = int(os.getenv("PORT", 5000))
 
 app.config["MAX_CONTENT_LENGTH"] = MAX_UPLOAD_SIZE
 
+# Local directories for processing
 MODULES_DIR: Final = Path("/tmp/modules")
 CONVERTED_DIR: Final = Path("/tmp/converted")
+
+def get_fs_and_root(uri, fs_kwargs=None):
+    fs_kwargs = fs_kwargs or {}
+    # Detect S3 URI for remote storage support
+    if uri.startswith('s3://'):
+        fs = fsspec.filesystem('s3', **fs_kwargs)
+        root = uri[5:]
+    elif uri.startswith('gcs://'):
+        fs = fsspec.filesystem('gcs', **fs_kwargs)
+        root = uri[6:]
+    else:
+        fs = fsspec.filesystem('file')
+        root = uri
+    return fs, root
+
+# Remote cache configuration (set your bucket URL here)
+# Expected values for CACHE_URI:
+#   - "file" or "file:///path/to/cache" for local filesystem
+#   - "s3://bucket/path" for AWS S3
+#   - "gcs://bucket/path" for Google Cloud Storage
+CACHE_URI: Final = os.getenv("CACHE_URI", "file:///tmp/cache")
+fs_cache, root_cache = get_fs_and_root(CACHE_URI)
 
 # Shared forbidden characters regex for URL validation/sanitization
 FORBIDDEN_CHARS: Final = r'[ \t\n\r\x00-\x1f"\'`;|&$<>\\]'
@@ -196,17 +221,55 @@ EXAMPLES: Final = [
 ]
 
 
+
 def cleanup_old_files():
-    """Remove files older than CLEANUP_INTERVAL"""
+    """Remove files older than CLEANUP_INTERVAL from local directories"""
     try:
         cutoff = time.time() - CLEANUP_INTERVAL
+        removed = 0
         for directory in [MODULES_DIR, CONVERTED_DIR]:
             for filepath in directory.glob("*"):
                 if filepath.stat().st_mtime < cutoff:
                     filepath.unlink()
                     logger.info(f"Cleaned up old file: {filepath}")
+                    removed += 1
+        if removed == 0:
+            logger.info("No old files to clean up in local directories.")
     except Exception as e:
         logger.error(f"Cleanup error: {e}")
+
+
+def cleanup_cache_files():
+    """Remove files older than CACHE_CLEANUP_INTERVAL from remote cache (supports file, s3, gcs)"""
+    logger.info("cleanup_cache_files called at startup")
+    try:
+        cutoff = time.time() - CACHE_CLEANUP_INTERVAL
+        removed = 0
+        # List all files in cache root
+        for cache_file in fs_cache.glob(f"{root_cache}/*"):
+            try:
+                info = fs_cache.info(cache_file)
+                mtime = info.get("mtime") or info.get("LastModified")
+                # mtime may be a timestamp or datetime string
+                if isinstance(mtime, str):
+                    # Try to parse ISO8601 or RFC format
+                    try:
+                        from dateutil.parser import parse as dtparse
+                        mtime_ts = dtparse(mtime).timestamp()
+                    except Exception:
+                        mtime_ts = 0
+                else:
+                    mtime_ts = float(mtime) if mtime is not None else 0
+                if mtime_ts < cutoff:
+                    fs_cache.rm_file(cache_file)
+                    logger.info(f"Cleaned up old cache file: {cache_file}")
+                    removed += 1
+            except Exception as e:
+                logger.warning(f"Cache cleanup error for {cache_file}: {e}")
+        if removed == 0:
+            logger.info("No old files to clean up in remote cache.")
+    except Exception as e:
+        logger.error(f"Cache cleanup error: {e}")
 
 
 def get_file_hash(file_path):
@@ -344,36 +407,24 @@ def extract_zip(zip_path, extract_dir):
 
 
 def get_cached_conversion(cache_hash, prefer_flac=False):
-    """Check if a converted file exists in cache (WAV or FLAC)"""
+    """Check if a converted file exists in remote cache (WAV or FLAC). If found, copy to local and return local path."""
     # Try FLAC first if preferred
-    if prefer_flac:
-        flac_file = CONVERTED_DIR / f"{cache_hash}.flac"
-        if flac_file.exists():
-            flac_file.touch()
-            logger.info(f"Cache hit (FLAC): {cache_hash}")
-            return flac_file
-
-        # If FLAC not found but WAV exists, compress it
-        wav_file = CONVERTED_DIR / f"{cache_hash}.wav"
-        if wav_file.exists():
-            flac_file = CONVERTED_DIR / f"{cache_hash}.flac"
-            if compress_to_flac(wav_file, flac_file):
-                flac_file.touch()
-                logger.info(f"Cache hit (WAV) - compressed to FLAC: {cache_hash}")
-                return flac_file
-            else:
-                # Compression failed, return WAV
-                wav_file.touch()
-                logger.info(f"Cache hit (WAV) - FLAC compression failed: {cache_hash}")
-                return wav_file
-
-    # Fall back to WAV
-    wav_file = CONVERTED_DIR / f"{cache_hash}.wav"
-    if wav_file.exists():
-        wav_file.touch()
-        logger.info(f"Cache hit (WAV): {cache_hash}")
-        return wav_file
-
+    for ext in (['.flac'] if prefer_flac else []) + ['.wav']:
+        cache_file_remote = f"{root_cache}/{cache_hash}{ext}"
+        cache_file_local = CONVERTED_DIR / f"{cache_hash}{ext}"
+        if fs_cache.exists(cache_file_remote):
+            remote_size = fs_cache.size(cache_file_remote)
+            if cache_file_local.exists() and cache_file_local.stat().st_size == remote_size:
+                logger.info(f"Cache hit ({ext[1:].upper()}): {cache_hash} already exists locally")
+                return cache_file_local
+            # Ensure local cache directory exists
+            cache_dir_local = cache_file_local.parent
+            cache_dir_local.mkdir(parents=True, exist_ok=True)
+            # Copy from remote cache to local
+            with fs_cache.open(cache_file_remote, "rb") as src, open(cache_file_local, "wb") as dst:
+                shutil.copyfileobj(src, dst)
+            logger.info(f"Cache hit ({ext[1:].upper()}): {cache_hash} from remote cache")
+            return cache_file_local
     return None
 
 
@@ -418,26 +469,18 @@ def process_audio_conversion(
         player_format = detect_player_format(input_path)
         # Always compute cache_hash for later use
         cache_hash = get_file_hash(input_path)
-        # Check cache first
+        # Check remote cache first
         if use_cache:
             cached_file = get_cached_conversion(cache_hash, prefer_flac=compress_flac)
-            if cached_file:
-                # Copy cached file to output path
-                if compress_flac and cached_file.suffix == ".flac":
-                    # Return FLAC from cache
-                    flac_output = output_path.with_suffix(".flac")
-                    shutil.copy2(cached_file, flac_output)
-                    return True, None, flac_output, player_format
-                else:
-                    shutil.copy2(cached_file, output_path)
-                    return True, None, cached_file, player_format
+            if cached_file and cached_file.exists():
+                return True, None, output_path, player_format
 
         cmd = [
             "/usr/local/bin/uade123",
             "-c",
             "-f",
             str(output_path),
-            str(input_path),
+            str(input_path)
         ]  # Headless mode
 
         result = subprocess.run(
@@ -458,23 +501,18 @@ def process_audio_conversion(
             flac_output = output_path.with_suffix(".flac")
             if compress_to_flac(output_path, flac_output):
                 final_output = flac_output
-                # Cache the FLAC version
-                if use_cache:
-                    cache_file = CONVERTED_DIR / f"{cache_hash}.flac"
-                    if not cache_file.exists():
-                        shutil.copy2(flac_output, cache_file)
-                        logger.info(f"Cached FLAC conversion: {cache_hash}")
-            else:
-                # FLAC compression failed, fall back to WAV
-                logger.warning("FLAC compression failed, using WAV")
-
-        # Save WAV to cache if not using FLAC
-        if use_cache and not compress_flac:
-            cache_file = CONVERTED_DIR / f"{cache_hash}.wav"
-            if not cache_file.exists():
-                shutil.copy2(output_path, cache_file)
-                logger.info(f"Cached conversion: {cache_hash}")
-
+        # Save to remote cache
+        if use_cache:
+            for ext, file in [(".flac", final_output) if compress_flac else (".wav", output_path)]:
+                cache_file_remote = f"{root_cache}/{cache_hash}{ext}"
+                # Ensure remote cache directory exists (for local file cache)
+                if fs_cache.protocol == 'file':
+                    cache_dir_remote = Path(root_cache)
+                    cache_dir_remote.mkdir(parents=True, exist_ok=True)
+                if not fs_cache.exists(cache_file_remote):
+                    with open(file, "rb") as src, fs_cache.open(cache_file_remote, "wb") as dst:
+                        shutil.copyfileobj(src, dst)
+                    logger.info(f"Cached conversion to remote: {cache_hash}{ext}")
         logger.info(f"Successfully converted: {input_path} -> {final_output}")
         return True, None, final_output, player_format
 
@@ -498,7 +536,7 @@ def health():
         {
             "status": "healthy",
             "version": GIT_COMMIT,
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
             "uade_available": Path("/usr/local/bin/uade123").exists(),
         }
     )
@@ -543,6 +581,9 @@ def upload_file():
         upload_path = MODULES_DIR / f"{filename}_{file_id}"
         file.save(upload_path)
 
+        # Cache hash for later use
+        converted_file_id = get_file_hash(upload_path)
+
         # Check if it's an LHA or ZIP archive
         module_path = upload_path
         extract_dir = None
@@ -574,7 +615,7 @@ def upload_file():
             filename = music_file.name
 
         # Convert to WAV (and optionally FLAC)
-        output_path = CONVERTED_DIR / f"{file_id}.wav"
+        output_path = CONVERTED_DIR / f"{converted_file_id}.wav"
         success, error, final_file, player_format = process_audio_conversion(
             module_path, output_path, compress_flac=use_flac
         )
@@ -592,12 +633,12 @@ def upload_file():
         response = jsonify(
             {
                 "success": True,
-                "file_id": file_id,
+                "file_id": converted_file_id,
                 "filename": filename,
                 "player_format": player_format,
                 "audio_format": final_file.suffix[1:] if final_file else "wav",
-                "play_url": f"/play/{file_id}",
-                "download_url": f"/download/{file_id}",
+                "play_url": f"/play/{converted_file_id}",
+                "download_url": f"/download/{converted_file_id}",
             }
         )
         response.headers["Content-Type"] = "application/json; charset=utf-8"
@@ -633,9 +674,12 @@ def convert_url():
 
         # --- Caching logic for main module file ---
         raw_filename = url.split("/")[-1].split("#")[0].split("?")[0] or "module"
-        filename = secure_filename(raw_filename)
+        # Remove forbidden characters before securing filename
+        sanitized_filename = re.sub(FORBIDDEN_CHARS, "", raw_filename)
+        filename = secure_filename(sanitized_filename)
         # Compute cache hash from URL
         url_hash = hashlib.md5(url.encode(), usedforsecurity=False).hexdigest()
+        module_path = MODULES_DIR / f"{filename}_{url_hash}"
         module_path = MODULES_DIR / f"{filename}_{url_hash}"
 
         if module_path.exists():
@@ -712,7 +756,10 @@ def convert_url():
             filename = music_file.name
             module_path = music_file
 
-        output_path = CONVERTED_DIR / f"{file_id}.wav"
+        # cache hash 
+        converted_file_id = get_file_hash(module_path)
+
+        output_path = CONVERTED_DIR / f"{converted_file_id}.wav"
         # Convert to WAV (and optionally FLAC)
         success, error, final_file, player_format = process_audio_conversion(
             module_path, output_path, compress_flac=use_flac
@@ -727,12 +774,12 @@ def convert_url():
         response = jsonify(
             {
                 "success": True,
-                "file_id": file_id,
+                "file_id": converted_file_id,
                 "filename": filename,
                 "player_format": player_format,
                 "audio_format": final_file.suffix[1:] if final_file else "wav",
-                "play_url": f"/play/{file_id}",
-                "download_url": f"/download/{file_id}",
+                "play_url": f"/play/{converted_file_id}",
+                "download_url": f"/download/{converted_file_id}",
             }
         )
         response.headers["Content-Type"] = "application/json; charset=utf-8"
@@ -806,30 +853,46 @@ def serve_audio_file(file_id, as_attachment=False):
     """
     Shared logic for serving audio files (FLAC/WAV) with range support.
     If as_attachment is True, sets Content-Disposition for download.
+    Also checks remote cache if local file is missing.
     """
     if not re.fullmatch(r"[a-zA-Z0-9_-]+", file_id):
         return jsonify({"error": "Invalid file_id"}), 400
     # Sanitize file_id to ensure a safe filename
     safe_file_id = secure_filename(file_id)
     # Try FLAC first, then WAV
-    flac_path = (CONVERTED_DIR / f"{safe_file_id}.flac").resolve()
-    wav_path = (CONVERTED_DIR / f"{safe_file_id}.wav").resolve()
+    flac_path = CONVERTED_DIR / f"{safe_file_id}.flac"
+    wav_path = CONVERTED_DIR / f"{safe_file_id}.wav"
 
     # Only allow files under CONVERTED_DIR to be served
-    converted_base = CONVERTED_DIR.resolve()
+    converted_dir_base = CONVERTED_DIR.resolve()
     try:
-        if flac_path.exists() and flac_path.relative_to(converted_base):
-            file_path = flac_path
+        # If local FLAC/WAV missing, check cache
+        if not flac_path.exists():
+            cache_hash = safe_file_id  # file_id is UUID, also used as cache hash
+            cache_file_remote = f"{root_cache}/{cache_hash}.flac"
+            if fs_cache.exists(cache_file_remote):
+                logger.info(f"Serve audio cache hit(.flac): {cache_hash} copy from remote")
+                with fs_cache.open(cache_file_remote, "rb") as src, open(flac_path, "wb") as dst:
+                    shutil.copyfileobj(src, dst)
+        if not flac_path.exists() and not wav_path.exists():
+            cache_hash = safe_file_id
+            cache_file_remote = f"{root_cache}/{cache_hash}.wav"
+            if fs_cache.exists(cache_file_remote):
+                logger.info(f"Serve audio cache hit(.wav): {cache_hash} copy from remote")
+                with fs_cache.open(cache_file_remote, "rb") as src, open(wav_path, "wb") as dst:
+                    shutil.copyfileobj(src, dst)
+        if flac_path.exists() and flac_path.resolve().relative_to(converted_dir_base):
+            file_path = flac_path.resolve()
             mimetype = "audio/flac"
             filename = f"uade_{safe_file_id}.flac"
-        elif wav_path.exists() and wav_path.relative_to(converted_base):
-            file_path = wav_path
+        elif wav_path.exists() and wav_path.resolve().relative_to(converted_dir_base):
+            file_path = wav_path.resolve()
             mimetype = "audio/wav"
             filename = f"uade_{safe_file_id}.wav"
         else:
             return jsonify({"error": "File not found or forbidden"}), 404
     except ValueError:
-        # Path not contained within converted_base
+        # Path not contained within converted_dir_base
         return jsonify({"error": "File not found or forbidden"}), 404
 
     file_size = file_path.stat().st_size
@@ -937,10 +1000,14 @@ def parse_range_header(range_header, file_size):
     return start, end, length
 
 
-if __name__ == "__main__":
-    logger.info(f"Starting UADE Web Player on port {PORT}")
-    logger.info(f"Max upload size: {MAX_UPLOAD_SIZE / 1024 / 1024}MB")
-    logger.info(f"Cleanup interval: {CLEANUP_INTERVAL}s")
+logger.info(f"Starting UADE Web Player on port {PORT}")
+logger.info(f"Max upload size: {MAX_UPLOAD_SIZE / 1024 / 1024}MB")
+logger.info(f"Cleanup interval: {CLEANUP_INTERVAL}s")
+logger.info(f"Cache cleanup interval: {CACHE_CLEANUP_INTERVAL}s")
 
+# Clean up cache files once at startup (runs in all environments)
+cleanup_cache_files()
+
+if __name__ == "__main__":
     # Development server (Docker Compose overrides this with gunicorn)
     app.run(host="0.0.0.0", port=PORT, debug=False)
