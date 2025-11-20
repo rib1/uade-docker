@@ -12,14 +12,14 @@ import subprocess
 import logging
 import hashlib
 from pathlib import Path
-from datetime import datetime
+from datetime import datetime, timezone
 from flask import Flask, request, jsonify, send_from_directory, Response
 from werkzeug.utils import secure_filename
 from typing import Final
 import requests
 import re
-import shutil
 import zipfile
+import fsspec
 
 # Configure logging for cloud environments
 logging.basicConfig(
@@ -58,14 +58,33 @@ PORT = int(os.getenv("PORT", 5000))
 
 app.config["MAX_CONTENT_LENGTH"] = MAX_UPLOAD_SIZE
 
-MODULES_DIR: Final = Path("/tmp/modules")
-CONVERTED_DIR: Final = Path("/tmp/converted")
+def get_fs_and_root(uri, fs_kwargs=None):
+    fs_kwargs = fs_kwargs or {}
+    # Detect S3 URI for remote storage support
+    if uri.startswith('s3://'):
+        fs = fsspec.filesystem('s3', **fs_kwargs)
+        root = uri[5:]
+    elif uri.startswith('gcs://'):
+        fs = fsspec.filesystem('gcs', **fs_kwargs)
+        root = uri[6:]
+    else:
+        fs = fsspec.filesystem('file')
+        root = uri
+    return fs, root
+
+MODULES_URI: Final = '/tmp/modules'
+CONVERTED_URI: Final = '/tmp/converted'
+
+fs_modules, root_modules = get_fs_and_root(MODULES_URI)
+fs_converted, root_converted = get_fs_and_root(CONVERTED_URI)
+
+if fs_modules.protocol == 'file':
+    fs_modules.makedirs(root_modules, exist_ok=True)
+if fs_converted.protocol == 'file':
+    fs_converted.makedirs(root_converted, exist_ok=True)
 
 # Shared forbidden characters regex for URL validation/sanitization
 FORBIDDEN_CHARS: Final = r'[ \t\n\r\x00-\x1f"\'`;|&$<>\\]'
-
-for directory in [MODULES_DIR, CONVERTED_DIR]:
-    directory.mkdir(parents=True, exist_ok=True)
 
 # Find music files (common Amiga module extensions and prefixes)
 music_extensions: Final = {
@@ -200,11 +219,32 @@ def cleanup_old_files():
     """Remove files older than CLEANUP_INTERVAL"""
     try:
         cutoff = time.time() - CLEANUP_INTERVAL
-        for directory in [MODULES_DIR, CONVERTED_DIR]:
-            for filepath in directory.glob("*"):
-                if filepath.stat().st_mtime < cutoff:
-                    filepath.unlink()
-                    logger.info(f"Cleaned up old file: {filepath}")
+        for (fs, root) in zip([MODULES_URI, CONVERTED_URI], [(fs_modules, root_modules), (fs_converted, root_converted)]):
+            try:
+                files = fs.listdir(root)
+            except Exception as e:
+                logger.error(f"Could not list files in {root}: {e}")
+                continue
+            for fileinfo in files:
+                if fileinfo.get('type') != 'file':
+                    continue
+                try:
+                    stat = fs.stat(fileinfo['name'])
+                    mtime = stat.get('mtime', stat.get('last_modified', None))
+                    if mtime is None:
+                        continue
+                    if isinstance(mtime, str):
+                        try:
+                            mtime_ts = datetime.fromisoformat(mtime.replace('Z', '+00:00')).timestamp()
+                        except Exception:
+                            continue
+                    else:
+                        mtime_ts = float(mtime)
+                    if mtime_ts < cutoff:
+                        fs.rm(fileinfo['name'])
+                        logger.info(f"Cleaned up old file: {fileinfo['name']}")
+                except Exception as e:
+                    logger.error(f"Cleanup error for {fileinfo['name']}: {e}")
     except Exception as e:
         logger.error(f"Cleanup error: {e}")
 
@@ -212,7 +252,12 @@ def cleanup_old_files():
 def get_file_hash(file_path):
     """Calculate MD5 hash of a file for caching"""
     md5 = hashlib.md5(usedforsecurity=False)  # Only used for caching, not security
-    with open(file_path, "rb") as f:
+    # Use modules fs/root for hashing
+    # For remote, strip the MODULES_URI prefix if present
+    rel_path = str(file_path)
+    if rel_path.startswith(MODULES_URI + '/'):
+        rel_path = rel_path[len(MODULES_URI) + 1:]
+    with fs_modules.open(f"{root_modules}/{rel_path}", "rb") as f:
         for chunk in iter(lambda: f.read(4096), b""):
             md5.update(chunk)
     return md5.hexdigest()
@@ -346,34 +391,22 @@ def extract_zip(zip_path, extract_dir):
 def get_cached_conversion(cache_hash, prefer_flac=False):
     """Check if a converted file exists in cache (WAV or FLAC)"""
     # Try FLAC first if preferred
+    flac_path = f"{CONVERTED_URI}/{cache_hash}.flac"
+    wav_path = f"{CONVERTED_URI}/{cache_hash}.wav"
     if prefer_flac:
-        flac_file = CONVERTED_DIR / f"{cache_hash}.flac"
-        if flac_file.exists():
-            flac_file.touch()
+        if fs_converted.exists(flac_path):
             logger.info(f"Cache hit (FLAC): {cache_hash}")
-            return flac_file
-
-        # If FLAC not found but WAV exists, compress it
-        wav_file = CONVERTED_DIR / f"{cache_hash}.wav"
-        if wav_file.exists():
-            flac_file = CONVERTED_DIR / f"{cache_hash}.flac"
-            if compress_to_flac(wav_file, flac_file):
-                flac_file.touch()
+            return flac_path
+        if fs_converted.exists(wav_path):
+            if compress_to_flac(Path(wav_path), Path(flac_path)):
                 logger.info(f"Cache hit (WAV) - compressed to FLAC: {cache_hash}")
-                return flac_file
+                return flac_path
             else:
-                # Compression failed, return WAV
-                wav_file.touch()
                 logger.info(f"Cache hit (WAV) - FLAC compression failed: {cache_hash}")
-                return wav_file
-
-    # Fall back to WAV
-    wav_file = CONVERTED_DIR / f"{cache_hash}.wav"
-    if wav_file.exists():
-        wav_file.touch()
+                return wav_path
+    if fs_converted.exists(wav_path):
         logger.info(f"Cache hit (WAV): {cache_hash}")
-        return wav_file
-
+        return wav_path
     return None
 
 
@@ -409,29 +442,31 @@ def process_audio_conversion(
     Returns: (success, error, final_file, player_format)
     """
     try:
+        input_path = Path(input_path)
+        output_path = Path(output_path)
         # Defensive: Restrict input_path to UPLOAD_DIR
-        input_resolved = Path(input_path).resolve()
-        if not (input_resolved.is_relative_to(MODULES_DIR.resolve())):
+        input_resolved = input_path.resolve()
+        if not str(input_resolved).startswith(str(MODULES_URI)):
             logger.error("Aborting: attempted read outside allowed directories")
             return False, "Illegal input file path", None, None
         # Detect player format before conversion
-        player_format = detect_player_format(input_path)
+        player_format = detect_player_format(str(input_path))
         # Always compute cache_hash for later use
-        cache_hash = get_file_hash(input_path)
+        cache_hash = get_file_hash(str(input_path))
         # Check cache first
         if use_cache:
             cached_file = get_cached_conversion(cache_hash, prefer_flac=compress_flac)
             if cached_file:
+                cached_file_path = Path(cached_file)
                 # Copy cached file to output path
-                if compress_flac and cached_file.suffix == ".flac":
+                if compress_flac and cached_file_path.suffix == ".flac":
                     # Return FLAC from cache
                     flac_output = output_path.with_suffix(".flac")
-                    shutil.copy2(cached_file, flac_output)
+                    fs_converted.copy(str(cached_file_path), str(flac_output), recursive=False)
                     return True, None, flac_output, player_format
                 else:
-                    shutil.copy2(cached_file, output_path)
-                    return True, None, cached_file, player_format
-
+                    fs_converted.copy(str(cached_file_path), str(output_path), recursive=False)
+                    return True, None, output_path, player_format
         cmd = [
             "/usr/local/bin/uade123",
             "-c",
@@ -460,19 +495,18 @@ def process_audio_conversion(
                 final_output = flac_output
                 # Cache the FLAC version
                 if use_cache:
-                    cache_file = CONVERTED_DIR / f"{cache_hash}.flac"
+                    cache_file = Path(f"{CONVERTED_URI}/{cache_hash}.flac")
                     if not cache_file.exists():
-                        shutil.copy2(flac_output, cache_file)
+                        fs_converted.copy(str(flac_output), str(cache_file), recursive=False)
                         logger.info(f"Cached FLAC conversion: {cache_hash}")
             else:
                 # FLAC compression failed, fall back to WAV
                 logger.warning("FLAC compression failed, using WAV")
-
         # Save WAV to cache if not using FLAC
         if use_cache and not compress_flac:
-            cache_file = CONVERTED_DIR / f"{cache_hash}.wav"
+            cache_file = Path(f"{CONVERTED_URI}/{cache_hash}.wav")
             if not cache_file.exists():
-                shutil.copy2(output_path, cache_file)
+                fs_converted.copy(str(output_path), str(cache_file), recursive=False)
                 logger.info(f"Cached conversion: {cache_hash}")
 
         logger.info(f"Successfully converted: {input_path} -> {final_output}")
@@ -498,8 +532,8 @@ def health():
         {
             "status": "healthy",
             "version": GIT_COMMIT,
-            "timestamp": datetime.utcnow().isoformat(),
-            "uade_available": Path("/usr/local/bin/uade123").exists(),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "uade_available": Path("/usr/local/bin/uade123").exists()
         }
     )
     response.headers["Content-Type"] = "application/json; charset=utf-8"
@@ -540,7 +574,7 @@ def upload_file():
         filename = secure_filename(file.filename)
 
         # Save uploaded file
-        upload_path = MODULES_DIR / f"{filename}_{file_id}"
+        upload_path = f"{MODULES_URI}/{filename}_{file_id}"
         file.save(upload_path)
 
         # Check if it's an LHA or ZIP archive
@@ -548,42 +582,45 @@ def upload_file():
         extract_dir = None
         if is_lha_file(upload_path):
             logger.info(f"Detected LHA archive upload: {filename}")
-            extract_dir = MODULES_DIR / f"{file_id}_extracted"
-            success, error, music_file = extract_lha(upload_path, extract_dir)
-
+            extract_dir = f"{MODULES_URI}/{file_id}_extracted"
+            fs_modules.makedirs(f"{root_modules}/{file_id}_extracted", exist_ok=True)
+            success, error, music_file = extract_lha(upload_path, Path(extract_dir))
             if not success:
-                upload_path.unlink(missing_ok=True)
-                if extract_dir and extract_dir.exists():
-                    shutil.rmtree(extract_dir, ignore_errors=True)
+                rel_path = f"{filename}_{file_id}"
+                if fs_modules.exists(f"{root_modules}/{rel_path}"):
+                    fs_modules.rm(f"{root_modules}/{rel_path}")
+                if fs_modules.exists(f"{root_modules}/{file_id}_extracted"):
+                    fs_modules.rm(f"{root_modules}/{file_id}_extracted", recursive=True)
                 return jsonify({"error": error}), 500
-
-            module_path = music_file
-            filename = music_file.name
+            module_path = Path(music_file)
+            filename = module_path.name
         elif is_zip_file(upload_path):
             logger.info(f"Detected ZIP archive upload: {filename}")
-            extract_dir = MODULES_DIR / f"{file_id}_extracted"
-            success, error, music_file = extract_zip(upload_path, extract_dir)
-
+            extract_dir = f"{MODULES_URI}/{file_id}_extracted"
+            fs_modules.makedirs(f"{root_modules}/{file_id}_extracted", exist_ok=True)
+            success, error, music_file = extract_zip(upload_path, Path(extract_dir))
             if not success:
-                upload_path.unlink(missing_ok=True)
-                if extract_dir and extract_dir.exists():
-                    shutil.rmtree(extract_dir, ignore_errors=True)
+                rel_path = f"{filename}_{file_id}"
+                if fs_modules.exists(f"{root_modules}/{rel_path}"):
+                    fs_modules.rm(f"{root_modules}/{rel_path}")
+                if fs_modules.exists(f"{root_modules}/{file_id}_extracted"):
+                    fs_modules.rm(f"{root_modules}/{file_id}_extracted", recursive=True)
                 return jsonify({"error": error}), 500
-
-            module_path = music_file
-            filename = music_file.name
+            module_path = Path(music_file)
+            filename = module_path.name
 
         # Convert to WAV (and optionally FLAC)
-        output_path = CONVERTED_DIR / f"{file_id}.wav"
+        output_path = Path(f"{CONVERTED_URI}/{file_id}.wav")
         success, error, final_file, player_format = process_audio_conversion(
             module_path, output_path, compress_flac=use_flac
         )
 
         # Clean up input files
-        upload_path.unlink(missing_ok=True)
-        if extract_dir and extract_dir.exists():
-            shutil.rmtree(extract_dir, ignore_errors=True)
-
+        rel_path = f"{filename}_{file_id}"
+        if fs_modules.exists(f"{root_modules}/{rel_path}"):
+            fs_modules.rm(f"{root_modules}/{rel_path}")
+        if extract_dir and fs_modules.exists(f"{root_modules}/{file_id}_extracted"):
+            fs_modules.rm(f"{root_modules}/{file_id}_extracted", recursive=True)
         if not success:
             response = jsonify({"error": error})
             response.headers["Content-Type"] = "application/json; charset=utf-8"
@@ -636,9 +673,9 @@ def convert_url():
         filename = secure_filename(raw_filename)
         # Compute cache hash from URL
         url_hash = hashlib.md5(url.encode(), usedforsecurity=False).hexdigest()
-        module_path = MODULES_DIR / f"{filename}_{url_hash}"
+        module_path = f"{MODULES_URI}/{filename}_{url_hash}"
 
-        if module_path.exists():
+        if fs_modules.exists(module_path):
             logger.info(
                 f"Cache hit for module: {sanitized_url(url)}, using cached file: {module_path}"
             )
@@ -648,7 +685,8 @@ def convert_url():
             response = requests.get(url, timeout=30, verify=False, allow_redirects=True)
             response.raise_for_status()
             # Save downloaded file to cache
-            module_path.write_bytes(response.content)
+            with open(module_path, "wb") as f:
+                f.write(response.content)
             logger.info(f"Cached module_path: {module_path}")
 
         # --- Caching logic for TFMX sample file ---
@@ -662,12 +700,17 @@ def convert_url():
                 smplfilename = "smpl" + filename[4:]
             else:
                 smplfilename = "smpl." + filename
-            sample_path = MODULES_DIR / f"{smplfilename}_{url_hash}"
-            cached_sample_path = MODULES_DIR / f"{smplfilename}_{sample_url_hash}"
-            if cached_sample_path.exists():
-                if sample_path.exists() or sample_path.is_symlink():
-                    sample_path.unlink(missing_ok=True)
-                os.symlink(cached_sample_path, sample_path)
+            sample_path = f"{MODULES_URI}/{smplfilename}_{url_hash}"
+            cached_sample_path = f"{MODULES_URI}/{smplfilename}_{sample_url_hash}"
+            if fs_modules.exists(cached_sample_path):
+                # For symlink logic, only works for local file system
+                if fs_modules.protocol == 'file':
+                    if os.path.exists(sample_path) or os.path.islink(sample_path):
+                        try:
+                            os.unlink(sample_path)
+                        except Exception:
+                            pass
+                    os.symlink(cached_sample_path, sample_path)
                 logger.info(
                     f"Cache hit for TFMX sample: {sanitized_url(sample_url)}, using cached file {cached_sample_path}, linking to {sample_path}"
                 )
@@ -677,8 +720,11 @@ def convert_url():
                     sample_url, timeout=30, verify=False, allow_redirects=True
                 )
                 sample_response.raise_for_status()
-                cached_sample_path.write_bytes(sample_response.content)
-                os.symlink(cached_sample_path, sample_path)
+                with fs_modules.open(cached_sample_path, "wb") as f:
+                    f.write(sample_response.content)
+                # For symlink logic, only works for local file system
+                if fs_modules.protocol == 'file':
+                    os.symlink(cached_sample_path, sample_path)
                 logger.info(
                     f"Cached sample_path: {cached_sample_path}, linking to {sample_path}"
                 )
@@ -687,40 +733,46 @@ def convert_url():
         extract_dir = None
         if is_lha_file(module_path):
             logger.info(f"Detected LHA archive: {filename}")
-            extract_dir = MODULES_DIR / f"{file_id}_extracted"
-            success, error, music_file = extract_lha(module_path, extract_dir)
+            extract_dir = f"{MODULES_URI}/{file_id}_extracted"
+            if fs_modules.protocol == 'file':
+                os.makedirs(extract_dir, exist_ok=True)
+            success, error, music_file = extract_lha(module_path, Path(extract_dir))
             if not success:
                 # Do not delete cached_module_path on error
-                if extract_dir and extract_dir.exists():
+                if extract_dir and fs_modules.protocol == 'file' and os.path.exists(extract_dir):
+                    import shutil
                     shutil.rmtree(extract_dir, ignore_errors=True)
                 response = jsonify({"error": error})
                 response.headers["Content-Type"] = "application/json; charset=utf-8"
                 return response, 500
-            filename = music_file.name
-            module_path = music_file
+            module_path = Path(music_file)
+            filename = module_path.name
         elif is_zip_file(module_path):
             logger.info(f"Detected ZIP archive: {filename}")
-            extract_dir = MODULES_DIR / f"{file_id}_extracted"
-            success, error, music_file = extract_zip(module_path, extract_dir)
+            extract_dir = f"{MODULES_URI}/{file_id}_extracted"
+            if fs_modules.protocol == 'file':
+                os.makedirs(extract_dir, exist_ok=True)
+            success, error, music_file = extract_zip(module_path, Path(extract_dir))
             if not success:
                 # Do not delete cached_module_path on error
-                if extract_dir and extract_dir.exists():
+                if extract_dir and fs_modules.protocol == 'file' and os.path.exists(extract_dir):
+                    import shutil
                     shutil.rmtree(extract_dir, ignore_errors=True)
                 response = jsonify({"error": error})
                 response.headers["Content-Type"] = "application/json; charset=utf-8"
                 return response, 500
-            filename = music_file.name
-            module_path = music_file
+            module_path = Path(music_file)
+            filename = module_path.name
 
-        output_path = CONVERTED_DIR / f"{file_id}.wav"
+        output_path = Path(f"{CONVERTED_URI}/{file_id}.wav")
         # Convert to WAV (and optionally FLAC)
         success, error, final_file, player_format = process_audio_conversion(
             module_path, output_path, compress_flac=use_flac
         )
 
         # Clean up extracted files only (do not delete cached files)
-        if extract_dir and extract_dir.exists():
-            shutil.rmtree(extract_dir, ignore_errors=True)
+        if extract_dir:
+            fs_modules.rm(extract_dir, recursive=True)
         if not success:
             return jsonify({"error": error}), 500
 
@@ -812,27 +864,22 @@ def serve_audio_file(file_id, as_attachment=False):
     # Sanitize file_id to ensure a safe filename
     safe_file_id = secure_filename(file_id)
     # Try FLAC first, then WAV
-    flac_path = (CONVERTED_DIR / f"{safe_file_id}.flac").resolve()
-    wav_path = (CONVERTED_DIR / f"{safe_file_id}.wav").resolve()
-
-    # Only allow files under CONVERTED_DIR to be served
-    converted_base = CONVERTED_DIR.resolve()
-    try:
-        if flac_path.exists() and flac_path.relative_to(converted_base):
-            file_path = flac_path
-            mimetype = "audio/flac"
-            filename = f"uade_{safe_file_id}.flac"
-        elif wav_path.exists() and wav_path.relative_to(converted_base):
-            file_path = wav_path
-            mimetype = "audio/wav"
-            filename = f"uade_{safe_file_id}.wav"
-        else:
-            return jsonify({"error": "File not found or forbidden"}), 404
-    except ValueError:
-        # Path not contained within converted_base
+    flac_path = f"{CONVERTED_URI}/{safe_file_id}.flac"
+    wav_path = f"{CONVERTED_URI}/{safe_file_id}.wav"
+    file_path = None
+    mimetype = None
+    filename = None
+    if fs_converted.exists(flac_path):
+        file_path = flac_path
+        mimetype = "audio/flac"
+        filename = f"uade_{safe_file_id}.flac"
+    elif fs_converted.exists(wav_path):
+        file_path = wav_path
+        mimetype = "audio/wav"
+        filename = f"uade_{safe_file_id}.wav"
+    else:
         return jsonify({"error": "File not found or forbidden"}), 404
-
-    file_size = file_path.stat().st_size
+    file_size = fs_converted.size(file_path)
 
     # Handle range requests for large downloads (Cloud Run has 32MB response limit)
     range_header = request.headers.get("Range")
@@ -883,7 +930,7 @@ def serve_audio_file(file_id, as_attachment=False):
 
 def stream_full_file(file_path, chunk_size=8192):
     """Yield the entire file in chunks (used for small file streaming)"""
-    with open(file_path, "rb") as f:
+    with fs_converted.open(file_path, "rb") as f:
         while True:
             chunk = f.read(chunk_size)
             if not chunk:
@@ -893,7 +940,7 @@ def stream_full_file(file_path, chunk_size=8192):
 
 def stream_file_range(file_path, start, length, chunk_size=8192):
     """Yield a byte range from a file (used for range requests)"""
-    with open(file_path, "rb") as f:
+    with fs_converted.open(file_path, "rb") as f:
         f.seek(start)
         remaining = length
         while remaining > 0:
