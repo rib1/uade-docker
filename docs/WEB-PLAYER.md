@@ -66,7 +66,8 @@ The `docker-compose.yml` includes these environment variables:
 ```yaml
 FLASK_ENV: production # Production mode
 MAX_UPLOAD_SIZE: 10485760 # 10MB max upload
-CLEANUP_INTERVAL: 3600 # Files deleted after 1 hour
+CLEANUP_INTERVAL: 3600 # Local files deleted after 1 hour
+CACHE_CLEANUP_INTERVAL: 86400 # Cache purged after 24 hours
 RATE_LIMIT: 10 # Max 10 conversions/min per IP
 ```
 
