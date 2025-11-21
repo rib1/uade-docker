@@ -44,6 +44,7 @@ def get_git_commit():
         if result.returncode == 0:
             return result.stdout.strip()
     except Exception:
+        # Ignore errors (e.g., not a git repo, git not installed); fallback to env var
         pass
     return os.getenv("GIT_COMMIT", "unknown")
 
@@ -706,7 +707,6 @@ def convert_url():
         filename = secure_filename(sanitized_filename)
         # Compute cache hash from URL
         url_hash = hashlib.md5(url.encode(), usedforsecurity=False).hexdigest()
-        module_path = MODULES_DIR / f"{filename}_{url_hash}"
         module_path = MODULES_DIR / f"{filename}_{url_hash}"
 
         if module_path.exists():

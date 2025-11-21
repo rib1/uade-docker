@@ -70,31 +70,31 @@ RUN apt-get update && \
 
 # 8. Create helper script for downloading and converting TFMX modules
 RUN printf '#!/bin/sh\n\
-if [ $# -lt 2 ]; then\n\
-    echo "Usage: uade-convert <mdat-url> <smpl-url> <output-file>"\n\
-    echo ""\n\
-    echo "Example:"\n\
-    echo "  uade-convert \\\\\n\
-    \"https://modland.com/pub/modules/TFMX/Chris%%20Huelsbeck/mdat.turrican%%202%%20level%%200-intro\" \\\\\n\
-    \"https://modland.com/pub/modules/TFMX/Chris%%20Huelsbeck/smpl.turrican%%202%%20level%%200-intro\" \\\\\n\
-    /output/turrican2.wav"\n\
-    exit 1\n\
-fi\n\
-\n\
-MDAT_URL="$1"\n\
-SMPL_URL="$2"\n\
-OUTPUT="${3:-/output/output.wav}"\n\
-BASENAME="module_$(date +%%s)"\n\
-\n\
-echo "Downloading mdat file..."\n\
-curl -k -f -o "/tmp/mdat.$BASENAME" "$MDAT_URL" || exit 1\n\
-\n\
-echo "Downloading smpl file..."\n\
-curl -k -f -o "/tmp/smpl.$BASENAME" "$SMPL_URL" || exit 1\n\
-\n\
-echo "Converting to WAV..."\n\
-/usr/local/bin/uade123 -c -f "$OUTPUT" "/tmp/mdat.$BASENAME"\n\
-' > /usr/local/bin/uade-convert && chmod +x /usr/local/bin/uade-convert
+        RUN printf "#!/bin/sh\n\
+        if [ \$# -lt 2 ]; then\n\
+            echo \"Usage: uade-convert <mdat-url> <smpl-url> <output-file>\"\n\
+            echo \"\"\n\
+            echo \"Example:\"\n\
+            echo \"  uade-convert \\\n\
+            https://modland.com/pub/modules/TFMX/Chris%%20Huelsbeck/mdat.turrican%%202%%20level%%200-intro \\\n\
+            https://modland.com/pub/modules/TFMX/Chris%%20Huelsbeck/smpl.turrican%%202%%20level%%200-intro \\\n\
+            /output/turrican2.wav\"\n\
+            exit 1\n\
+        fi\n\
+        \n\
+        MDAT_URL=\"\$1\"\n\
+        SMPL_URL=\"\$2\"\n\
+        OUTPUT=\"\${3:-/output/output.wav}\"\n\
+        BASENAME=\"module_\$(date +%%s)\"\n\
+        \n\
+        echo \"Downloading mdat file...\"\n\
+        curl -k -f -o \"/tmp/mdat.\$BASENAME\" \"\$MDAT_URL\" || exit 1\n\
+        \n\
+        echo \"Downloading smpl file...\"\n\
+        curl -k -f -o \"/tmp/smpl.\$BASENAME\" \"\$SMPL_URL\" || exit 1\n\
+        \n\
+        echo \"Converting to WAV...\"\n\
+        /usr/local/bin/uade123 -c -f \"\$OUTPUT\" \"/tmp/mdat.\$BASENAME\"\n" > /usr/local/bin/uade-convert && chmod +x /usr/local/bin/uade-convert
 
 # 9. Create non-root user and set permissions
 RUN useradd -m -s /bin/bash uadeuser && \
