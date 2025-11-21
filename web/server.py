@@ -64,19 +64,21 @@ app.config["MAX_CONTENT_LENGTH"] = MAX_UPLOAD_SIZE
 MODULES_DIR: Final = Path("/tmp/modules")
 CONVERTED_DIR: Final = Path("/tmp/converted")
 
+
 def get_fs_and_root(uri, fs_kwargs=None):
     fs_kwargs = fs_kwargs or {}
     # Detect S3 URI for remote storage support
-    if uri.startswith('s3://'):
-        fs = fsspec.filesystem('s3', **fs_kwargs)
+    if uri.startswith("s3://"):
+        fs = fsspec.filesystem("s3", **fs_kwargs)
         root = uri[5:]
-    elif uri.startswith('gcs://'):
-        fs = fsspec.filesystem('gcs', **fs_kwargs)
+    elif uri.startswith("gcs://"):
+        fs = fsspec.filesystem("gcs", **fs_kwargs)
         root = uri[6:]
     else:
-        fs = fsspec.filesystem('file')
+        fs = fsspec.filesystem("file")
         root = uri
     return fs, root
+
 
 # Remote cache configuration (set your bucket URL here)
 # Expected values for CACHE_URI:
@@ -221,7 +223,6 @@ EXAMPLES: Final = [
 ]
 
 
-
 def cleanup_old_files():
     """Remove files older than CLEANUP_INTERVAL from local directories"""
     try:
@@ -255,6 +256,7 @@ def cleanup_cache_files():
                     # Try to parse ISO8601 or RFC format
                     try:
                         from dateutil.parser import parse as dtparse
+
                         mtime_ts = dtparse(mtime).timestamp()
                     except Exception:
                         mtime_ts = 0
@@ -409,21 +411,30 @@ def extract_zip(zip_path, extract_dir):
 def get_cached_conversion(cache_hash, prefer_flac=False):
     """Check if a converted file exists in remote cache (WAV or FLAC). If found, copy to local and return local path."""
     # Try FLAC first if preferred
-    for ext in (['.flac'] if prefer_flac else []) + ['.wav']:
+    for ext in ([".flac"] if prefer_flac else []) + [".wav"]:
         cache_file_remote = f"{root_cache}/{cache_hash}{ext}"
         cache_file_local = CONVERTED_DIR / f"{cache_hash}{ext}"
         if fs_cache.exists(cache_file_remote):
             remote_size = fs_cache.size(cache_file_remote)
-            if cache_file_local.exists() and cache_file_local.stat().st_size == remote_size:
-                logger.info(f"Cache hit ({ext[1:].upper()}): {cache_hash} already exists locally")
+            if (
+                cache_file_local.exists()
+                and cache_file_local.stat().st_size == remote_size
+            ):
+                logger.info(
+                    f"Cache hit ({ext[1:].upper()}): {cache_hash} already exists locally"
+                )
                 return cache_file_local
             # Ensure local cache directory exists
             cache_dir_local = cache_file_local.parent
             cache_dir_local.mkdir(parents=True, exist_ok=True)
             # Copy from remote cache to local
-            with fs_cache.open(cache_file_remote, "rb") as src, open(cache_file_local, "wb") as dst:
+            with fs_cache.open(cache_file_remote, "rb") as src, open(
+                cache_file_local, "wb"
+            ) as dst:
                 shutil.copyfileobj(src, dst)
-            logger.info(f"Cache hit ({ext[1:].upper()}): {cache_hash} from remote cache")
+            logger.info(
+                f"Cache hit ({ext[1:].upper()}): {cache_hash} from remote cache"
+            )
             return cache_file_local
     return None
 
@@ -480,7 +491,7 @@ def process_audio_conversion(
             "-c",
             "-f",
             str(output_path),
-            str(input_path)
+            str(input_path),
         ]  # Headless mode
 
         result = subprocess.run(
@@ -503,14 +514,18 @@ def process_audio_conversion(
                 final_output = flac_output
         # Save to remote cache
         if use_cache:
-            for ext, file in [(".flac", final_output) if compress_flac else (".wav", output_path)]:
+            for ext, file in [
+                (".flac", final_output) if compress_flac else (".wav", output_path)
+            ]:
                 cache_file_remote = f"{root_cache}/{cache_hash}{ext}"
                 # Ensure remote cache directory exists (for local file cache)
-                if fs_cache.protocol == 'file':
+                if fs_cache.protocol == "file":
                     cache_dir_remote = Path(root_cache)
                     cache_dir_remote.mkdir(parents=True, exist_ok=True)
                 if not fs_cache.exists(cache_file_remote):
-                    with open(file, "rb") as src, fs_cache.open(cache_file_remote, "wb") as dst:
+                    with open(file, "rb") as src, fs_cache.open(
+                        cache_file_remote, "wb"
+                    ) as dst:
                         shutil.copyfileobj(src, dst)
                     logger.info(f"Cached conversion to remote: {cache_hash}{ext}")
         logger.info(f"Successfully converted: {input_path} -> {final_output}")
@@ -756,7 +771,7 @@ def convert_url():
             filename = music_file.name
             module_path = music_file
 
-        # cache hash 
+        # cache hash
         converted_file_id = get_file_hash(module_path)
 
         output_path = CONVERTED_DIR / f"{converted_file_id}.wav"
@@ -871,15 +886,23 @@ def serve_audio_file(file_id, as_attachment=False):
             cache_hash = safe_file_id  # file_id is UUID, also used as cache hash
             cache_file_remote = f"{root_cache}/{cache_hash}.flac"
             if fs_cache.exists(cache_file_remote):
-                logger.info(f"Serve audio cache hit(.flac): {cache_hash} copy from remote")
-                with fs_cache.open(cache_file_remote, "rb") as src, open(flac_path, "wb") as dst:
+                logger.info(
+                    f"Serve audio cache hit(.flac): {cache_hash} copy from remote"
+                )
+                with fs_cache.open(cache_file_remote, "rb") as src, open(
+                    flac_path, "wb"
+                ) as dst:
                     shutil.copyfileobj(src, dst)
         if not flac_path.exists() and not wav_path.exists():
             cache_hash = safe_file_id
             cache_file_remote = f"{root_cache}/{cache_hash}.wav"
             if fs_cache.exists(cache_file_remote):
-                logger.info(f"Serve audio cache hit(.wav): {cache_hash} copy from remote")
-                with fs_cache.open(cache_file_remote, "rb") as src, open(wav_path, "wb") as dst:
+                logger.info(
+                    f"Serve audio cache hit(.wav): {cache_hash} copy from remote"
+                )
+                with fs_cache.open(cache_file_remote, "rb") as src, open(
+                    wav_path, "wb"
+                ) as dst:
                     shutil.copyfileobj(src, dst)
         if flac_path.exists() and flac_path.resolve().relative_to(converted_dir_base):
             file_path = flac_path.resolve()
@@ -1008,6 +1031,6 @@ logger.info(f"Cache cleanup interval: {CACHE_CLEANUP_INTERVAL}s")
 # Clean up cache files once at startup (runs in all environments)
 cleanup_cache_files()
 
-if __name__ == "__main__":
+if __name__ == "__main_ _":
     # Development server (Docker Compose overrides this with gunicorn)
     app.run(host="0.0.0.0", port=PORT, debug=False)
