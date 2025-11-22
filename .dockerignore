@@ -1,0 +1,2 @@
+# Ignore ESLint config from Docker builds
+web/static/eslint.config.js

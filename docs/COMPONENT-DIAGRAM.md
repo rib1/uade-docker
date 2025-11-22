@@ -174,6 +174,20 @@ The Web Player Container is built using multi-stage Docker build with `FROM uade
   - Real-time status updates
   - File upload interface
 
+#### Rate Limiting
+
+- **Component:** Flask Application (Web Player)
+- **Technology:** Flask-Limiter (Python)
+- **Responsibilities:**
+  - Enforce per-endpoint and global rate limits to prevent abuse
+  - Conversion endpoints: 10 requests/min per IP
+  - Play endpoints: 50 requests/min per IP
+  - Download endpoint: 3 requests/min per IP
+  - Global limit: 200 requests/hour per IP (all endpoints combined)
+  - Limits are per instance/pod unless a distributed backend (e.g., Redis) is configured
+
+> Rate limiting logic is applied before request processing. In multi-instance/cloud deployments, limits are not global unless a shared backend is used.
+
 ## Technology Stack
 
 ### CLI Player Stack (Base Image)

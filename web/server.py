@@ -15,6 +15,9 @@ from pathlib import Path
 from datetime import datetime, timezone
 from flask import Flask, request, jsonify, send_from_directory, Response
 from werkzeug.utils import secure_filename
+from flask_limiter import Limiter
+from flask_limiter.util import get_remote_address
+from flask import jsonify
 from typing import Final
 import requests
 import re
@@ -60,7 +63,7 @@ CLEANUP_INTERVAL: Final = int(os.getenv("CLEANUP_INTERVAL", 3600))  # 1 hour
 CACHE_CLEANUP_INTERVAL: Final = int(
     os.getenv("CACHE_CLEANUP_INTERVAL", 86400)
 )  # 24 hours
-RATE_LIMIT: Final = int(os.getenv("RATE_LIMIT", 10))
+RATE_LIMIT: Final = int(os.getenv("RATE_LIMIT", 200))  # requests per hour
 PORT: Final = int(os.getenv("PORT", 5000))
 app.config["MAX_CONTENT_LENGTH"] = MAX_UPLOAD_SIZE
 
@@ -95,6 +98,22 @@ fs_cache, root_cache = get_fs_and_root(CACHE_URI)
 
 for directory in [MODULES_DIR, CONVERTED_DIR]:
     directory.mkdir(parents=True, exist_ok=True)
+
+
+limiter = Limiter(
+    get_remote_address,
+    app=app,
+    storage_uri="memory://", # NOTE: Rate limits are per-instance/pod only. Not global across all instances unless using a distributed backend (e.g. Redis).
+    default_limits={f"{RATE_LIMIT}/hour"} # An instance/pod wide rate limit of requests per hour for all endpoints
+)
+
+
+@app.errorhandler(429)
+def ratelimit_handler(e):
+    return jsonify({
+        "error": "Rate limit exceeded. Please wait and try again.",
+        "code": 429
+    }), 429
 
 # Find music files (common Amiga module extensions and prefixes)
 music_extensions: Final = {
@@ -555,12 +574,14 @@ def process_audio_conversion(input_path, use_cache=True, compress_flac=False):
 
 
 @app.route("/")
+@limiter.exempt
 def index():
     """Serve main page"""
     return send_from_directory("static", "index.html")
 
 
 @app.route("/health")
+@limiter.exempt
 def health():
     """Health check for load balancers"""
     response = jsonify(
@@ -576,6 +597,7 @@ def health():
 
 
 @app.route("/examples")
+@limiter.exempt
 def get_examples():
     """Return list of example modules"""
     response = jsonify(EXAMPLES)
@@ -584,6 +606,7 @@ def get_examples():
 
 
 @app.route("/upload", methods=["POST"])
+@limiter.limit("10 per minute")
 def upload_file():
     """Handle file upload and conversion"""
     cleanup_old_files()
@@ -745,6 +768,7 @@ def is_safe_url(u):
 
 
 @app.route("/convert-url", methods=["POST"])
+@limiter.limit("10 per minute")
 def convert_url():
     """Download from URL and convert, supports optional sample URL for TFMX"""
     cleanup_old_files()
@@ -929,6 +953,7 @@ def sanitized_url(url):
 
 
 @app.route("/play-example/<example_id>", methods=["POST"])
+@limiter.limit("10 per minute")
 def play_example(example_id):
     """Convert and play predefined example"""
     cleanup_old_files()
@@ -953,6 +978,7 @@ def play_example(example_id):
 
 
 @app.route("/play/<file_id>")
+@limiter.limit("50 per minute")
 def play_file(file_id):
     """
     Stream audio file for playback (FLAC or WAV) with range request support.
@@ -961,6 +987,7 @@ def play_file(file_id):
 
 
 @app.route("/download/<file_id>")
+@limiter.limit("3 per minute")
 def download_file(file_id):
     """Download audio file (FLAC or WAV) - large files may require a download manager"""
     return serve_audio_file(file_id, as_attachment=True)

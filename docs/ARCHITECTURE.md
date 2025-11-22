@@ -56,6 +56,7 @@ architecture-beta
   - Supports file upload and URL downloads
   - Automatic extraction of LHA and ZIP archives (finds and plays first music file inside)
   - Non-root user (uid=1000)
+  - Rate limiting (per endpoint & global, per instance)
 
 ### Google Cloud Platform Layer
 
@@ -215,3 +216,14 @@ architecture-beta
 - Git commit tracking in responses
 - Budget alerts
 - Network egress monitoring (1GB free tier)
+
+## Rate Limiting
+
+UADE Web Player enforces rate limits to prevent abuse and ensure fair usage:
+
+- Conversion endpoints: 10 requests/min per IP
+- Play endpoints: 50 requests/min per IP
+- Download endpoint: 3 requests/min per IP
+- Global limit: 200 requests/hour per IP (all endpoints combined)
+
+> Rate limits are enforced per instance/pod. For global limits across all instances, a distributed backend (e.g., Redis) is required.

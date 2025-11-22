@@ -68,7 +68,7 @@ FLASK_ENV: production # Production mode
 MAX_UPLOAD_SIZE: 10485760 # 10MB max upload
 CLEANUP_INTERVAL: 3600 # Local files deleted after 1 hour
 CACHE_CLEANUP_INTERVAL: 86400 # Cache purged after 24 hours
-RATE_LIMIT: 10 # Max 10 conversions/min per IP
+RATE_LIMIT: 200 # Requests per hour per IP (all endpoints combined)
 ```
 
 To customize, edit `docker-compose.yml` or create a `docker-compose.override.yml`:
@@ -446,3 +446,17 @@ git checkout -b feature/my-feature main
 # Make changes
 git push origin feature/my-feature
 ```
+
+## Rate Limiting
+
+UADE Web Player uses per-endpoint and global rate limits to prevent abuse and ensure fair usage:
+
+- **Conversion endpoints** (`/upload`, `/convert-url`): 10 requests per minute per IP
+- **Play endpoints** (`/play`, `/play-example`): 50 requests per minute per IP
+- **Download endpoint** (`/download`): 3 requests per minute per IP
+- **Global limit**: 200 requests per hour per IP (all endpoints combined)
+
+> **Note:**
+> Rate limits are enforced per instance/pod. In multi-instance/cloud deployments, limits are not global unless a distributed backend (e.g., Redis) is configured for Flask-Limiter.
+
+You can adjust limits via the `RATE_LIMIT` environment variable and endpoint decorators in `server.py`.

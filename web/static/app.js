@@ -263,7 +263,7 @@ async function loadExamples() {
 // Play Example
 async function handleExamplePlay(example, button) {
   button.disabled = true;
-  button.innerHTML = '<span class="loading"></span> Converting...';
+  button.innerHTML = "<span class=\"loading\"></span> Converting...";
   showStatus(`Converting ${example.name}...`, "info");
 
   try {
@@ -332,6 +332,14 @@ function playFile(
   playerSection.style.display = "block";
   playerSection.scrollIntoView({ behavior: "smooth", block: "nearest" });
 
+  // Remove previous error handler to avoid stacking
+  audioPlayer.onerror = null;
+
+  // Add error handler for failed playback (e.g., rate limit, invalid audio)
+  audioPlayer.onerror = function () {
+    showStatus("Audio cannot be played. You may have hit the rate limit or the file is invalid.", "error");
+  };
+
   audioPlayer.play().catch((err) => {
     console.error("Playback error:", err);
     showStatus("Playback error - check browser console", "error");
@@ -340,10 +348,22 @@ function playFile(
 
 // Download Button
 function setupDownloadButton() {
-  downloadBtn.addEventListener("click", () => {
+  downloadBtn.addEventListener("click", async () => {
     if (currentDownloadUrl) {
-      window.location.href = currentDownloadUrl;
-      showStatus("Download started", "success");
+      try {
+        const response = await fetch(currentDownloadUrl);
+        const contentType = response.headers.get("content-type") || "";
+        if (contentType.includes("application/json")) {
+          const data = await response.json();
+          showStatus(`✗ Error: ${data.error || "Rate limit exceeded"}`, "error");
+        } else {
+          // Start download by navigating to the URL
+          window.location.href = currentDownloadUrl;
+          showStatus("Download started", "success");
+        }
+      } catch (error) {
+        showStatus(`✗ Download failed: ${error.message}`, "error");
+      }
     }
   });
 }
@@ -373,7 +393,7 @@ async function loadVersionInfo() {
     if (data.version && data.version !== "unknown") {
       // Set static markup, then safely set user data
       versionElement.innerHTML = `Version: <a href="https://github.com/rib1/uade-docker/commit/${encodeURIComponent(data.version)}" target="_blank" style="color: #666; text-decoration: none;"></a>`;
-      const link = versionElement.querySelector('a');
+      const link = versionElement.querySelector("a");
       link.textContent = data.version;
     } else {
       versionElement.textContent = "";

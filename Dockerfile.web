@@ -46,7 +46,8 @@ RUN pip install --no-cache-dir \
     gunicorn==21.2.0 \
     fsspec==2025.10.0 \
     gcsfs==2025.10.0 \
-    s3fs==2025.10.0
+    s3fs==2025.10.0 \
+    Flask-Limiter==4.0.0
 
 # Create app directory structure and non-root user
 RUN mkdir -p /app /tmp/modules /tmp/converted /tmp/cache && \
