@@ -685,18 +685,27 @@ def upload_file():
 def is_safe_url(u):
     """Reject private/LAN/loopback/non-HTTP(S) URLs for SSRF defense, including IDN/punycode normalization."""
     try:
+        # Remove forbidden characters before securing filename
+        sanitized_url_for_log = re.sub(FORBIDDEN_CHARS, "", u)
+
         parsed = urllib.parse.urlparse(u)
         if parsed.scheme not in ("http", "https"):
-            logger.warning(f"is_safe_url: rejected scheme '{parsed.scheme}' for URL: {u}")
+            logger.warning(
+                f"is_safe_url: rejected scheme '{parsed.scheme}' for URL: {sanitized_url_for_log}"
+            )
             return False
         if not parsed.hostname:
-            logger.warning(f"is_safe_url: missing hostname in URL: {u}")
+            logger.warning(
+                f"is_safe_url: missing hostname in URL: {sanitized_url_for_log}"
+            )
             return False
         # Normalize hostname for Unicode/punycode edge cases
         try:
             normalized_hostname = parsed.hostname.encode("idna").decode("ascii")
         except Exception:
-            logger.warning(f"is_safe_url: failed to normalize hostname '{parsed.hostname}' in URL: {u}")
+            logger.warning(
+                f"is_safe_url: failed to normalize hostname '{parsed.hostname}' in URL: {sanitized_url_for_log}"
+            )
             normalized_hostname = parsed.hostname
         # IP resolution (avoid DNS rebinding, etc)
         # Attempt to resolve; fallback to hostname if not an IP
@@ -711,7 +720,9 @@ def is_safe_url(u):
                     for addr in socket.getaddrinfo(normalized_hostname, None)
                 ]
             except Exception as e:
-                logger.warning(f"is_safe_url: failed to resolve domain '{normalized_hostname}' in URL: {u} ({e})")
+                logger.warning(
+                    f"is_safe_url: failed to resolve domain '{normalized_hostname}' in URL: {sanitized_url_for_log} ({e})"
+                )
                 return False
         for ip in check_ips:
             if (
@@ -722,13 +733,15 @@ def is_safe_url(u):
                 or ip.is_multicast
                 or ip.is_unspecified
             ):
-                logger.warning(f"is_safe_url: rejected IP '{ip}' for URL: {u}")
+                logger.warning(
+                    f"is_safe_url: rejected IP '{ip}' for URL: {sanitized_url_for_log}"
+                )
                 return False
         # All checks passed
-        logger.info(f"is_safe_url: accepted URL: {u}")
+        logger.info(f"is_safe_url: accepted URL: {sanitized_url_for_log}")
         return True
     except Exception as e:
-        logger.error(f"is_safe_url: exception for URL '{u}': {e}")
+        logger.error(f"is_safe_url: exception for URL '{sanitized_url_for_log}': {e}")
         return False
 
 
