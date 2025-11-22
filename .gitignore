@@ -1,8 +1,10 @@
-# No changes needed here, just ensuring patch format for commit
-# test modules
+# test modules and archives
 mdat.*
 smpl.*
 mod.*
+*.mod
+*.lha
+*.zip
 
 # output files
 *.wav
