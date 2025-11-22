@@ -906,8 +906,8 @@ def sanitized_url(url):
     # Unquote percent-encodings (so %0d%0a becomes literal CR/LF and can be removed)
     try:
         url = urllib.parse.unquote(url)
-    except Exception:
-        pass
+    except Exception as e:
+        logging.warning(f"Failed to unquote URL in sanitized_url: {e}")
     # Normalize unicode to a consistent form
     url = unicodedata.normalize("NFKC", url)
     # Remove bidi controls and Unicode line/paragraph separators that can create fake lines
