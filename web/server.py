@@ -92,8 +92,6 @@ def get_fs_and_root(uri, fs_kwargs=None):
 CACHE_URI: Final = os.getenv("CACHE_URI", "file:///tmp/cache")
 fs_cache, root_cache = get_fs_and_root(CACHE_URI)
 
-# Shared forbidden characters regex for filename and URL sanitization
-FORBIDDEN_CHARS: Final = r'[ \t\n\r\x00-\x1f"\'`;|&$<>\\]'
 
 for directory in [MODULES_DIR, CONVERTED_DIR]:
     directory.mkdir(parents=True, exist_ok=True)
