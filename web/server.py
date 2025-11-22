@@ -24,6 +24,7 @@ import zipfile
 import urllib.parse
 import socket
 import ipaddress
+import unicodedata
 
 # Configure logging for cloud environments
 logging.basicConfig(
@@ -91,7 +92,7 @@ def get_fs_and_root(uri, fs_kwargs=None):
 CACHE_URI: Final = os.getenv("CACHE_URI", "file:///tmp/cache")
 fs_cache, root_cache = get_fs_and_root(CACHE_URI)
 
-# Shared forbidden characters regex for URL validation/sanitization
+# Shared forbidden characters regex for filename and URL sanitization
 FORBIDDEN_CHARS: Final = r'[ \t\n\r\x00-\x1f"\'`;|&$<>\\]'
 
 for directory in [MODULES_DIR, CONVERTED_DIR]:
@@ -685,8 +686,8 @@ def upload_file():
 def is_safe_url(u):
     """Reject private/LAN/loopback/non-HTTP(S) URLs for SSRF defense, including IDN/punycode normalization."""
     try:
-        # Remove forbidden characters before securing filename
-        sanitized_url_for_log = re.sub(FORBIDDEN_CHARS, "", u)
+        # Prepare a safe, normalized string for logging
+        sanitized_url_for_log = sanitized_url(u)
 
         parsed = urllib.parse.urlparse(u)
         if parsed.scheme not in ("http", "https"):
@@ -773,9 +774,13 @@ def convert_url():
 
         # --- Caching logic for main module file ---
         raw_filename = url.split("/")[-1].split("#")[0].split("?")[0] or "module"
-        # Remove forbidden characters before securing filename
-        sanitized_filename = re.sub(FORBIDDEN_CHARS, "", raw_filename)
-        filename = secure_filename(sanitized_filename)
+        # Unquote and normalize filename, then use werkzeug's secure_filename
+        try:
+            unquoted = urllib.parse.unquote(raw_filename)
+        except Exception:
+            unquoted = raw_filename
+        normalized = unicodedata.normalize("NFKC", unquoted)
+        filename = secure_filename(normalized) or "module"
         # Compute cache hash from URL
         url_hash = hashlib.md5(url.encode(), usedforsecurity=False).hexdigest()
         module_path = MODULES_DIR / f"{filename}_{url_hash}"
@@ -795,7 +800,7 @@ def convert_url():
 
         # --- Caching logic for TFMX sample file ---
         sample_path = None
-        if sample_url:
+        if sample_url and sample_url != url:
             sample_url_hash = hashlib.md5(
                 sample_url.encode(), usedforsecurity=False
             ).hexdigest()
@@ -898,14 +903,31 @@ def sanitized_url(url):
     """Sanitize URL for safe logging (removes control/meta chars, line breaks, trims, limits length)"""
     if not isinstance(url, str):
         return "<non-string URL>"
-    url = re.sub(FORBIDDEN_CHARS, "", url)
-    url = url.replace("\r", "").replace(
-        "\n", ""
-    )  # Remove line breaks to prevent log injection
+    # Unquote percent-encodings (so %0d%0a becomes literal CR/LF and can be removed)
+    try:
+        url = urllib.parse.unquote(url)
+    except Exception:
+        pass
+    # Normalize unicode to a consistent form
+    url = unicodedata.normalize("NFKC", url)
+    # Remove bidi controls and Unicode line/paragraph separators that can create fake lines
+    url = re.sub(r"[\u202A-\u202E\u2066-\u2069\u2028\u2029]", "", url)
+    # Remove ASCII control characters
+    url = re.sub(r"[\x00-\x1f\x7f]", "", url)
+    # Trim whitespace
     url = url.strip()
-    if len(url) > 200:
-        url = url[:200] + "..."
-    return url
+    # Replace remaining non-ASCII / non-printable with \uXXXX escapes so logs are unforgeable
+    out_chars = []
+    for ch in url:
+        o = ord(ch)
+        if 0x20 <= o <= 0x7E:
+            out_chars.append(ch)
+        else:
+            out_chars.append("\\u%04x" % o)
+    out = "".join(out_chars)
+    if len(out) > 200:
+        out = out[:200] + "..."
+    return out
 
 
 @app.route("/play-example/<example_id>", methods=["POST"])
@@ -1093,6 +1115,6 @@ logger.info(f"Cache cleanup interval: {CACHE_CLEANUP_INTERVAL}s")
 # Clean up cache files once at startup (runs in all environments)
 cleanup_cache_files()
 
-if __name__ == "__main_ _":
+if __name__ == "__main__":
     # Development server (Docker Compose overrides this with gunicorn)
     app.run(host="0.0.0.0", port=PORT, debug=False)
