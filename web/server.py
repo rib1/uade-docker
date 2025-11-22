@@ -22,6 +22,9 @@ import shutil
 import fsspec
 import zipfile
 
+import urllib.parse
+import socket
+import ipaddress
 # Configure logging for cloud environments
 logging.basicConfig(
     level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
@@ -693,6 +696,43 @@ def convert_url():
     url = data["url"]
     sample_url = data.get("sample_url")
 
+    def is_safe_url(u):
+        """Reject private/LAN/loopback/non-HTTP(S) URLs for SSRF defense."""
+        try:
+            parsed = urllib.parse.urlparse(u)
+            if parsed.scheme not in ("http", "https"):
+                return False
+            if not parsed.hostname:
+                return False
+            # IP resolution (avoid DNS rebinding, etc)
+            # Attempt to resolve; fallback to hostname if not an IP
+            try:
+                ip = ipaddress.ip_address(parsed.hostname)
+                check_ips = [ip]
+            except ValueError:
+                # Resolve domain to all IPs
+                try:
+                    check_ips = [
+                        ipaddress.ip_address(addr[4][0])
+                        for addr in socket.getaddrinfo(parsed.hostname, None)
+                    ]
+                except Exception:
+                    return False
+            for ip in check_ips:
+                if (
+                    ip.is_loopback
+                    or ip.is_private
+                    or ip.is_link_local
+                    or ip.is_reserved
+                    or ip.is_multicast
+                    or ip.is_unspecified
+                ):
+                    return False
+            # All checks passed
+            return True
+        except Exception:
+            return False
+
     try:
         # Check browser FLAC support
         user_agent = request.headers.get("User-Agent", "")
@@ -725,6 +765,10 @@ def convert_url():
         # --- Caching logic for TFMX sample file ---
         sample_path = None
         if sample_url:
+            if not is_safe_url(sample_url):
+                response = jsonify({"error": "Unsafe or disallowed sample_url"})
+                response.headers["Content-Type"] = "application/json; charset=utf-8"
+                return response, 400
             sample_url_hash = hashlib.md5(
                 sample_url.encode(), usedforsecurity=False
             ).hexdigest()
