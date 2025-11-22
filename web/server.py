@@ -21,10 +21,10 @@ import re
 import shutil
 import fsspec
 import zipfile
-
 import urllib.parse
 import socket
 import ipaddress
+
 # Configure logging for cloud environments
 logging.basicConfig(
     level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
@@ -682,6 +682,56 @@ def upload_file():
     return response, 500
 
 
+def is_safe_url(u):
+    """Reject private/LAN/loopback/non-HTTP(S) URLs for SSRF defense, including IDN/punycode normalization."""
+    try:
+        parsed = urllib.parse.urlparse(u)
+        if parsed.scheme not in ("http", "https"):
+            logger.warning(f"is_safe_url: rejected scheme '{parsed.scheme}' for URL: {u}")
+            return False
+        if not parsed.hostname:
+            logger.warning(f"is_safe_url: missing hostname in URL: {u}")
+            return False
+        # Normalize hostname for Unicode/punycode edge cases
+        try:
+            normalized_hostname = parsed.hostname.encode("idna").decode("ascii")
+        except Exception:
+            logger.warning(f"is_safe_url: failed to normalize hostname '{parsed.hostname}' in URL: {u}")
+            normalized_hostname = parsed.hostname
+        # IP resolution (avoid DNS rebinding, etc)
+        # Attempt to resolve; fallback to hostname if not an IP
+        try:
+            ip = ipaddress.ip_address(normalized_hostname)
+            check_ips = [ip]
+        except ValueError:
+            # Resolve domain to all IPs
+            try:
+                check_ips = [
+                    ipaddress.ip_address(addr[4][0])
+                    for addr in socket.getaddrinfo(normalized_hostname, None)
+                ]
+            except Exception as e:
+                logger.warning(f"is_safe_url: failed to resolve domain '{normalized_hostname}' in URL: {u} ({e})")
+                return False
+        for ip in check_ips:
+            if (
+                ip.is_loopback
+                or ip.is_private
+                or ip.is_link_local
+                or ip.is_reserved
+                or ip.is_multicast
+                or ip.is_unspecified
+            ):
+                logger.warning(f"is_safe_url: rejected IP '{ip}' for URL: {u}")
+                return False
+        # All checks passed
+        logger.info(f"is_safe_url: accepted URL: {u}")
+        return True
+    except Exception as e:
+        logger.error(f"is_safe_url: exception for URL '{u}': {e}")
+        return False
+
+
 @app.route("/convert-url", methods=["POST"])
 def convert_url():
     """Download from URL and convert, supports optional sample URL for TFMX"""
@@ -696,42 +746,10 @@ def convert_url():
     url = data["url"]
     sample_url = data.get("sample_url")
 
-    def is_safe_url(u):
-        """Reject private/LAN/loopback/non-HTTP(S) URLs for SSRF defense."""
-        try:
-            parsed = urllib.parse.urlparse(u)
-            if parsed.scheme not in ("http", "https"):
-                return False
-            if not parsed.hostname:
-                return False
-            # IP resolution (avoid DNS rebinding, etc)
-            # Attempt to resolve; fallback to hostname if not an IP
-            try:
-                ip = ipaddress.ip_address(parsed.hostname)
-                check_ips = [ip]
-            except ValueError:
-                # Resolve domain to all IPs
-                try:
-                    check_ips = [
-                        ipaddress.ip_address(addr[4][0])
-                        for addr in socket.getaddrinfo(parsed.hostname, None)
-                    ]
-                except Exception:
-                    return False
-            for ip in check_ips:
-                if (
-                    ip.is_loopback
-                    or ip.is_private
-                    or ip.is_link_local
-                    or ip.is_reserved
-                    or ip.is_multicast
-                    or ip.is_unspecified
-                ):
-                    return False
-            # All checks passed
-            return True
-        except Exception:
-            return False
+    if not is_safe_url(url) or (sample_url and not is_safe_url(sample_url)):
+        response = jsonify({"error": "Unsafe or disallowed sample_url"})
+        response.headers["Content-Type"] = "application/json; charset=utf-8"
+        return response, 400
 
     try:
         # Check browser FLAC support
@@ -765,10 +783,6 @@ def convert_url():
         # --- Caching logic for TFMX sample file ---
         sample_path = None
         if sample_url:
-            if not is_safe_url(sample_url):
-                response = jsonify({"error": "Unsafe or disallowed sample_url"})
-                response.headers["Content-Type"] = "application/json; charset=utf-8"
-                return response, 400
             sample_url_hash = hashlib.md5(
                 sample_url.encode(), usedforsecurity=False
             ).hexdigest()
