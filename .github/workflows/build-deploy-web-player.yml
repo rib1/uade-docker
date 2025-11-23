@@ -152,10 +152,14 @@ jobs:
       uses: actions/github-script@v8
       with:
         script: |
-          github.rest.issues.createComment({
-            issue_number: github.event.pull_request.number,
-            owner: context.repo.owner,
-            repo: context.repo.repo,
-            body: '🚀 Deployed to Cloud Run: ${{ steps.get-url.outputs.url }}'
-          })
+          if (github.event.pull_request) {
+            github.rest.issues.createComment({
+              issue_number: github.event.pull_request.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: '🚀 Deployed to Cloud Run: ${{ steps.get-url.outputs.url }}'
+            })
+          } else {
+            console.log('No pull_request context available, skipping PR comment.');
+          }
 
