@@ -172,7 +172,7 @@ architecture-beta
 - **Remote Cache Support:**
   - Stateless cache for converted files can use local disk, AWS S3, or Google Cloud Storage
   - Uses fsspec, s3fs, and gcsfs for unified access
-  - Docker image and local development require these Python dependencies for remote cache
+  - Docker image and local development require Python dependencies (see `requirements.txt`)
   - Multi-instance deployments share cache for instant replay and deduplication
 
 ### Development

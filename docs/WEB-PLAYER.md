@@ -393,7 +393,7 @@ If issues persist, run with debug logging enabled and check cloud provider logs 
 # Install Python dependencies
 python -m venv venv
 venv\Scripts\activate
-pip install flask werkzeug requests gunicorn fsspec s3fs gcsfs
+pip install -r requirements.txt
 
 # Run development server (requires UADE installed)
 cd web

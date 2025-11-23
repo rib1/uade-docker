@@ -206,7 +206,7 @@ The Web Player Container is built using multi-stage Docker build with `FROM uade
 - **Server**: Gunicorn 21.2 (4 workers)
 - **Container**: Multi-stage build (FROM uade-cli)
 - **Additional Components**: Flask app, static assets, Python wrapper
-- **Remote Cache Support**: Converted files are cached using local disk, AWS S3, or Google Cloud Storage. Uses fsspec, s3fs, and gcsfs for unified access. Multi-instance deployments share a stateless cache for deduplication and instant replay. Docker image and local development require these Python dependencies for remote cache.
+- **Remote Cache Support**: Converted files are cached using local disk, AWS S3, or Google Cloud Storage. Uses fsspec, s3fs, and gcsfs for unified access. Multi-instance deployments share a stateless cache for deduplication and instant replay. All Python dependencies are listed in `requirements.txt`.
 
 ## Data Flow
 

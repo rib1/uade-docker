@@ -1,2 +1,45 @@
 # Ignore ESLint config from Docker builds
 web/static/eslint.config.js
+
+# Python virtual environments
+venv
+.venv
+env
+.env
+__pycache__
+*.pyc
+*.pyo
+*.egg-info
+.pytest_cache
+.coverage
+
+# IDE and editor files
+.vscode
+.idea
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Git
+.git
+.gitignore
+
+# Docker
+Dockerfile
+docker-compose.yml
+
+# Build and test artifacts
+build/
+dist/
+*.egg
+.tox/
+
+# Local development
+.env.local
+local_modules/
+tmp/
+*.log
+
+# Node modules (if any frontend dependencies)
+node_modules/
