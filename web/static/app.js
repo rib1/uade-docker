@@ -98,7 +98,7 @@ async function handleFileUpload(file) {
         data.download_url,
         data.player_format || "Module",
         data.audio_format || "wav",
-        data.format_name,
+        data.module_format,
         data.subsongs
       );
     } else {
@@ -149,7 +149,7 @@ async function handleUrlConvert() {
         data.download_url,
         data.player_format || "Module",
         data.audio_format || "wav",
-        data.format_name,
+        data.module_format,
         data.subsongs
       );
       urlInput.value = "";
@@ -204,7 +204,7 @@ async function handleTfmxConvert() {
         data.download_url,
         data.player_format || "TFMX",
         data.audio_format || "wav",
-        data.format_name,
+        data.module_format,
         data.subsongs
       );
       mdatInput.value = "";
@@ -288,7 +288,7 @@ async function handleExamplePlay(example, button) {
         data.download_url,
         data.player_format || example.format,
         data.audio_format || "wav",
-        data.format_name,
+        data.module_format,
         data.subsongs
       );
       button.innerHTML = "✓ Playing";

@@ -466,15 +466,15 @@ def fetch_cached_file(cache_hash, prefer_flac=False):
 
 def detect_module_metadata(input_path):
     """Detect module metadata using uade123 -g
-    Returns: (player_format, module_name, format_name, subsongs)
+    Returns: (module_name, module_format, player_format, subsongs)
     """
     try:
         cmd = ["/usr/local/bin/uade123", "-g", str(input_path)]
         result = subprocess.run(cmd, capture_output=True, text=True, timeout=10)
 
-        player_format = "Module"
         module_name = None
-        format_name = None
+        module_format = None
+        player_format = "Module"
         subsongs = 1
 
         # Parse output to extract metadata
@@ -487,7 +487,7 @@ def detect_module_metadata(input_path):
             if line.startswith("modulename:"):
                 module_name = line.split(":", 1)[1].strip()
             elif line.startswith("formatname:"):
-                format_name = line.split(":", 1)[1].strip()
+                module_format = line.split(":", 1)[1].strip()
             elif line.startswith("playername:"):
                 player_name = line.split(":", 1)[1].strip()
                 if player_name:
@@ -503,28 +503,32 @@ def detect_module_metadata(input_path):
                             subsongs = 1
 
         # Check for 'uade:is_custom': True in output
-        if "'uade:is_custom': True" in result.stdout:
+        if player_format and "'uade:is_custom': True" in result.stdout:
             player_format = "Custom"
-            if not format_name:
-                format_name = "Custom"
-
-        # Fallback for module name if not found
-        if not module_name:
-            module_name = Path(input_path).stem
+            if not module_format:
+                module_format = "Custom"
 
         logger.info(
-            f"Detected: modulename={module_name}, formatname={format_name}, player={player_format}, subsongs={subsongs}"
+            f"Detected: modulename={module_name}, moduleformat={module_format}, player={player_format}, subsongs={subsongs}"
         )
-        return player_format, module_name, format_name, subsongs
+        return module_name, module_format, player_format, subsongs
 
     except Exception as e:
-        logger.warning(f"Could not detect player format: {e}")
-        return "Module", Path(input_path).stem, None, 1
+        logger.warning(f"Could not detect metadata: {e}")
+        return None, None, "Module", 1
 
 
 def process_audio_conversion(input_path, use_cache=True, compress_flac=False):
-    """Convert module to WAV using UADE with optional caching and FLAC compression
-    Returns: (success, error, final_file, player_format, module_name, format_name, subsongs)
+    """Convert module to WAV using UADE with optional caching and FLAC compression.
+
+    Returns:
+        success (bool): True if conversion succeeded, False otherwise.
+        error (str or None): Error message if conversion failed, None otherwise.
+        final_file (Path or None): Path to the converted audio file (WAV or FLAC).
+        player_format (str or None): Detected player format.
+        module_name (str or None): Detected module name.
+        module_format (str or None): Detected module format.
+        subsongs (int): Number of subsongs detected in the module (e.g., for multi-track modules).
     """
     try:
         # Defensive: Restrict input_path to MODULES_DIR
@@ -533,7 +537,7 @@ def process_audio_conversion(input_path, use_cache=True, compress_flac=False):
             logger.error("Aborting: attempted read outside allowed directories")
             return False, "Illegal input file path", None, None, None, None, None
         # Detect module metadata before conversion
-        player_format, module_name, format_name, subsongs = detect_module_metadata(input_path)
+        module_name, module_format, player_format, subsongs = detect_module_metadata(input_path)
         # Always compute cache_hash for later use
         cache_hash = get_file_hash(input_path)
         # Output path is always in CONVERTED_DIR
@@ -548,7 +552,7 @@ def process_audio_conversion(input_path, use_cache=True, compress_flac=False):
                     cached_file,
                     player_format,
                     module_name,
-                    format_name,
+                    module_format,
                     subsongs,
                 )
 
@@ -605,7 +609,7 @@ def process_audio_conversion(input_path, use_cache=True, compress_flac=False):
             final_output,
             player_format,
             module_name,
-            format_name,
+            module_format,
             subsongs,
         )
 
@@ -686,9 +690,6 @@ def upload_file():
         upload_path = MODULES_DIR / f"{filename}_{file_id}"
         file.save(upload_path)
 
-        # Cache hash for later use
-        converted_file_id = get_file_hash(upload_path)
-
         # Check if it's an LHA or ZIP archive
         module_path = upload_path
         extract_dir = None
@@ -726,15 +727,16 @@ def upload_file():
             final_file,
             player_format,
             module_name,
-            format_name,
+            module_format,
             subsongs,
         ) = process_audio_conversion(module_path, compress_flac=use_flac)
 
-        # Clean up input files
-        upload_path.unlink(missing_ok=True)
+        # Cache hash, must be computed before cleanup
+        converted_file_id = get_file_hash(module_path)
+
+        # Clean up extracted files only (do not delete cached files)
         if extract_dir and extract_dir.exists():
             shutil.rmtree(extract_dir, ignore_errors=True)
-
         if not success:
             response = jsonify({"error": error})
             response.headers["Content-Type"] = "application/json; charset=utf-8"
@@ -746,7 +748,7 @@ def upload_file():
                 "file_id": converted_file_id,
                 "filename": filename,
                 "module_name": module_name,
-                "format_name": format_name,
+                "module_format": module_format,
                 "player_format": player_format,
                 "subsongs": subsongs,
                 "audio_format": final_file.suffix[1:] if final_file else "wav",
@@ -759,9 +761,9 @@ def upload_file():
 
     except Exception as e:
         logger.error(f"Upload error: {e}")
-    response = jsonify({"error": str(e)})
-    response.headers["Content-Type"] = "application/json; charset=utf-8"
-    return response, 500
+        response = jsonify({"error": str(e)})
+        response.headers["Content-Type"] = "application/json; charset=utf-8"
+        return response, 500
 
 
 def is_safe_url(u):
@@ -933,9 +935,6 @@ def convert_url():
             filename = music_file.name
             module_path = music_file
 
-        # cache hash
-        converted_file_id = get_file_hash(module_path)
-
         # Convert to WAV (and optionally FLAC)
         (
             success,
@@ -943,15 +942,21 @@ def convert_url():
             final_file,
             player_format,
             module_name,
-            format_name,
+            module_format,
             subsongs,
         ) = process_audio_conversion(module_path, compress_flac=use_flac)
+
+
+        # Cache hash, must be computed before cleanup
+        converted_file_id = get_file_hash(module_path)
 
         # Clean up extracted files only (do not delete cached files)
         if extract_dir and extract_dir.exists():
             shutil.rmtree(extract_dir, ignore_errors=True)
         if not success:
-            return jsonify({"error": error}), 500
+            response = jsonify({"error": error})
+            response.headers["Content-Type"] = "application/json; charset=utf-8"
+            return response, 500
 
         response = jsonify(
             {
@@ -959,7 +964,7 @@ def convert_url():
                 "file_id": converted_file_id,
                 "filename": filename,
                 "module_name": module_name,
-                "format_name": format_name,
+                "module_format": module_format,
                 "player_format": player_format,
                 "subsongs": subsongs,
                 "audio_format": final_file.suffix[1:] if final_file else "wav",
