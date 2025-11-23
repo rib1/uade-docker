@@ -46,11 +46,11 @@ RUN mkdir -p /app /tmp/modules /tmp/converted /tmp/cache && \
     chown -R uade:uade /app /opt/venv && \
     chmod -R 777 /tmp/modules /tmp/converted /tmp/cache
 
-COPY requirements.txt /app/requirements.txt
-RUN pip install --no-cache-dir -r /app/requirements.txt
-
 # Copy web application
 COPY web/ /app/
+
+# Install Python dependencies
+RUN pip install --no-cache-dir -r /app/requirements.txt
 
 WORKDIR /app
 
