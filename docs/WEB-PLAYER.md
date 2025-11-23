@@ -244,7 +244,7 @@ PORT: 5000 # Server port
 MAX_UPLOAD_SIZE: 10485760 # Max upload (10MB)
 CLEANUP_INTERVAL: 3600 # File cleanup (1 hour)
 CACHE_CLEANUP_INTERVAL: # Cache cleanup interval (24 hours)
-RATE_LIMIT: 10 # Max conversions/min per IP
+RATE_LIMIT: 200 # Max Requests/hour per IP (all endpoints combined)
 ```
 
 ### Stateless Caching Support
@@ -310,8 +310,8 @@ Older or unsupported browsers automatically receive WAV files as fallback. No co
 
 ### File Management
 
-- Automatic cleanup of files older than 1 hour
-- Separate directories: uploads, conversions, cache
+- Automatic cleanup of local files older than 1 hour
+- Separate directories: modules, conversions, cache
 - UUID-based filenames (no collisions)
 - URL-based caching: If the same URL is requested again, the cached file is reused instantly.
 - MD5-based Stateless Remote Cache: Converted files are stored in a remote cache (S3/GCS/local) for instant replay and deduplication across all instances
@@ -323,6 +323,20 @@ Older or unsupported browsers automatically receive WAV files as fallback. No co
 - Subprocess calls without shell injection
 - Read-only source code mount in Docker Compose
 - Rate limiting ready (add Redis for multi-instance)
+
+## Rate Limiting
+
+UADE Web Player uses per-endpoint and global rate limits to prevent abuse and ensure fair usage:
+
+- **Conversion endpoints** (`/upload`, `/convert-url`): 10 requests per minute per IP
+- **Play endpoints** (`/play`, `/play-example`): 50 requests per minute per IP
+- **Download endpoint** (`/download`): 3 requests per minute per IP
+- **Global limit**: 200 requests per hour per IP (all endpoints combined)
+
+> **Note:**
+> Rate limits are enforced per instance/pod. In multi-instance/cloud deployments, limits are not global unless a distributed backend (e.g., Redis) is configured for Flask-Limiter.
+
+You can adjust limits via the `RATE_LIMIT` environment variable and endpoint decorators in `server.py`.
 
 ## Troubleshooting
 
@@ -447,16 +461,3 @@ git checkout -b feature/my-feature main
 git push origin feature/my-feature
 ```
 
-## Rate Limiting
-
-UADE Web Player uses per-endpoint and global rate limits to prevent abuse and ensure fair usage:
-
-- **Conversion endpoints** (`/upload`, `/convert-url`): 10 requests per minute per IP
-- **Play endpoints** (`/play`, `/play-example`): 50 requests per minute per IP
-- **Download endpoint** (`/download`): 3 requests per minute per IP
-- **Global limit**: 200 requests per hour per IP (all endpoints combined)
-
-> **Note:**
-> Rate limits are enforced per instance/pod. In multi-instance/cloud deployments, limits are not global unless a distributed backend (e.g., Redis) is configured for Flask-Limiter.
-
-You can adjust limits via the `RATE_LIMIT` environment variable and endpoint decorators in `server.py`.
