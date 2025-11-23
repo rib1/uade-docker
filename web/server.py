@@ -60,9 +60,7 @@ GIT_COMMIT: Final = get_git_commit()
 # Configuration from environment variables (cloud-ready)
 MAX_UPLOAD_SIZE: Final = int(os.getenv("MAX_UPLOAD_SIZE", 10485760))  # 10MB
 CLEANUP_INTERVAL: Final = int(os.getenv("CLEANUP_INTERVAL", 3600))  # 1 hour
-CACHE_CLEANUP_INTERVAL: Final = int(
-    os.getenv("CACHE_CLEANUP_INTERVAL", 86400)
-)  # 24 hours
+CACHE_CLEANUP_INTERVAL: Final = int(os.getenv("CACHE_CLEANUP_INTERVAL", 86400))  # 24 hours
 RATE_LIMIT: Final = int(os.getenv("RATE_LIMIT", 200))  # requests per hour
 PORT: Final = int(os.getenv("PORT", 5000))
 app.config["MAX_CONTENT_LENGTH"] = MAX_UPLOAD_SIZE
@@ -103,17 +101,17 @@ for directory in [MODULES_DIR, CONVERTED_DIR]:
 limiter = Limiter(
     get_remote_address,
     app=app,
-    storage_uri="memory://", # NOTE: Rate limits are per-instance/pod only. Not global across all instances unless using a distributed backend (e.g. Redis).
-    default_limits={f"{RATE_LIMIT}/hour"} # An instance/pod wide rate limit of requests per hour for all endpoints
+    storage_uri="memory://",  # NOTE: Rate limits are per-instance/pod only. Not global across all instances unless using a distributed backend (e.g. Redis).
+    default_limits={
+        f"{RATE_LIMIT}/hour"
+    },  # An instance/pod wide rate limit of requests per hour for all endpoints
 )
 
 
 @app.errorhandler(429)
 def ratelimit_handler(e):
-    return jsonify({
-        "error": "Rate limit exceeded. Please wait and try again.",
-        "code": 429
-    }), 429
+    return jsonify({"error": "Rate limit exceeded. Please wait and try again.", "code": 429}), 429
+
 
 # Find music files (common Amiga module extensions and prefixes)
 music_extensions: Final = {
@@ -398,9 +396,7 @@ def extract_lha(lha_path, extract_dir):
         if not music_file:
             return False, "No music files found in LHA archive", None
 
-        logger.info(
-            f"Extracted LHA archive, found {count} music file(s), using: {music_file.name}"
-        )
+        logger.info(f"Extracted LHA archive, found {count} music file(s), using: {music_file.name}")
         return True, None, music_file
 
     except subprocess.TimeoutExpired:
@@ -423,9 +419,7 @@ def extract_zip(zip_path, extract_dir):
         if not music_file:
             return False, "No music files found in ZIP archive", None
 
-        logger.info(
-            f"Extracted ZIP archive, found {count} music file(s), using: {music_file.name}"
-        )
+        logger.info(f"Extracted ZIP archive, found {count} music file(s), using: {music_file.name}")
         return True, None, music_file
 
     except zipfile.BadZipFile:
@@ -456,66 +450,90 @@ def fetch_cached_file(cache_hash, prefer_flac=False):
         cache_file_local = CONVERTED_DIR / f"{cache_hash}{ext}"
         if fs_cache.exists(cache_file_remote):
             remote_size = fs_cache.size(cache_file_remote)
-            if (
-                cache_file_local.exists()
-                and cache_file_local.stat().st_size == remote_size
-            ):
-                logger.info(
-                    f"Cache hit ({ext[1:].upper()}): {cache_hash} already exists locally"
-                )
+            if cache_file_local.exists() and cache_file_local.stat().st_size == remote_size:
+                logger.info(f"Cache hit ({ext[1:].upper()}): {cache_hash} already exists locally")
                 return cache_file_local
             # Ensure local cache directory exists
             cache_dir_local = cache_file_local.parent
             cache_dir_local.mkdir(parents=True, exist_ok=True)
             # Copy from remote cache to local
-            with fs_cache.open(cache_file_remote, "rb") as src, open(
-                cache_file_local, "wb"
-            ) as dst:
+            with fs_cache.open(cache_file_remote, "rb") as src, open(cache_file_local, "wb") as dst:
                 shutil.copyfileobj(src, dst, length=1024 * 1024)  # 1MB buffer
-            logger.info(
-                f"Cache hit ({ext[1:].upper()}): {cache_hash} from remote cache"
-            )
+            logger.info(f"Cache hit ({ext[1:].upper()}): {cache_hash} from remote cache")
             return cache_file_local
     return None
 
 
-def detect_player_format(input_path):
-    """Detect the player format of a module using uade123 -g"""
+def detect_module_metadata(input_path):
+    """Detect module metadata using uade123 -g
+    Returns: (player_format, module_name, format_name, subsongs)
+    """
     try:
-        cmd = ["/usr/local/bin/uade123", "-g", str(input_path)]  # Get info only
+        cmd = ["/usr/local/bin/uade123", "-g", str(input_path)]
         result = subprocess.run(cmd, capture_output=True, text=True, timeout=10)
+
+        player_format = "Module"
+        module_name = None
+        format_name = None
+        subsongs = 1
+
+        # Parse output to extract metadata
+        # Example output:
+        # formatname: type: Protracker
+        # modulename: space debris
+        # playername: Protracker and family
+        # subsongs: cur 1 min 1 max 1
+        for line in result.stdout.splitlines():
+            if line.startswith("modulename:"):
+                module_name = line.split(":", 1)[1].strip()
+            elif line.startswith("formatname:"):
+                format_name = line.split(":", 1)[1].strip()
+            elif line.startswith("playername:"):
+                player_name = line.split(":", 1)[1].strip()
+                if player_name:
+                    player_format = player_name
+            elif line.startswith("subsongs:"):
+                # Parse "subsongs: cur 1 min 1 max 1"
+                parts = line.split()
+                for i, part in enumerate(parts):
+                    if part == "max" and i + 1 < len(parts):
+                        try:
+                            subsongs = int(parts[i + 1])
+                        except ValueError:
+                            subsongs = 1
 
         # Check for 'uade:is_custom': True in output
         if "'uade:is_custom': True" in result.stdout:
-            return "Custom"
+            player_format = "Custom"
+            if not format_name:
+                format_name = "Custom"
 
-        # Parse output to extract player name
-        # output format: "playername: PlayerName"
-        for line in result.stdout.splitlines():
-            if line.startswith("playername:"):
-                player_name = line.split(":", 1)[1].strip()
-                return player_name if player_name else "Module"
+        # Fallback for module name if not found
+        if not module_name:
+            module_name = Path(input_path).stem
 
-        # If no player name found, return generic
-        return "Module"
+        logger.info(
+            f"Detected: modulename={module_name}, formatname={format_name}, player={player_format}, subsongs={subsongs}"
+        )
+        return player_format, module_name, format_name, subsongs
 
     except Exception as e:
         logger.warning(f"Could not detect player format: {e}")
-        return "Module"
+        return "Module", Path(input_path).stem, None, 1
 
 
 def process_audio_conversion(input_path, use_cache=True, compress_flac=False):
     """Convert module to WAV using UADE with optional caching and FLAC compression
-    Returns: (success, error, final_file, player_format)
+    Returns: (success, error, final_file, player_format, module_name, format_name, subsongs)
     """
     try:
         # Defensive: Restrict input_path to MODULES_DIR
         input_resolved = Path(input_path).resolve()
         if not (input_resolved.is_relative_to(MODULES_DIR.resolve())):
             logger.error("Aborting: attempted read outside allowed directories")
-            return False, "Illegal input file path", None, None
-        # Detect player format before conversion
-        player_format = detect_player_format(input_path)
+            return False, "Illegal input file path", None, None, None, None, None
+        # Detect module metadata before conversion
+        player_format, module_name, format_name, subsongs = detect_module_metadata(input_path)
         # Always compute cache_hash for later use
         cache_hash = get_file_hash(input_path)
         # Output path is always in CONVERTED_DIR
@@ -524,7 +542,15 @@ def process_audio_conversion(input_path, use_cache=True, compress_flac=False):
         if use_cache:
             cached_file = fetch_cached_file(cache_hash, prefer_flac=compress_flac)
             if cached_file and cached_file.exists():
-                return True, None, cached_file, player_format
+                return (
+                    True,
+                    None,
+                    cached_file,
+                    player_format,
+                    module_name,
+                    format_name,
+                    subsongs,
+                )
 
         cmd = [
             "/usr/local/bin/uade123",
@@ -540,12 +566,23 @@ def process_audio_conversion(input_path, use_cache=True, compress_flac=False):
 
         if result.returncode != 0:
             logger.error(f"UADE error: {result.stderr}")
-            return False, f"Conversion failed: {result.stderr}", None, None
+            return (
+                False,
+                f"Conversion failed: {result.stderr}",
+                None,
+                None,
+                None,
+                None,
+                None,
+            )
 
         if not output_path.exists():
             return (
                 False,
                 "Conversion failed: Output file not created",
+                None,
+                None,
+                None,
                 None,
                 None,
             )
@@ -559,18 +596,32 @@ def process_audio_conversion(input_path, use_cache=True, compress_flac=False):
                 final_output = flac_output
         # Save to remote cache
         if use_cache:
-            ext, file_to_save = (
-                (".flac", final_output) if compress_flac else (".wav", output_path)
-            )
+            ext, file_to_save = (".flac", final_output) if compress_flac else (".wav", output_path)
             save_to_cache(cache_hash, file_to_save, ext)
         logger.info(f"Successfully converted: {input_path} -> {final_output}")
-        return True, None, final_output, player_format
+        return (
+            True,
+            None,
+            final_output,
+            player_format,
+            module_name,
+            format_name,
+            subsongs,
+        )
 
     except subprocess.TimeoutExpired:
-        return False, "Conversion timeout (5 minutes exceeded)", None, None
+        return (
+            False,
+            "Conversion timeout (5 minutes exceeded)",
+            None,
+            None,
+            None,
+            None,
+            None,
+        )
     except Exception as e:
         logger.error(f"Conversion exception: {e}")
-        return False, str(e), None, None
+        return False, str(e), None, None, None, None, None
 
 
 @app.route("/")
@@ -669,9 +720,15 @@ def upload_file():
             filename = music_file.name
 
         # Convert to WAV (and optionally FLAC)
-        success, error, final_file, player_format = process_audio_conversion(
-            module_path, compress_flac=use_flac
-        )
+        (
+            success,
+            error,
+            final_file,
+            player_format,
+            module_name,
+            format_name,
+            subsongs,
+        ) = process_audio_conversion(module_path, compress_flac=use_flac)
 
         # Clean up input files
         upload_path.unlink(missing_ok=True)
@@ -688,7 +745,10 @@ def upload_file():
                 "success": True,
                 "file_id": converted_file_id,
                 "filename": filename,
+                "module_name": module_name,
+                "format_name": format_name,
                 "player_format": player_format,
+                "subsongs": subsongs,
                 "audio_format": final_file.suffix[1:] if final_file else "wav",
                 "play_url": f"/play/{converted_file_id}",
                 "download_url": f"/download/{converted_file_id}",
@@ -717,9 +777,7 @@ def is_safe_url(u):
             )
             return False
         if not parsed.hostname:
-            logger.warning(
-                f"is_safe_url: missing hostname in URL: {sanitized_url_for_log}"
-            )
+            logger.warning(f"is_safe_url: missing hostname in URL: {sanitized_url_for_log}")
             return False
         # Normalize hostname for Unicode/punycode edge cases
         try:
@@ -755,9 +813,7 @@ def is_safe_url(u):
                 or ip.is_multicast
                 or ip.is_unspecified
             ):
-                logger.warning(
-                    f"is_safe_url: rejected IP '{ip}' for URL: {sanitized_url_for_log}"
-                )
+                logger.warning(f"is_safe_url: rejected IP '{ip}' for URL: {sanitized_url_for_log}")
                 return False
         # All checks passed
         logger.info(f"is_safe_url: accepted URL: {sanitized_url_for_log}")
@@ -823,9 +879,7 @@ def convert_url():
         # --- Caching logic for TFMX sample file ---
         sample_path = None
         if sample_url and sample_url != url:
-            sample_url_hash = hashlib.md5(
-                sample_url.encode(), usedforsecurity=False
-            ).hexdigest()
+            sample_url_hash = hashlib.md5(sample_url.encode(), usedforsecurity=False).hexdigest()
             # Ensure filename matches mdat except for prefix
             if filename.startswith("mdat"):
                 smplfilename = "smpl" + filename[4:]
@@ -848,9 +902,7 @@ def convert_url():
                 sample_response.raise_for_status()
                 cached_sample_path.write_bytes(sample_response.content)
                 os.symlink(cached_sample_path, sample_path)
-                logger.info(
-                    f"Cached sample_path: {cached_sample_path}, linking to {sample_path}"
-                )
+                logger.info(f"Cached sample_path: {cached_sample_path}, linking to {sample_path}")
 
         # Check if it's an LHA or ZIP archive
         extract_dir = None
@@ -885,9 +937,15 @@ def convert_url():
         converted_file_id = get_file_hash(module_path)
 
         # Convert to WAV (and optionally FLAC)
-        success, error, final_file, player_format = process_audio_conversion(
-            module_path, compress_flac=use_flac
-        )
+        (
+            success,
+            error,
+            final_file,
+            player_format,
+            module_name,
+            format_name,
+            subsongs,
+        ) = process_audio_conversion(module_path, compress_flac=use_flac)
 
         # Clean up extracted files only (do not delete cached files)
         if extract_dir and extract_dir.exists():
@@ -900,7 +958,10 @@ def convert_url():
                 "success": True,
                 "file_id": converted_file_id,
                 "filename": filename,
+                "module_name": module_name,
+                "format_name": format_name,
                 "player_format": player_format,
+                "subsongs": subsongs,
                 "audio_format": final_file.suffix[1:] if final_file else "wav",
                 "play_url": f"/play/{converted_file_id}",
                 "download_url": f"/download/{converted_file_id}",
@@ -1014,9 +1075,7 @@ def serve_audio_file(file_id, as_attachment=False):
             candidate_path = CONVERTED_DIR / f"{safe_file_id}{ext}"
             if not candidate_path.exists():
                 fetch_cached_file(safe_file_id, prefer_flac=(ext == ".flac"))
-            if candidate_path.exists() and candidate_path.resolve().relative_to(
-                converted_dir_base
-            ):
+            if candidate_path.exists() and candidate_path.resolve().relative_to(converted_dir_base):
                 file_path = candidate_path.resolve()
                 mimetype = mime
                 filename = f"uade_{safe_file_id}{ext}"
@@ -1034,18 +1093,14 @@ def serve_audio_file(file_id, as_attachment=False):
     range_info = parse_range_header(range_header, file_size)
     if range_info:
         start, end, length = range_info
-        response = Response(
-            stream_file_range(file_path, start, length), 206, mimetype=mimetype
-        )
+        response = Response(stream_file_range(file_path, start, length), 206, mimetype=mimetype)
         # Custom header to indicate that only single range requests are supported (for client-side handling)
         response.headers["X-Single-Range-Only"] = "true"
         response.headers["Content-Range"] = f"bytes {start}-{end}/{file_size}"
         response.headers["Content-Length"] = str(length)
         response.headers["Accept-Ranges"] = "bytes"
         if as_attachment:
-            response.headers["Content-Disposition"] = (
-                f'attachment; filename="{filename}"'
-            )
+            response.headers["Content-Disposition"] = f'attachment; filename="{filename}"'
         else:
             response.headers["Cache-Control"] = "public, max-age=3600"
         return response
@@ -1068,9 +1123,7 @@ def serve_audio_file(file_id, as_attachment=False):
         response.headers["Content-Length"] = str(file_size)
         response.headers["Accept-Ranges"] = "bytes"
         if as_attachment:
-            response.headers["Content-Disposition"] = (
-                f'attachment; filename="{filename}"'
-            )
+            response.headers["Content-Disposition"] = f'attachment; filename="{filename}"'
         else:
             response.headers["Cache-Control"] = "public, max-age=3600"
         return response

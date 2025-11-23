@@ -90,14 +90,16 @@ async function handleFileUpload(file) {
     const data = await response.json();
 
     if (response.ok) {
-      showStatus(`✓ Converted: ${data.filename}`, "success");
+      showStatus(`✓ Converted:  ${data.module_name || data.filename}`, "success");
       playFile(
         data.file_id,
-        data.filename,
+        data.module_name || data.filename,
         data.play_url,
         data.download_url,
         data.player_format || "Module",
         data.audio_format || "wav",
+        data.format_name,
+        data.subsongs
       );
     } else {
       showStatus(`✗ Error: ${data.error}`, "error");
@@ -139,14 +141,16 @@ async function handleUrlConvert() {
     const data = await response.json();
 
     if (response.ok) {
-      showStatus(`✓ Converted: ${data.filename}`, "success");
+      showStatus(`✓ Converted: ${data.module_name} || ${data.filename}`, "success");
       playFile(
         data.file_id,
-        data.filename,
+        data.module_name || data.filename,
         data.play_url,
         data.download_url,
         data.player_format || "Module",
-        data.audio_format || "wav"
+        data.audio_format || "wav",
+        data.format_name,
+        data.subsongs
       );
       urlInput.value = "";
     } else {
@@ -195,11 +199,13 @@ async function handleTfmxConvert() {
       showStatus("✓ TFMX converted successfully", "success");
       playFile(
         data.file_id,
-        data.filename,
+        data.module_name || data.filename,
         data.play_url,
         data.download_url,
         data.player_format || "TFMX",
-        data.audio_format || "wav"
+        data.audio_format || "wav",
+        data.format_name,
+        data.subsongs
       );
       mdatInput.value = "";
       smplInput.value = "";
@@ -274,14 +280,16 @@ async function handleExamplePlay(example, button) {
     const data = await response.json();
 
     if (response.ok) {
-      showStatus(`✓ ${example.name} ready to play`, "success");
+      showStatus(`✓  ${example.name || data.module_name || data.filename} ready to play`, "success");
       playFile(
         data.file_id,
-        example.name,
+        example.name || data.module_name || data.filename,
         data.play_url,
         data.download_url,
         data.player_format || example.format,
-        data.audio_format || "wav"
+        data.audio_format || "wav",
+        data.format_name,
+        data.subsongs
       );
       button.innerHTML = "✓ Playing";
 
@@ -305,21 +313,45 @@ async function handleExamplePlay(example, button) {
 // Play File
 function playFile(
   fileId,
-  filename,
+  moduleName,
   playUrl,
   downloadUrl,
-  format = "",
+  playerFormat = "",
   audioFormat = "wav",
+  moduleFormat,
+  subsongs = "1"
 ) {
   currentDownloadUrl = downloadUrl;
 
   audioPlayer.src = playUrl;
-  currentTrack.textContent = filename;
-  trackFormat.textContent = format || "Module";
+
+  // Build current track display: moduleName + subsongs if more than 1
+  let trackDisplay = moduleName;
+  if (subsongs && parseInt(subsongs) > 1) {
+    trackDisplay += ` (${subsongs} subsongs)`;
+  }
+  currentTrack.textContent = trackDisplay;
+
+  // Build format display: format info
+  let cleanModuleFormat = moduleFormat ? moduleFormat.replace(/^type:\s*/, "") : "";
+  let formatDisplay = "Module";
+
+  if (cleanModuleFormat && playerFormat && cleanModuleFormat !== playerFormat) {
+    // Show both if they're different
+    formatDisplay = `${cleanModuleFormat}<br/>${playerFormat}`;
+  } else if (cleanModuleFormat) {
+    // Show module format if available
+    formatDisplay = cleanModuleFormat;
+  } else if (playerFormat) {
+    // Fallback to player format
+    formatDisplay = playerFormat;
+  }
+
+  document.getElementById("track-format").innerHTML = formatDisplay;
 
   // Show infobox for Custom modules
   const customInfo = document.getElementById("custom-info");
-  if (format === "Custom") {
+  if (playerFormat === "Custom") {
     customInfo.style.display = "block";
   } else {
     customInfo.style.display = "none";
