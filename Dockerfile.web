@@ -47,7 +47,7 @@ RUN mkdir -p /app /tmp/modules /tmp/converted /tmp/cache && \
     chmod -R 777 /tmp/modules /tmp/converted /tmp/cache
 
 
-# Must copy requirements.txt first to leverage Docker cacheing
+# Must copy requirements.txt first to leverage Docker caching
 COPY /web/requirements.txt /app/
 
 # Install Python dependencies
