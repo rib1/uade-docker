@@ -18,14 +18,13 @@ on:
 permissions:
   contents: write
   packages: write
-  pull-requests: write
 
 jobs:
   build-web:
     runs-on: ubuntu-latest
     steps:
     - name: Checkout code
-      uses: actions/checkout@v5
+      uses: actions/checkout@v6
 
     - name: Set up Docker Buildx
       uses: docker/setup-buildx-action@v3
@@ -87,7 +86,9 @@ jobs:
   deploy:
     needs: build-web
     runs-on: ubuntu-latest
-    if: github.repository == 'rib1/uade-docker'
+    # Only run if the secret is available (i.e., not a fork/Dependabot PR)
+    # The job will skip instead of failing if the secret is empty/suppressed.
+    if: github.repository == 'rib1/uade-docker' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
     env:
       PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
       SERVICE_NAME: uade-web-player
@@ -96,10 +97,12 @@ jobs:
       contents: read
       id-token: write
       actions: write
-    
+      pull-requests: write
+      issues: write
+
     steps:
     - name: Checkout code
-      uses: actions/checkout@v5
+      uses: actions/checkout@v6
     - name: Authenticate to Google Cloud
       uses: google-github-actions/auth@v3
       with:
@@ -159,4 +162,6 @@ jobs:
             repo: context.repo.repo,
             body: '🚀 Deployed to Cloud Run: ${{ steps.get-url.outputs.url }}'
           })
+
+
 
