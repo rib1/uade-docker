@@ -113,52 +113,75 @@ def ratelimit_handler(e):
     return jsonify({"error": "Rate limit exceeded. Please wait and try again.", "code": 429}), 429
 
 
-# Find music files (common Amiga module extensions and prefixes)
+# Common Amiga module extensions and prefixes
 module_file_extensions: Final = {
-    "aam",
-    "ahx",
-    "aon",
-    "bp",
-    "bp3",
-    "bd",
-    "bds",
-    "bsi",
-    "bss",
-    "cm",
-    "cust",
-    "digi",
-    "dll",
-    "dmu",
-    "dw",
-    "fc",
-    "fred",
-    "gray",
-    "hip",
-    "hip7",
-    "hipc",
-    "hvl",
+    "aam", # Art And Magic
+    "adsc", # Audio Sculpture
+    "ahx", # Abyss' Highest eXperience
+    "amc", # AM Composer
+    "aon", # Art Of Noise
+    "aon8", # Art Of Noise 8 voices
+    "ast", # Action Amics
+    "bd", # Ben Daglish
+    "bds", # Ben Daglish SID
+    "bp", # BP SoundMon 2
+    "bp3", # BP SoundMon 3
+    "bsi", # Future Composer BSI
+    "bss", # Beathoven Synthesizer
+    "cm", # CustomMade
+    "cust", # Custom module, including player routines
+    "dbm", # DigiBooster 2.x and 3.x
+    "di", # Digital Illusions aka GrapeTracker
+    "digi", # DigiBooster 1.x
+    "dl", # Dave Lowe
+    "dll", # Digital Mugician successor of SidMon
+    "dm", # Delta Music
+    "dm2", # Delta Music 2
+    "dmu", # Digital Mugician
+    "dp", # Delta Packer
+    "dw", # David Whittaker
+    "fc", # Future Composer 1.0 - 1.3
+    "fc13", # Future Composer 1.3
+    "fc14", # Future Composer 1.4
+    "fred", # Fred Gray
+    "gray", # FredMon
+    "hip", # Hippel
+    "hip7", # Hippel 7-channel
+    "hipc", # Hippel COSO
+    "hvl", # Hively Tracker
     "instr",
-    "jt",
-    "mdat",
-    "med",
-    "mmd0",
-    "mmd1",
-    "mmd2",
-    "mmd3",
-    "mmdc",
-    "mod",
-    "okta",
-    "rk",
-    "sc",
-    "sid",
-    "smpl",
+    "jd", # Special FX
+    "jt", # Jeroen Tel
+    "mdat", # TFMX song data
+    "med", # OctaMED
+    "mmd0", # OctaMED MMD0
+    "mmd1", # OctaMED MMD1
+    "mmd2", # OctaMED MMD2
+    "mmd3", # OctaMED MMD3
+    "mmdc", # OctaMED MMDC
+    "mod", # NoiseTracker, Protracker and derivatives
+    "mug", # Digital Mugician 2
+    "mus", # Sidplayer / Stereo Sidplayer
+    "okta", # Oktalyzer
+    "osp", # Synth Pack
+    "rk", # Ron Klaren
+    "sa", # Sonic Arranger
+    "sc", # SoundControl
+    "sid", # SidMon 1
+    "sid2", # SidMon 2
+    "smpl", # TFMX sample data
+    "smod", # Future Composer 1.0 - 1.3
     "smus",
-    "sng",
+    "sng", # Synder SNG-Player
     "ss",
     "ssd",
-    "sun",
+    "sun", # SunTronic
+    "sonic", # Sonic Arranger
+    "syn", # Synthesis
     "tf",
-    "tfmx",
+    "tfmx", # TFMX
+    "tfx", # TFMX
+    "tfm", #TFMX
     "ym",
 }
 
@@ -503,7 +526,7 @@ def detect_module_metadata(input_path):
                             subsongs = 1
 
         # Check for 'uade:is_custom': True in output
-        if player_format and "'uade:is_custom': True" in result.stdout:
+        if "'uade:is_custom': True" in result.stdout:
             player_format = "Custom"
             if not module_format:
                 module_format = "Custom"
@@ -694,7 +717,7 @@ def process_module_and_respond(module_path, filename, use_flac):
     """
     try:
         # Check if it's an LHA or ZIP archive
-        extract_dir =  Path(f"{module_path}_extracted")
+        extract_dir = Path(f"{module_path}_extracted")
         if is_lha_file(module_path):
             logger.info(f"Detected LHA archive: {filename}")
             success, error, music_file = extract_lha(module_path, extract_dir)
