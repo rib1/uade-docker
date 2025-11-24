@@ -770,7 +770,7 @@ def process_module_and_respond(module_path, filename, use_flac):
                 "subsongs": subsongs,
                 "audio_format": final_file.suffix[1:] if final_file else "wav",
                 "play_url": f"/play/{converted_file_id}",
-                "download_url": f"/download/{converted_file_id}",
+                "download_url": f"/download/{converted_file_id}?filename={module_name or filename}",
             }
         )
 
@@ -858,8 +858,6 @@ def convert_url():
         # Check browser FLAC support
         user_agent = request.headers.get("User-Agent", "")
         use_flac = supports_flac(user_agent)
-        # Generate unique ID
-        file_id = str(uuid.uuid4())
 
         # --- Caching logic for main module file ---
         raw_filename = url.split("/")[-1].split("#")[0].split("?")[0] or "module"
@@ -993,11 +991,18 @@ def play_file(file_id):
 @app.route("/download/<file_id>")
 @limiter.limit("3 per minute")
 def download_file(file_id):
-    """Download audio file (FLAC or WAV) - large files may require a download manager"""
-    return serve_audio_file(file_id, as_attachment=True)
+    """
+    Download audio file (FLAC or WAV) with custom filename support.
+    Client can pass ?filename=desired_name excluding extension to set the download filename.
+    """
+    custom_filename = request.args.get("filename")
+    if custom_filename:
+        custom_filename = unicodedata.normalize("NFKC", custom_filename)
+        custom_filename = secure_filename(custom_filename)
+    return serve_audio_file(file_id, as_attachment=True, custom_filename=custom_filename)
 
 
-def serve_audio_file(file_id, as_attachment=False):
+def serve_audio_file(file_id, as_attachment=False, custom_filename=None):
     """
     Shared logic for serving audio files (FLAC/WAV) with range support.
     If as_attachment is True, sets Content-Disposition for download.
@@ -1021,7 +1026,11 @@ def serve_audio_file(file_id, as_attachment=False):
             if candidate_path.exists() and candidate_path.resolve().relative_to(converted_dir_base):
                 file_path = candidate_path.resolve()
                 mimetype = mime
-                filename = f"uade_{safe_file_id}{ext}"
+                # Use custom filename if provided, else fallback to default
+                if custom_filename:
+                    filename = f"uade_{custom_filename}{ext}"
+                else:
+                    filename = f"uade_{safe_file_id}{ext}"
                 break
         if not file_path:
             return jsonify({"error": "File not found or forbidden"}), 404

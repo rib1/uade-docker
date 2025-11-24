@@ -332,20 +332,23 @@ function playFile(
   }
   currentTrack.textContent = trackDisplay;
 
-  let formatDisplay = "Module";
+  const trackFormatElem = document.getElementById("track-format");
+  trackFormatElem.textContent = ""; // Clear previous content
 
   if (moduleFormat && playerFormat && moduleFormat !== playerFormat) {
-    // Show both if they're different
-    formatDisplay = `${moduleFormat}<br/>${playerFormat}`;
+    // Show both if they're different, separated by a line break (use <br> safely)
+    trackFormatElem.appendChild(document.createTextNode(moduleFormat));
+    trackFormatElem.appendChild(document.createElement("br"));
+    trackFormatElem.appendChild(document.createTextNode(playerFormat));
   } else if (moduleFormat) {
     // Show module format if available
-    formatDisplay = moduleFormat;
+    trackFormatElem.textContent = moduleFormat;
   } else if (playerFormat) {
     // Fallback to player format
-    formatDisplay = playerFormat;
+    trackFormatElem.textContent = playerFormat;
+  } else {
+    trackFormatElem.textContent = "Module";
   }
-
-  document.getElementById("track-format").innerHTML = formatDisplay;
 
   // Show infobox for Custom modules
   const customInfo = document.getElementById("custom-info");
@@ -386,10 +389,31 @@ function setupDownloadButton() {
         if (contentType.includes("application/json")) {
           const data = await response.json();
           showStatus(`✗ Error: ${data.error || "Rate limit exceeded"}`, "error");
-        } else {
-          // Start download by navigating to the URL
-          window.location.href = currentDownloadUrl;
+        } else if (response.ok) {
+          // Start download by creating a temporary link and clicking it
+          const blob = await response.blob();
+          // Extract filename from Content-Disposition header
+          let filename = "";
+          const disposition = response.headers.get("content-disposition");
+          if (disposition && disposition.includes("filename=")) {
+            filename = disposition
+              .split("filename=")[1]
+              .replace(/["']/g, "")
+              .trim();
+          }
+          // Fallback to default if not found
+          if (!filename) filename = "downloaded_file";
+          const url = window.URL.createObjectURL(blob);
+          const a = document.createElement("a");
+          a.href = url;
+          a.download = filename;
+          document.body.appendChild(a);
+          a.click();
+          a.remove();
+          window.URL.revokeObjectURL(url);
           showStatus("Download started", "success");
+        } else {
+          showStatus("✗ Download failed: Server error", "error");
         }
       } catch (error) {
         showStatus(`✗ Download failed: ${error.message}`, "error");
