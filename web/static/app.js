@@ -390,27 +390,21 @@ function setupDownloadButton() {
           const data = await response.json();
           showStatus(`✗ Error: ${data.error || "Rate limit exceeded"}`, "error");
         } else if (response.ok) {
-          // Start download by creating a temporary link and clicking it
-          const blob = await response.blob();
+          // Use direct link for streaming download
           // Extract filename from Content-Disposition header
-          let filename = "";
+          let filename = "downloaded_file";
           const disposition = response.headers.get("content-disposition");
           if (disposition && disposition.includes("filename=")) {
-            filename = disposition
-              .split("filename=")[1]
-              .replace(/["']/g, "")
-              .trim();
+            filename = disposition.split("filename=")[1].replace(/["']/g, "").trim();
           }
-          // Fallback to default if not found
-          if (!filename) filename = "downloaded_file";
-          const url = window.URL.createObjectURL(blob);
+          // Create a temporary anchor and trigger download
           const a = document.createElement("a");
-          a.href = url;
+          a.href = currentDownloadUrl;
           a.download = filename;
+          a.target = "_blank";
           document.body.appendChild(a);
           a.click();
           a.remove();
-          window.URL.revokeObjectURL(url);
           showStatus("Download started", "success");
         } else {
           showStatus("✗ Download failed: Server error", "error");
