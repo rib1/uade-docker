@@ -383,12 +383,14 @@ function playFile(
 function setupDownloadButton() {
   downloadBtn.addEventListener("click", async () => {
     if (currentDownloadUrl) {
+      downloadBtn.disabled = true;
       try {
         const response = await fetch(currentDownloadUrl);
         const contentType = response.headers.get("content-type") || "";
         if (contentType.includes("application/json")) {
           const data = await response.json();
           showStatus(`✗ Error: ${data.error || "Rate limit exceeded"}`, "error");
+          downloadBtn.disabled = false;
         } else if (response.ok) {
           // Use direct link for streaming download
           // Extract filename from Content-Disposition header
@@ -406,11 +408,15 @@ function setupDownloadButton() {
           a.click();
           a.remove();
           showStatus("Download started", "success");
+          // Re-enable after short delay to avoid duplicate clicks
+          setTimeout(() => { downloadBtn.disabled = false; }, 1000);
         } else {
           showStatus("✗ Download failed: Server error", "error");
+          downloadBtn.disabled = false;
         }
       } catch (error) {
         showStatus(`✗ Download failed: ${error.message}`, "error");
+        downloadBtn.disabled = false;
       }
     }
   });
