@@ -87,8 +87,6 @@ jobs:
   deploy:
     needs: build-web
     runs-on: ubuntu-latest
-    # Only run if the secret is available (i.e., not a fork/Dependabot PR)
-    # The job will skip instead of failing if the secret is empty/suppressed.
     if: github.repository == 'rib1/uade-docker' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
     env:
       PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
@@ -161,5 +159,6 @@ jobs:
             repo: context.repo.repo,
             body: '🚀 Deployed to Cloud Run: ${{ steps.get-url.outputs.url }}'
           })
+
 
 
