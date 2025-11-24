@@ -114,7 +114,7 @@ def ratelimit_handler(e):
 
 
 # Find music files (common Amiga module extensions and prefixes)
-music_extensions: Final = {
+module_file_extensions: Final = {
     "aam",
     "ahx",
     "aon",
@@ -343,7 +343,7 @@ def find_music_file(extract_dir):
         if file_path.is_file():
             ext = file_path.suffix.lower()[1:]
             prefix = file_path.name.lower().split(".")[0]
-            if ext in music_extensions or prefix in music_extensions:
+            if ext in module_file_extensions or prefix in module_file_extensions:
                 music_files.append(file_path)
     if not music_files:
         return None, 0
@@ -478,7 +478,7 @@ def detect_module_metadata(input_path):
         subsongs = 1
 
         # Parse output to extract metadata
-        # Example output:
+        # Example uade123 output:
         # formatname: type: Protracker
         # modulename: space debris
         # playername: Protracker and family
@@ -488,10 +488,10 @@ def detect_module_metadata(input_path):
                 module_name = line.split(":", 1)[1].strip()
             elif line.startswith("formatname:"):
                 module_format = line.split(":", 1)[1].strip()
+                # Remove 'type:' prefix if present
+                module_format = module_format.replace("type:", "", 1).strip()
             elif line.startswith("playername:"):
-                player_name = line.split(":", 1)[1].strip()
-                if player_name:
-                    player_format = player_name
+                player_format = line.split(":", 1)[1].strip()
             elif line.startswith("subsongs:"):
                 # Parse "subsongs: cur 1 min 1 max 1"
                 parts = line.split()
@@ -639,7 +639,7 @@ def index():
 @limiter.exempt
 def health():
     """Health check for load balancers"""
-    response = jsonify(
+    return jsonify(
         {
             "status": "healthy",
             "version": GIT_COMMIT,
@@ -647,17 +647,13 @@ def health():
             "uade_available": Path("/usr/local/bin/uade123").exists(),
         }
     )
-    response.headers["Content-Type"] = "application/json; charset=utf-8"
-    return response
 
 
 @app.route("/examples")
 @limiter.exempt
 def get_examples():
     """Return list of example modules"""
-    response = jsonify(EXAMPLES)
-    response.headers["Content-Type"] = "application/json; charset=utf-8"
-    return response
+    return jsonify(EXAMPLES)
 
 
 @app.route("/upload", methods=["POST"])
@@ -667,15 +663,11 @@ def upload_file():
     cleanup_old_files()
 
     if "file" not in request.files:
-        response = jsonify({"error": "No file provided"})
-        response.headers["Content-Type"] = "application/json; charset=utf-8"
-        return response, 400
+        return jsonify({"error": "No file provided"}), 400
 
     file = request.files["file"]
     if file.filename == "":
-        response = jsonify({"error": "No file selected"})
-        response.headers["Content-Type"] = "application/json; charset=utf-8"
-        return response, 400
+        return jsonify({"error": "No file selected"}), 400
 
     try:
         # Check browser FLAC support
@@ -687,38 +679,42 @@ def upload_file():
         filename = secure_filename(file.filename)
 
         # Save uploaded file
-        upload_path = MODULES_DIR / f"{filename}_{file_id}"
-        file.save(upload_path)
+        module_path = MODULES_DIR / f"{filename}_{file_id}"
+        file.save(module_path)
+        return process_module_and_respond(module_path, filename, use_flac)
 
+    except Exception as e:
+        logger.error(f"Upload error: {e}")
+        return jsonify({"error": str(e)}), 500
+
+
+def process_module_and_respond(module_path, filename, use_flac):
+    """
+    Shared logic for archive detection, extraction, conversion, metadata, cleanup, and response.
+    """
+    try:
         # Check if it's an LHA or ZIP archive
-        module_path = upload_path
-        extract_dir = None
-        if is_lha_file(upload_path):
-            logger.info(f"Detected LHA archive upload: {filename}")
-            extract_dir = MODULES_DIR / f"{file_id}_extracted"
-            success, error, music_file = extract_lha(upload_path, extract_dir)
-
+        extract_dir =  Path(f"{module_path}_extracted")
+        if is_lha_file(module_path):
+            logger.info(f"Detected LHA archive: {filename}")
+            success, error, music_file = extract_lha(module_path, extract_dir)
             if not success:
-                upload_path.unlink(missing_ok=True)
-                if extract_dir and extract_dir.exists():
+                module_path.unlink(missing_ok=True)
+                if extract_dir.exists():
                     shutil.rmtree(extract_dir, ignore_errors=True)
                 return jsonify({"error": error}), 500
-
-            module_path = music_file
             filename = music_file.name
-        elif is_zip_file(upload_path):
-            logger.info(f"Detected ZIP archive upload: {filename}")
-            extract_dir = MODULES_DIR / f"{file_id}_extracted"
-            success, error, music_file = extract_zip(upload_path, extract_dir)
-
+            module_path = music_file
+        elif is_zip_file(module_path):
+            logger.info(f"Detected ZIP archive: {filename}")
+            success, error, music_file = extract_zip(module_path, extract_dir)
             if not success:
-                upload_path.unlink(missing_ok=True)
-                if extract_dir and extract_dir.exists():
+                module_path.unlink(missing_ok=True)
+                if extract_dir.exists():
                     shutil.rmtree(extract_dir, ignore_errors=True)
                 return jsonify({"error": error}), 500
-
-            module_path = music_file
             filename = music_file.name
+            module_path = music_file
 
         # Convert to WAV (and optionally FLAC)
         (
@@ -735,14 +731,12 @@ def upload_file():
         converted_file_id = get_file_hash(module_path)
 
         # Clean up extracted files only (do not delete cached files)
-        if extract_dir and extract_dir.exists():
+        if extract_dir.exists():
             shutil.rmtree(extract_dir, ignore_errors=True)
         if not success:
-            response = jsonify({"error": error})
-            response.headers["Content-Type"] = "application/json; charset=utf-8"
-            return response, 500
+            return jsonify({"error": error}), 500
 
-        response = jsonify(
+        return jsonify(
             {
                 "success": True,
                 "file_id": converted_file_id,
@@ -756,14 +750,10 @@ def upload_file():
                 "download_url": f"/download/{converted_file_id}",
             }
         )
-        response.headers["Content-Type"] = "application/json; charset=utf-8"
-        return response
 
     except Exception as e:
-        logger.error(f"Upload error: {e}")
-        response = jsonify({"error": str(e)})
-        response.headers["Content-Type"] = "application/json; charset=utf-8"
-        return response, 500
+        logger.error(f"Conversion error: {e}")
+        return jsonify({"error": str(e)}), 500
 
 
 def is_safe_url(u):
@@ -833,17 +823,13 @@ def convert_url():
 
     data = request.get_json()
     if not data or "url" not in data:
-        response = jsonify({"error": "No URL provided"})
-        response.headers["Content-Type"] = "application/json; charset=utf-8"
-        return response, 400
+        return jsonify({"error": "No URL provided"}), 400
 
     url = data["url"]
     sample_url = data.get("sample_url")
 
     if not is_safe_url(url) or (sample_url and not is_safe_url(sample_url)):
-        response = jsonify({"error": "Unsafe or disallowed sample_url"})
-        response.headers["Content-Type"] = "application/json; charset=utf-8"
-        return response, 400
+        return jsonify({"error": "Unsafe or disallowed sample_url"}), 400
 
     try:
         # Check browser FLAC support
@@ -874,7 +860,7 @@ def convert_url():
             # nosec B501 - Trade-off for HTTP module downloads
             response = requests.get(url, timeout=30, verify=False, allow_redirects=True)
             response.raise_for_status()
-            # Save downloaded file to cache
+            # Save downloaded file to MODULES_DIR
             module_path.write_bytes(response.content)
             logger.info(f"Cached module_path: {module_path}")
 
@@ -906,85 +892,14 @@ def convert_url():
                 os.symlink(cached_sample_path, sample_path)
                 logger.info(f"Cached sample_path: {cached_sample_path}, linking to {sample_path}")
 
-        # Check if it's an LHA or ZIP archive
-        extract_dir = None
-        if is_lha_file(module_path):
-            logger.info(f"Detected LHA archive: {filename}")
-            extract_dir = MODULES_DIR / f"{file_id}_extracted"
-            success, error, music_file = extract_lha(module_path, extract_dir)
-            if not success:
-                # Do not delete cached_module_path on error
-                if extract_dir and extract_dir.exists():
-                    shutil.rmtree(extract_dir, ignore_errors=True)
-                response = jsonify({"error": error})
-                response.headers["Content-Type"] = "application/json; charset=utf-8"
-                return response, 500
-            filename = music_file.name
-            module_path = music_file
-        elif is_zip_file(module_path):
-            logger.info(f"Detected ZIP archive: {filename}")
-            extract_dir = MODULES_DIR / f"{file_id}_extracted"
-            success, error, music_file = extract_zip(module_path, extract_dir)
-            if not success:
-                # Do not delete cached_module_path on error
-                if extract_dir and extract_dir.exists():
-                    shutil.rmtree(extract_dir, ignore_errors=True)
-                response = jsonify({"error": error})
-                response.headers["Content-Type"] = "application/json; charset=utf-8"
-                return response, 500
-            filename = music_file.name
-            module_path = music_file
-
-        # Convert to WAV (and optionally FLAC)
-        (
-            success,
-            error,
-            final_file,
-            player_format,
-            module_name,
-            module_format,
-            subsongs,
-        ) = process_audio_conversion(module_path, compress_flac=use_flac)
-
-
-        # Cache hash, must be computed before cleanup
-        converted_file_id = get_file_hash(module_path)
-
-        # Clean up extracted files only (do not delete cached files)
-        if extract_dir and extract_dir.exists():
-            shutil.rmtree(extract_dir, ignore_errors=True)
-        if not success:
-            response = jsonify({"error": error})
-            response.headers["Content-Type"] = "application/json; charset=utf-8"
-            return response, 500
-
-        response = jsonify(
-            {
-                "success": True,
-                "file_id": converted_file_id,
-                "filename": filename,
-                "module_name": module_name,
-                "module_format": module_format,
-                "player_format": player_format,
-                "subsongs": subsongs,
-                "audio_format": final_file.suffix[1:] if final_file else "wav",
-                "play_url": f"/play/{converted_file_id}",
-                "download_url": f"/download/{converted_file_id}",
-            }
-        )
-        response.headers["Content-Type"] = "application/json; charset=utf-8"
-        return response
+        return process_module_and_respond(module_path, filename, use_flac)
 
     except requests.RequestException as e:
         logger.error(f"Download error: {e}")
-        response = jsonify({"error": f"Download failed: {str(e)}"})
-        response.headers["Content-Type"] = "application/json; charset=utf-8"
-        return response, 500
+        return jsonify({"error": f"Download failed: {str(e)}"}), 500
     except Exception as e:
         logger.error(f"Convert URL error: {e}")
-        response = jsonify({"error": str(e)})
-        response.headers["Content-Type"] = "application/json; charset=utf-8"
-        return response, 500
+        return jsonify({"error": str(e)}), 500
 
 
 def sanitized_url(url):

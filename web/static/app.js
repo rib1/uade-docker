@@ -90,7 +90,7 @@ async function handleFileUpload(file) {
     const data = await response.json();
 
     if (response.ok) {
-      showStatus(`✓ Converted:  ${data.module_name || data.filename}`, "success");
+      showStatus(`✓ Converted:  ${data.module_name} || ${data.filename}`, "success");
       playFile(
         data.file_id,
         data.module_name || data.filename,
@@ -196,7 +196,7 @@ async function handleTfmxConvert() {
     const data = await response.json();
 
     if (response.ok) {
-      showStatus("✓ TFMX converted successfully", "success");
+      showStatus(`✓ TFMX converted successfully: ${data.module_name} || ${data.filename}`, "success");
       playFile(
         data.file_id,
         data.module_name || data.filename,
@@ -332,16 +332,14 @@ function playFile(
   }
   currentTrack.textContent = trackDisplay;
 
-  // Build format display: format info
-  let cleanModuleFormat = moduleFormat ? moduleFormat.replace(/^type:\s*/, "") : "";
   let formatDisplay = "Module";
 
-  if (cleanModuleFormat && playerFormat && cleanModuleFormat !== playerFormat) {
+  if (moduleFormat && playerFormat && moduleFormat !== playerFormat) {
     // Show both if they're different
-    formatDisplay = `${cleanModuleFormat}<br/>${playerFormat}`;
-  } else if (cleanModuleFormat) {
+    formatDisplay = `${moduleFormat}<br/>${playerFormat}`;
+  } else if (moduleFormat) {
     // Show module format if available
-    formatDisplay = cleanModuleFormat;
+    formatDisplay = moduleFormat;
   } else if (playerFormat) {
     // Fallback to player format
     formatDisplay = playerFormat;
