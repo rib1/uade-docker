@@ -87,6 +87,7 @@ jobs:
   deploy:
     needs: build-web
     runs-on: ubuntu-latest
+    if: github.repository == 'rib1/uade-docker'
     env:
       PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
       SERVICE_NAME: uade-web-player
