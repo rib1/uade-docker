@@ -12,6 +12,7 @@ Play Amiga music modules directly in your web browser! No desktop software requi
 - 💿 **Smart Compression** - Automatic FLAC compression for capable browsers (50-70% smaller files)
 - ⬇️ **Download Audio** - Save as FLAC or WAV for offline playback
 - 🚀 **Cloud Ready & Stateless Caching** - Designed for Kubernetes, EKS Auto Mode, cloud platforms, and multi-instance deployments with remote cache support (S3/GCS/local)
+- ✅ **Cached Conversion Indicator** - Notifies the user when a module is served from the cache, bypassing conversion.
 - 📱 **Mobile Friendly** - Works on phones and tablets
 - ⚡ **Performance** - MD5-based file and URL caching for instant replay and computing and bandwidth savings
 
@@ -136,6 +137,8 @@ Click any example module on the homepage to instantly hear classic Amiga music:
 
 Drag and drop .mod, .ahx, or other module files directly into the browser.
 
+> **Tip:** If the module has been converted before, the player will instantly serve it from cache and display a "From cache" message.
+
 **Supported formats:**
 
 - Individual modules (.mod, .ahx, .tfmx, .okta, .sid, etc.)
@@ -144,6 +147,8 @@ Drag and drop .mod, .ahx, or other module files directly into the browser.
 ### 3. Download from URL
 
 Paste a Modland or ModArchive URL to download and convert automatically.
+
+> **Tip:** If the module has been converted before, the player will instantly serve it from cache and display a "From cache" message.
 
 **Example URLs:**
 
@@ -417,7 +422,7 @@ services:
 
 - **Conversion time:** 5-30 seconds (depends on module length)
 - **FLAC compression:** Adds 1-2 seconds but reduces download by 50-70% for bandwidth savings
-- **Cache performance:** Instant playback on second request (MD5-based)
+- **Cache performance:** Instant playback on second request (MD5-based), with "From cache" message in UI.
 - **Memory usage:** ~256MB per instance
 - **CPU usage:** Spikes during conversion/compression, idle otherwise
 - **Concurrent requests:** Handled by Gunicorn workers (4 default)

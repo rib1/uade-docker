@@ -99,15 +99,21 @@ architecture-beta
 
 ### Web Player Workflow
 
-1. User uploads module or provides URL
+1. User uploads a module file or provides a URL.
 2. Flask server receives request
-3. For URL requests, calculates MD5 hash of the URL and checks if the file is already cached
-4. If cached, uses the local file; if not, downloads and caches the file using the hash
-5. If file is an LHA or ZIP archive, automatically extracts and finds first supported music file
-6. Calls UADE player subprocess
-7. Converts to WAV or FLAC
-8. Streams audio back to browser
-9. Cleans up temporary files and symlinks (1 hour TTL)
+3. For URL requests, the source module file is downloaded. A local cache is checked first, based on the URL, to avoid re-downloading.
+4. An MD5 hash of the source module file content is calculated.
+5. The system checks for a pre-converted WAV or FLAC file in the main cache (local or remote) using this hash.
+6. **If a cached audio file is found:**
+  a.  The cached audio is served directly to the user.
+  b.  The UI indicates the song was served from cache.
+7. **If no cached audio file is found:**
+    a. If the source file is an LHA or ZIP archive, it is extracted to find the music file.
+    b. The UADE player converts the module to WAV.
+    c. If FLAC is preferred by the client, the WAV file is then converted to FLAC.
+    d. The converted audio file (WAV or FLAC) is saved to the main cache.
+    e. The audio is streamed back to the browser.
+8. Temporary files are cleaned up periodically.
 
 ### Deployment Workflow
 
@@ -198,7 +204,8 @@ architecture-beta
 - 4 threads per worker
 - Connection pooling
 - Temporary file cleanup (hourly)
-- URL-based caching: Downloads from URLs are cached (including TFMX sample) using an MD5 hash of the URL. If a file has already been downloaded, it is reused from the cache, reducing bandwidth and improving performance.
+- Source Module Caching (using an MD5 hash of the URL)
+- Converted Audio Caching
 - Cache directory for downloads (can be local or remote S3/GCS, see Infrastructure)
 
 ### Cloud Run

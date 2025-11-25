@@ -127,7 +127,7 @@ The Web Player Container is built using multi-stage Docker build with `FROM uade
   - Session management
   - Error handling and logging
   - Integration with Gunicorn as http server in Web player
-  - Remote cache management for converted files (local/S3/GCS, stateless, shared across instances)
+  - Remote cache management for converted files (local/S3/GCS, stateless, shared across instances). The Flask app checks this cache, and the UI displays whether a file was served from cache.
 
 #### Web Routes
 
