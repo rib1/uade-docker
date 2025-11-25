@@ -91,8 +91,8 @@ async function handleFileUpload(file) {
 
     if (response.ok) {
       const statusMessage = data.cached
-        ? `✓ From cache: ${data.module_name} || ${data.filename}`
-        : `✓ Converted: ${data.module_name} || ${data.filename}`;
+        ? `✓ From cache: ${data.module_name || data.filename}`
+        : `✓ Converted: ${data.module_name || data.filename}`;
       showStatus(statusMessage, "success");
       playFile(
         data.file_id,
@@ -145,8 +145,8 @@ async function handleUrlConvert() {
 
     if (response.ok) {
       const statusMessage = data.cached
-        ? `✓ From cache: ${data.module_name} || ${data.filename}`
-        : `✓ Converted: ${data.module_name} || ${data.filename}`;
+        ? `✓ From cache: ${data.module_name || data.filename}`
+        : `✓ Converted: ${data.module_name || data.filename}`;
       showStatus(statusMessage, "success");
       playFile(
         data.file_id,
@@ -203,8 +203,8 @@ async function handleTfmxConvert() {
 
     if (response.ok) {
       const statusMessage = data.cached
-        ? `✓ From cache: ${data.module_name} || ${data.filename}`
-        : `✓ TFMX converted successfully: ${data.module_name} || ${data.filename}`;
+        ? `✓ From cache: ${data.module_name || data.filename}`
+        : `✓ TFMX converted successfully: ${data.module_name || data.filename}`;
       showStatus(statusMessage, "success");
       playFile(
         data.file_id,
