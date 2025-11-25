@@ -153,6 +153,18 @@ architecture-beta
 - Input validation and sanitization
 - Zero HIGH severity security issues (Bandit, ESLint)
 
+### CI/CD
+
+- **Dependabot**: Automatically monitors and updates Docker, Pip, and GitHub Actions dependencies with security patches.
+- **Dependency Review**: Scans for vulnerable dependencies in every pull request and blocks merging if issues of `moderate` severity or higher are found.
+- SAST (Static Application Security Testing):
+  - **CodeQL:** Analyzes Python and JavaScript for security vulnerabilities.
+  - **Semgrep:** Scans for a wide range of security issues including OWASP Top 10, secrets, and language-specific bugs.
+  - **Bandit:** Performs security analysis specifically for Python code.
+- Container Scanning:
+  - **Trivy:** Scans the filesystem and Docker images for known vulnerabilities.
+  - **Hadolint:** Lints Dockerfiles to enforce best practices.
+
 ## Technology Stack
 
 ### Backend
