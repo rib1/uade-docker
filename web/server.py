@@ -153,6 +153,7 @@ module_file_extensions: Final = {
     "jd", # Special FX
     "jt", # Jeroen Tel
     "mdat", # TFMX song data
+    "mcmd",
     "med", # OctaMED
     "mmd0", # OctaMED MMD0
     "mmd1", # OctaMED MMD1
@@ -182,6 +183,7 @@ module_file_extensions: Final = {
     "tfmx", # TFMX
     "tfx", # TFMX
     "tfm", #TFMX
+    "thx", # original name for the AHX
     "ym",
 }
 
