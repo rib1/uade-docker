@@ -90,7 +90,10 @@ async function handleFileUpload(file) {
     const data = await response.json();
 
     if (response.ok) {
-      showStatus(`✓ Converted:  ${data.module_name} || ${data.filename}`, "success");
+      const statusMessage = data.cached
+        ? `✓ From cache: ${data.module_name} || ${data.filename}`
+        : `✓ Converted: ${data.module_name} || ${data.filename}`;
+      showStatus(statusMessage, "success");
       playFile(
         data.file_id,
         data.module_name || data.filename,
@@ -141,7 +144,10 @@ async function handleUrlConvert() {
     const data = await response.json();
 
     if (response.ok) {
-      showStatus(`✓ Converted: ${data.module_name} || ${data.filename}`, "success");
+      const statusMessage = data.cached
+        ? `✓ From cache: ${data.module_name} || ${data.filename}`
+        : `✓ Converted: ${data.module_name} || ${data.filename}`;
+      showStatus(statusMessage, "success");
       playFile(
         data.file_id,
         data.module_name || data.filename,
@@ -196,7 +202,10 @@ async function handleTfmxConvert() {
     const data = await response.json();
 
     if (response.ok) {
-      showStatus(`✓ TFMX converted successfully: ${data.module_name} || ${data.filename}`, "success");
+      const statusMessage = data.cached
+        ? `✓ From cache: ${data.module_name} || ${data.filename}`
+        : `✓ TFMX converted successfully: ${data.module_name} || ${data.filename}`;
+      showStatus(statusMessage, "success");
       playFile(
         data.file_id,
         data.module_name || data.filename,
@@ -280,7 +289,10 @@ async function handleExamplePlay(example, button) {
     const data = await response.json();
 
     if (response.ok) {
-      showStatus(`✓  ${example.name || data.module_name || data.filename} ready to play`, "success");
+      const statusMessage = data.cached
+        ? `✓ From cache: ${example.name || data.module_name || data.filename} ready to play`
+        : `✓ ${example.name || data.module_name || data.filename} ready to play`;
+      showStatus(statusMessage, "success");
       playFile(
         data.file_id,
         example.name || data.module_name || data.filename,

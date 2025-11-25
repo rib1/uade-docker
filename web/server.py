@@ -554,13 +554,14 @@ def process_audio_conversion(input_path, use_cache=True, compress_flac=False):
         module_name (str or None): Detected module name.
         module_format (str or None): Detected module format.
         subsongs (int): Number of subsongs detected in the module (e.g., for multi-track modules).
+        cached (bool): True if the audio was served from cache, False otherwise.
     """
     try:
         # Defensive: Restrict input_path to MODULES_DIR
         input_resolved = Path(input_path).resolve()
         if not (input_resolved.is_relative_to(MODULES_DIR.resolve())):
             logger.error("Aborting: attempted read outside allowed directories")
-            return False, "Illegal input file path", None, None, None, None, None
+            return False, "Illegal input file path", None, None, None, None, None, False
         # Detect module metadata before conversion
         module_name, module_format, player_format, subsongs = detect_module_metadata(input_path)
         # Always compute cache_hash for later use
@@ -579,6 +580,7 @@ def process_audio_conversion(input_path, use_cache=True, compress_flac=False):
                     module_name,
                     module_format,
                     subsongs,
+                    True,
                 )
 
         cmd = [
@@ -603,8 +605,8 @@ def process_audio_conversion(input_path, use_cache=True, compress_flac=False):
                 None,
                 None,
                 None,
+                False, # Not from cache
             )
-
         if not output_path.exists():
             return (
                 False,
@@ -614,8 +616,8 @@ def process_audio_conversion(input_path, use_cache=True, compress_flac=False):
                 None,
                 None,
                 None,
+                False, # Not from cache
             )
-
         final_output = output_path
 
         # Compress to FLAC if requested
@@ -636,6 +638,7 @@ def process_audio_conversion(input_path, use_cache=True, compress_flac=False):
             module_name,
             module_format,
             subsongs,
+            False, # Not from cache
         )
 
     except subprocess.TimeoutExpired:
@@ -647,10 +650,11 @@ def process_audio_conversion(input_path, use_cache=True, compress_flac=False):
             None,
             None,
             None,
+            False, # Not from cache
         )
     except Exception as e:
         logger.error(f"Conversion exception: {e}")
-        return False, str(e), None, None, None, None, None
+        return False, str(e), None, None, None, None, None, False
 
 
 @app.route("/")
@@ -750,6 +754,7 @@ def process_module_and_respond(module_path, filename, use_flac):
             module_name,
             module_format,
             subsongs,
+            cached,
         ) = process_audio_conversion(module_path, compress_flac=use_flac)
 
         # Cache hash, must be computed before cleanup
@@ -773,6 +778,7 @@ def process_module_and_respond(module_path, filename, use_flac):
                 "audio_format": final_file.suffix[1:] if final_file else "wav",
                 "play_url": f"/play/{converted_file_id}",
                 "download_url": f"/download/{converted_file_id}?filename={module_name or filename}",
+                "cached": cached,
             }
         )
 
