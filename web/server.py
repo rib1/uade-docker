@@ -5,29 +5,33 @@ Converts Amiga music modules to FLAC or WAV for browser playback
 Cloud-ready with proper logging, error handling, stateless caching, and cleanup
 """
 
-import os
-import uuid
-import time
-import subprocess
-import logging
 import hashlib
-from pathlib import Path
+import ipaddress
+import logging
+import os
+import re
+import requests
+import shutil
+import socket
+import subprocess
+import time
+import unicodedata
+import urllib.parse
+import uuid
+import zipfile
+
 from datetime import datetime, timezone
+from pathlib import Path
+from typing import Final
+
+import fsspec
+
 from flask import Flask, request, jsonify, send_from_directory, Response
-from werkzeug.utils import secure_filename
+from flask import Flask, Response, jsonify, request, send_from_directory
+
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
-from flask import jsonify
-from typing import Final
-import requests
-import re
-import shutil
-import fsspec
-import zipfile
-import urllib.parse
-import socket
-import ipaddress
-import unicodedata
+from werkzeug.utils import secure_filename
 
 # Configure logging for cloud environments
 logging.basicConfig(
@@ -59,16 +63,19 @@ def get_git_commit():
 GIT_COMMIT: Final = get_git_commit()
 # Configuration from environment variables (cloud-ready)
 MAX_UPLOAD_SIZE: Final = int(os.getenv("MAX_UPLOAD_SIZE", 10485760))  # 10MB
+app.config["MAX_CONTENT_LENGTH"] = MAX_UPLOAD_SIZE
 CLEANUP_INTERVAL: Final = int(os.getenv("CLEANUP_INTERVAL", 3600))  # 1 hour
 CACHE_CLEANUP_INTERVAL: Final = int(os.getenv("CACHE_CLEANUP_INTERVAL", 86400))  # 24 hours
 RATE_LIMIT: Final = int(os.getenv("RATE_LIMIT", 200))  # requests per hour
 PORT: Final = int(os.getenv("PORT", 5000))
-app.config["MAX_CONTENT_LENGTH"] = MAX_UPLOAD_SIZE
 
 # Local directories for processing
 MODULES_DIR: Final = Path("/tmp/modules")
 CONVERTED_DIR: Final = Path("/tmp/converted")
 
+# Ensure local directories exist
+for directory in [MODULES_DIR, CONVERTED_DIR]:
+    directory.mkdir(parents=True, exist_ok=True)
 
 def get_fs_and_root(uri, fs_kwargs=None):
     fs_kwargs = fs_kwargs or {}
@@ -93,12 +100,11 @@ def get_fs_and_root(uri, fs_kwargs=None):
 CACHE_URI: Final = os.getenv("CACHE_URI", "file:///tmp/cache")
 fs_cache, root_cache = get_fs_and_root(CACHE_URI)
 
+# Ensure remote cache directory exists (if using local filesystem)
+if fs_cache.protocol == "file":
+    Path(root_cache).mkdir(parents=True, exist_ok=True)
 
-for directory in [MODULES_DIR, CONVERTED_DIR]:
-    directory.mkdir(parents=True, exist_ok=True)
-
-
-limiter = Limiter(
+limiter: Final = Limiter(
     get_remote_address,
     app=app,
     storage_uri="memory://",  # NOTE: Rate limits are per-instance/pod only. Not global across all instances unless using a distributed backend (e.g. Redis).
@@ -113,8 +119,8 @@ def ratelimit_handler(e):
     return jsonify({"error": "Rate limit exceeded. Please wait and try again.", "code": 429}), 429
 
 
-# Common Amiga module extensions and prefixes
-module_file_extensions: Final = {
+# Common Amiga module extensions and prefixes for detection module files in archives
+MODULE_FILE_EXTENSIONS: Final = {
     "aam", # Art And Magic
     "adsc", # Audio Sculpture
     "ahx", # Abyss' Highest eXperience
@@ -134,6 +140,7 @@ module_file_extensions: Final = {
     "di", # Digital Illusions aka GrapeTracker
     "digi", # DigiBooster 1.x
     "dl", # Dave Lowe
+    "dln", # Dave Lowe New
     "dll", # Digital Mugician successor of SidMon
     "dm", # Delta Music
     "dm2", # Delta Music 2
@@ -252,7 +259,7 @@ EXAMPLES: Final = [
         "format": "Custom (LHA)",
         "duration": "38 min (7 tracks)",
         "url": (
-            "http://files.exotica.org.uk/?file=exotica%2Fmedia%2Faudio%2FUnExoticA%2FGame%2FFollin_Tim%2FL_E_D_Storm.lha"
+            "https://files.exotica.org.uk/?file=exotica/media/audio/UnExoticA/Game/Follin_Tim/L_E_D_Storm.lha"
         ),
         "type": "cust",
     },
@@ -368,7 +375,7 @@ def find_music_file(extract_dir):
         if file_path.is_file():
             ext = file_path.suffix.lower()[1:]
             prefix = file_path.name.lower().split(".")[0]
-            if ext in module_file_extensions or prefix in module_file_extensions:
+            if ext in MODULE_FILE_EXTENSIONS or prefix in MODULE_FILE_EXTENSIONS:
                 music_files.append(file_path)
     if not music_files:
         return None, 0
@@ -457,10 +464,6 @@ def extract_zip(zip_path, extract_dir):
 def save_to_cache(cache_hash, file, ext):
     """Save a converted file to remote cache (WAV or FLAC)."""
     cache_file_remote = f"{root_cache}/{cache_hash}{ext}"
-    # Ensure remote cache directory exists (for local file cache)
-    if fs_cache.protocol == "file":
-        cache_dir_remote = Path(root_cache)
-        cache_dir_remote.mkdir(parents=True, exist_ok=True)
     if not fs_cache.exists(cache_file_remote):
         with open(file, "rb") as src, fs_cache.open(cache_file_remote, "wb") as dst:
             shutil.copyfileobj(src, dst, length=1024 * 1024)  # 1MB buffer
@@ -868,13 +871,21 @@ def convert_url():
         use_flac = supports_flac(user_agent)
 
         # --- Caching logic for main module file ---
-        raw_filename = url.split("/")[-1].split("#")[0].split("?")[0] or "module"
+
+        # For ModArchive, it gets the fragment filename.
+        # For Modland and similar, it gets the last path segment.
+        # For query-based URLs (Exotica), it gets the value after ?file=.
+        # For Scene.org, it gets the last segment.
+        raw_filename = url.split("/")[-1].split("?")[-1].split("#")[-1] or "module"
         # Unquote and normalize filename, then use werkzeug's secure_filename
         try:
             unquoted = urllib.parse.unquote(raw_filename)
         except Exception:
             unquoted = raw_filename
         normalized = unicodedata.normalize("NFKC", unquoted)
+        normalized = re.sub(r'[^A-Za-z0-9._-]', '_', normalized)
+        # Truncate filename to avoid filesystem limits
+        normalized = normalized[:100]  # Limit to 100 chars
         filename = secure_filename(normalized) or "module"
         # Compute cache hash from URL
         url_hash = hashlib.md5(url.encode(), usedforsecurity=False).hexdigest()
