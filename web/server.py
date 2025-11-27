@@ -702,7 +702,8 @@ def upload_file():
     try:
         # Check browser FLAC support
         user_agent = request.headers.get("User-Agent", "")
-        logger.info(f"User-Agent: {user_agent}")
+        sanitized_user_agent = user_agent.replace('\r', '').replace('\n', '')
+        logger.info(f"User-Agent: {sanitized_user_agent}")
         use_flac = supports_flac(user_agent)
 
         # Generate unique ID
