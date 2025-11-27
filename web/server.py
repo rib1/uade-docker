@@ -702,6 +702,7 @@ def upload_file():
     try:
         # Check browser FLAC support
         user_agent = request.headers.get("User-Agent", "")
+        logger.info(f"User-Agent: {user_agent}")
         use_flac = supports_flac(user_agent)
 
         # Generate unique ID
@@ -850,7 +851,15 @@ def is_safe_url(u):
 @app.route("/convert-url", methods=["POST"])
 @limiter.limit("10 per minute")
 def convert_url():
-    """Download from URL and convert, supports optional sample URL for TFMX"""
+    """
+    Download a module file from a given URL and convert it for playback.
+    Supports an optional 'sample_url' parameter for TFMX modules.
+    The request JSON should be:
+        {
+            "url": "<module file URL>",
+            "sample_url": "<TFMX sample file URL>"  # Optional, only for TFMX modules
+        }
+    """
     cleanup_old_files()
 
     data = request.get_json()
@@ -869,22 +878,7 @@ def convert_url():
         use_flac = supports_flac(user_agent)
 
         # --- Caching logic for main module file ---
-
-        # For ModArchive, it gets the fragment filename.
-        # For Modland and similar, it gets the last path segment.
-        # For query-based URLs (Exotica), it gets the value after ?file=.
-        # For Scene.org, it gets the last segment.
-        raw_filename = url.split("/")[-1].split("?")[-1].split("#")[-1] or "module"
-        # Unquote and normalize filename, then use werkzeug's secure_filename
-        try:
-            unquoted = urllib.parse.unquote(raw_filename)
-        except Exception:
-            unquoted = raw_filename
-        normalized = unicodedata.normalize("NFKC", unquoted)
-        normalized = re.sub(r'[^A-Za-z0-9._-]', '_', normalized)
-        # Truncate filename to avoid filesystem limits
-        normalized = normalized[:100]  # Limit to 100 chars
-        filename = secure_filename(normalized) or "module"
+        filename = extract_filename_from_url(url)
         # Compute cache hash from URL
         url_hash = hashlib.md5(url.encode(), usedforsecurity=False).hexdigest()
         module_path = MODULES_DIR / f"{filename}_{url_hash}"
@@ -940,7 +934,7 @@ def convert_url():
         return jsonify({"error": str(e)}), 500
 
 
-def sanitized_url(url):
+def sanitized_url(url, log=True):
     """Sanitize URL for safe logging (removes control/meta chars, line breaks, trims, limits length)"""
     if not isinstance(url, str):
         return "<non-string URL>"
@@ -957,6 +951,8 @@ def sanitized_url(url):
     url = re.sub(r"[\x00-\x1f\x7f]", "", url)
     # Trim whitespace
     url = url.strip()
+    if not log:
+        return url
     # Replace remaining non-ASCII / non-printable with \uXXXX escapes so logs are unforgeable
     out_chars = []
     for ch in url:
@@ -969,6 +965,25 @@ def sanitized_url(url):
     if len(out) > 200:
         out = out[:200] + "..."
     return out
+
+
+def extract_filename_from_url(url):
+    """
+    Extracts a safe filename from a URL.
+    For ModArchive, gets the fragment filename.
+    For Modland and similar, it gets the last path segment.
+    For query-based URLs (Exotica, Scene.org), gets the last segment of the query path.
+    Returns a normalized, secure filename string.
+    """
+    url_for_filename = sanitized_url(url, log=False)
+    if url_for_filename.count('api.modarchive'):
+        filename = url_for_filename.split('#')[-1]
+    elif url_for_filename.count('?file=') or url_for_filename.count('get:'):
+        filename = url_for_filename.split('?file=')[-1].split('get:')[-1].split('/')[-1].split('?')[0]
+    else:
+        filename = url_for_filename.split('/')[-1].split('?')[0]
+    filename = filename[:100]  # Limit to 100 chars
+    return secure_filename(filename) or "module"
 
 
 @app.route("/play-example/<example_id>", methods=["POST"])
