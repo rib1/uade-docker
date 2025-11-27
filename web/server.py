@@ -168,6 +168,7 @@ MODULE_FILE_EXTENSIONS: Final = {
     "mod", # NoiseTracker, Protracker and derivatives
     "mug", # Digital Mugician 2
     "mus", # Sidplayer / Stereo Sidplayer
+    "okt", # Oktalyzer
     "okta", # Oktalyzer
     "osp", # Synth Pack
     "rk", # Ron Klaren
