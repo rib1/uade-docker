@@ -127,7 +127,7 @@ The Web Player Container is built using multi-stage Docker build with `FROM uade
   - Session management
   - Error handling and logging
   - Integration with Gunicorn as http server in Web player
-  - Remote cache management for converted files (local/S3/GCS, stateless, shared across instances). The Flask app checks this cache, and the UI displays whether a file was served from cache.
+  - Server-side cache management for converted files (local/S3/GCS, stateless, shared across instances). The Flask app checks this cache, and the UI displays whether a file was served from cache.
 
 #### Web Routes
 
@@ -206,7 +206,8 @@ The Web Player Container is built using multi-stage Docker build with `FROM uade
 - **Server**: Gunicorn 21.2 (4 workers)
 - **Container**: Multi-stage build (FROM uade-cli)
 - **Additional Components**: Flask app, static assets, Python wrapper
-- **Remote Cache Support**: Converted files are cached using local disk, AWS S3, or Google Cloud Storage. Uses fsspec, s3fs, and gcsfs for unified access. Multi-instance deployments share a stateless cache for deduplication and instant replay. All Python dependencies are listed in `requirements.txt`.
+- **Client-Side Cache Support**: Converted audio is cached in the browser for one month for instant repeat playback.
+- **Server-Side Cache Support**: Converted files are cached using local disk, AWS S3, or Google Cloud Storage. Uses fsspec, s3fs, and gcsfs for unified access. Multi-instance deployments share a stateless cache for deduplication and instant replay. All Python dependencies are listed in `requirements.txt`.
 
 ## Data Flow
 

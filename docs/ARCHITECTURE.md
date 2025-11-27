@@ -100,20 +100,21 @@ architecture-beta
 ### Web Player Workflow
 
 1. User uploads a module file or provides a URL.
-2. Flask server receives request
-3. For URL requests, the source module file is downloaded. A local cache is checked first, based on the URL, to avoid re-downloading.
-4. An MD5 hash of the source module file content is calculated.
-5. The system checks for a pre-converted WAV or FLAC file in the main cache (local or remote) using this hash.
-6. **If a cached audio file is found:**
-  a.  The cached audio is served directly to the user.
-  b.  The UI indicates the song was served from cache.
-7. **If no cached audio file is found:**
+2. The browser first checks its local cache for the converted audio file. If found, it's played instantly and the process stops here.
+3. If not in the browser cache, the Flask server receives the request.
+4. For URL requests, the source module file is downloaded. A local cache is checked first, based on the URL, to avoid re-downloading.
+5. An MD5 hash of the source module file content is calculated.
+6. The system checks for a pre-converted WAV or FLAC file in the main **server-side cache** (local or remote) using this hash.
+7. **If a server-side cached audio file is found:**
+  a.  The cached audio is served directly to the user, who is notified that the song was served from the **server-side cache**.
+  b.  The user's browser will now cache this file for one month.
+8. **If no cached audio file is found:**
     a. If the source file is an LHA or ZIP archive, it is extracted to find the music file.
     b. The UADE player converts the module to WAV.
     c. If FLAC is preferred by the client, the WAV file is then converted to FLAC.
-    d. The converted audio file (WAV or FLAC) is saved to the main cache.
-    e. The audio is streamed back to the browser.
-8. Temporary files are cleaned up periodically.
+    d. The converted audio file (WAV or FLAC) is saved to the main **server-side cache**.
+    e. The audio is streamed back to the browser, which will cache it for one month.
+9. Temporary files are cleaned up periodically.
 
 ### Deployment Workflow
 
@@ -187,7 +188,7 @@ architecture-beta
 - **CI/CD:** GitHub Actions
 - **Registry:** GitHub Container Registry
 - **Cloud Provider:** Google Cloud Platform
-- **Remote Cache Support:**
+- **Server-Side Cache Support:**
   - Stateless cache for converted files can use local disk, AWS S3, or Google Cloud Storage
   - Uses fsspec, s3fs, and gcsfs for unified access
   - Docker image and local development require Python dependencies (see `requirements.txt`)
@@ -212,13 +213,14 @@ architecture-beta
 
 ### Application
 
+- **Client-Side Caching:** Converted audio is cached in the browser for one month, enabling instant playback on repeat visits.
+- **Server-Side Caching:**
+  - Source modules from URLs are cached locally to prevent re-downloads (using an MD5 hash of the URL).
+  - Converted audio files are stored in a content-addressable cache (local or remote S3/GCS, see Infrastructure) for deduplication and instant serving.
 - Single Gunicorn worker (memory optimization)
 - 4 threads per worker
 - Connection pooling
 - Temporary file cleanup (hourly)
-- Source Module Caching (using an MD5 hash of the URL)
-- Converted Audio Caching
-- Cache directory for downloads (can be local or remote S3/GCS, see Infrastructure)
 
 ### Cloud Run
 

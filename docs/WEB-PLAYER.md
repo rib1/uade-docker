@@ -11,10 +11,11 @@ Play Amiga music modules directly in your web browser! No desktop software requi
 - 🎹 **TFMX Support** - Handles dual-file TFMX modules automatically
 - 💿 **Smart Compression** - Automatic FLAC compression for capable browsers (50-70% smaller files)
 - ⬇️ **Download Audio** - Save as FLAC or WAV for offline playback
-- 🚀 **Cloud Ready & Stateless Caching** - Designed for Kubernetes, EKS Auto Mode, cloud platforms, and multi-instance deployments with remote cache support (S3/GCS/local)
-- ✅ **Cached Conversion Indicator** - Notifies the user when a module is served from the cache, bypassing conversion.
+- 🚀 **Cloud Ready & Stateless Caching** - Designed for cloud platforms with stateless, shareable server-side cache support (S3/GCS/local).
+- 💻 **Client-Side Caching** - Converted audio is cached in your browser for one month for instant repeat playback.
+- ✅ **Cache Indicator** - The UI indicates when audio is served from the server-side cache.
 - 📱 **Mobile Friendly** - Works on phones and tablets
-- ⚡ **Performance** - MD5-based file and URL caching for instant replay and computing and bandwidth savings
+- ⚡ **Performance** - MD5-based module file and URL caching for instant replay and computing and bandwidth savings
 
 ## Quick Start
 
@@ -249,18 +250,26 @@ PORT: 5000 # Server port
 MAX_UPLOAD_SIZE: 10485760 # Max upload (10MB)
 CLEANUP_INTERVAL: 3600 # File cleanup (1 hour)
 CACHE_CLEANUP_INTERVAL: # Cache cleanup interval (24 hours)
+CACHE_URI: # Remote cache URI (default: file:///tmp/cache)
 RATE_LIMIT: 200 # Max Requests/hour per IP (all endpoints combined)
 ```
 
-### Stateless Caching Support
+## Caching
 
-UADE Web Player supports stateless, multi-instance deployments using a remote cache for converted files. This enables instant replay and deduplication across all instances, whether running locally, in Docker, or in the cloud.
+UADE Web Player uses two layers of caching to optimize performance, reduce bandwidth, and provide instant playback.
 
-**Remote cache options:**
+### 1. Client-Side (Browser) Caching
 
-- Local filesystem (default): `file:///tmp/cache`
-- AWS S3 bucket: `s3://your-bucket/cache`
-- Google Cloud Storage: `gcs://your-bucket/cache`
+When you play an audio file, it is stored in your browser's cache for **one month**. The server sends a `Cache-Control` header that tells your browser to store the audio file. Because converted files have unique, content-based IDs, they are marked as `immutable`.
+
+### 2. Server-Side Caching
+
+The server maintains its own cache of converted audio files. This is primarily for efficiency in multi-instance or cloud-native deployments.
+
+- **Stateless & Shared:** All server instances can connect to a shared cache (e.g., AWS S3, GCS, or a shared disk), allowing them to share converted files.
+- **Deduplication:** If one user converts a module, it becomes available instantly to all other users without needing to be converted again.
+- **Backend Options:** The cache can be a local directory, an AWS S3 bucket, or a Google Cloud Storage bucket.
+- **Cleanup:** This cache is periodically cleaned of old files (default is 24 hours).
 
 **Configuration:**
 
@@ -310,15 +319,13 @@ Older or unsupported browsers automatically receive WAV files as fallback. No co
 - **50-70% Size Reduction:** Typical TFMX files reduce from 30MB WAV to 10-15MB FLAC
 - **Lossless Quality:** FLAC maintains bit-perfect audio fidelity
 - **Fallback Support:** Non-capable browsers still receive WAV files
-- **Cache Optimization:** Stores both WAV and FLAC versions for fast delivery
-- **On-the-fly Conversion:** Old WAV cache files are automatically compressed to FLAC when requested
 
 ### File Management
 
 - Automatic cleanup of local files older than 1 hour
 - Separate directories: modules, conversions, cache
 - UUID-based filenames (no collisions)
-- URL-based caching: If the same URL is requested again, the cached file is reused instantly.
+- URL-based caching: If the same URL is requested again, the cached file is reused instantly
 - MD5-based Stateless Remote Cache: Converted files are stored in a remote cache (S3/GCS/local) for instant replay and deduplication across all instances
 
 ## Security
@@ -368,7 +375,7 @@ You can adjust limits via the `RATE_LIMIT` environment variable and endpoint dec
 - Check container has write access to `/tmp`
 - Verify CLEANUP_INTERVAL environment variable
 
-**Remote cache issues (S3/GCS/local):**
+**Server-Side Cache Issues (S3/GCS/local):**
 
 - **Permission denied / Access errors:**
   - Ensure your IAM/user/role has read/write access to the bucket/prefix.
@@ -422,7 +429,7 @@ services:
 
 - **Conversion time:** 5-30 seconds (depends on module length)
 - **FLAC compression:** Adds 1-2 seconds but reduces download by 50-70% for bandwidth savings
-- **Cache performance:** Instant playback on second request (MD5-based), with "From cache" message in UI.
+- **Cache Performance:** Subsequent plays are instant, served from either the client-side (browser) or server-side cache.
 - **Memory usage:** ~256MB per instance
 - **CPU usage:** Spikes during conversion/compression, idle otherwise
 - **Concurrent requests:** Handled by Gunicorn workers (4 default)

@@ -1087,7 +1087,9 @@ def serve_audio_file(file_id, as_attachment=False, custom_filename=None):
         if as_attachment:
             response.headers["Content-Disposition"] = f'attachment; filename="{filename}"'
         else:
-            response.headers["Cache-Control"] = "public, max-age=3600"
+            # Set aggressive client-side cache for audio streaming: one month (2,592,000 seconds)
+            # with the 'immutable' directive, as file_id refers to content-hashed, unchanging audio.
+            response.headers["Cache-Control"] = "public, max-age=2592000, immutable"
         return response
     elif range_header:
         # Malformed or invalid range
@@ -1110,7 +1112,9 @@ def serve_audio_file(file_id, as_attachment=False, custom_filename=None):
         if as_attachment:
             response.headers["Content-Disposition"] = f'attachment; filename="{filename}"'
         else:
-            response.headers["Cache-Control"] = "public, max-age=3600"
+            # Set aggressive client-side cache for audio streaming: one month (2,592,000 seconds)
+            # with the 'immutable' directive, as file_id refers to content-hashed, unchanging audio.
+            response.headers["Cache-Control"] = "public, max-age=2592000, immutable"
         return response
 
 
