@@ -5,7 +5,7 @@ let currentDownloadUrl = null;
 
 // DOM Elements
 const dropZone = document.getElementById("drop-zone");
-const fileInput = document.getElementById("file-input");
+const fileInput = document.getElementById("module-file-input");
 const urlInput = document.getElementById("url-input");
 const urlSubmit = document.getElementById("url-submit");
 const mdatInput = document.getElementById("mdat-url");
@@ -28,7 +28,20 @@ document.addEventListener("DOMContentLoaded", () => {
   setupDownloadButton();
   loadExamples();
   loadVersionInfo();
+  loadSupportedExtensions();
 });
+
+async function loadSupportedExtensions() {
+  try {
+    const response = await fetch("/supported-extensions");
+    const extensions = await response.json();
+    if (extensions && extensions.length > 0) {
+      fileInput.accept = extensions.join(",");
+    }
+  } catch (error) {
+    console.error("Failed to load supported extensions:", error);
+  }
+}
 
 // Drag and Drop
 function setupDragAndDrop() {

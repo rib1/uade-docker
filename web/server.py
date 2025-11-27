@@ -665,6 +665,14 @@ def index():
     return send_from_directory("static", "index.html")
 
 
+@app.route("/supported-extensions")
+@limiter.exempt
+def get_supported_extensions():
+    """Return a list of supported file extensions"""
+    extensions = sorted(list(MODULE_FILE_EXTENSIONS)) + ["lha", "zip"]
+    return jsonify([f".{ext}" for ext in extensions])
+
+
 @app.route("/health")
 @limiter.exempt
 def health():
