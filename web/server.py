@@ -10,6 +10,7 @@ import ipaddress
 import logging
 import os
 import re
+
 import requests
 import shutil
 import socket
@@ -386,8 +387,10 @@ def find_music_file(extract_dir):
     music_files = []
     for file_path in extract_dir.rglob("*"):
         if file_path.is_file():
-            ext = file_path.suffix.lower()[1:]
-            prefix = file_path.name.lower().split(".")[0]
+            # Strip is applied to remove any leading/trailing spaces from extension and prefix,
+            # which can occur in extracted files (e.g., 'Spirit-Creator.mod '), ensuring robust matching.
+            ext = file_path.suffix.lower()[1:].strip()
+            prefix = file_path.name.lower().split(".")[0].strip()
             if ext in MODULE_FILE_EXTENSIONS or prefix in MODULE_FILE_EXTENSIONS:
                 music_files.append(file_path)
     if not music_files:
