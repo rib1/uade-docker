@@ -514,7 +514,8 @@ def detect_module_metadata(input_path):
     """
     try:
         cmd = ["/usr/local/bin/uade123", "-g", str(input_path)]
-        result = subprocess.run(cmd, capture_output=True, text=True, timeout=10)
+        # Use encoding='latin1' to avoid decode errors with non-UTF-8 bytes in output
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=10, encoding='latin1')
 
         module_name = None
         module_format = None
