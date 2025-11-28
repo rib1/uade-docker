@@ -6,6 +6,7 @@
   --danger: #dc3545;
   --warning: #ffc107;
   --info: #17a2b8;
+  --info-dark: #117a8c;
   --background: #1a1a2e;
   --surface: #16213e;
   --surface-light: #1f2b47;
@@ -110,7 +111,7 @@ h2 {
 }
 
 .example-card .format-badge {
-  background: var(--primary);
+  background: var(--primary-dark);
   color: white;
   padding: 2px 8px;
   border-radius: 4px;
@@ -121,7 +122,7 @@ h2 {
 .example-card .play-btn {
   width: 100%;
   padding: 8px;
-  background: var(--primary);
+  background: var(--primary-dark);
   color: white;
   border: none;
   border-radius: 6px;
@@ -131,7 +132,7 @@ h2 {
 }
 
 .example-card .play-btn:hover {
-  background: var(--primary-dark);
+  background: var(--primary);
 }
 
 .example-card .play-btn:disabled {
@@ -237,12 +238,12 @@ h2 {
 }
 
 .btn-primary {
-  background: var(--primary);
+  background: var(--primary-dark);
   color: white;
 }
 
 .btn-primary:hover {
-  background: var(--primary-dark);
+  background: var(--primary);
   transform: translateY(-1px);
   box-shadow: 0 4px 8px rgba(74, 158, 255, 0.3);
 }
@@ -281,7 +282,7 @@ h2 {
 
 .player-info .format-badge {
   display: inline-block;
-  background: var(--info);
+  background: var(--info-dark);
   color: white;
   padding: 4px 10px;
   border-radius: 4px;
@@ -344,7 +345,7 @@ audio {
 
 .status-warning {
   background: var(--warning);
-  color: #333;
+  color: black;
 }
 
 /* Loading Spinner */
