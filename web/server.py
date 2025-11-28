@@ -612,7 +612,7 @@ def process_audio_conversion(input_path, use_cache=True, compress_flac=False):
         ]  # Headless mode
 
         result = subprocess.run(
-            cmd, capture_output=True, text=True, timeout=300
+            cmd, capture_output=True, text=True, timeout=10, encoding='latin1'
         )  # 5 minute timeout
 
         if result.returncode != 0:
