@@ -274,6 +274,7 @@ async function loadExamples() {
       // Play button
       const playBtn = document.createElement("button");
       playBtn.className = "play-btn";
+      playBtn.setAttribute("type", "button");
       playBtn.setAttribute("data-example-id", example.id);
       playBtn.textContent = "▶ Play Now";
       playBtn.addEventListener("click", () =>

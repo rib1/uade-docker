@@ -114,7 +114,7 @@ limiter: Final = Limiter(
 
 @app.errorhandler(429)
 def ratelimit_handler(e):
-    return jsonify({"error": "Rate limit exceeded. Please wait and try again.", "code": 429}), 429
+    return json_response({"error": "Rate limit exceeded. Please wait and try again.", "code": 429}, 429)
 
 
 # Common Amiga module extensions and prefixes for detection module files in archives
@@ -271,6 +271,20 @@ EXAMPLES: Final = [
         "type": "mod",
     },
 ]
+
+
+def json_response(data, status=200):
+    """
+    Custom JSON response function that ensures Content-Type header includes charset=utf-8.
+
+    Args:
+        data: The data to be returned as JSON.
+        status (int, optional): HTTP status code for the response. Defaults to 200.
+    """
+    response = jsonify(data)
+    response.headers.extend({"Content-Type": "application/json; charset=utf-8"})
+    response.status_code = status
+    return response
 
 
 def cleanup_old_files():
@@ -671,14 +685,14 @@ def index():
 def get_supported_extensions():
     """Return a list of supported file extensions"""
     extensions = sorted(list(MODULE_FILE_EXTENSIONS)) + ["lha", "zip"]
-    return jsonify([f".{ext}" for ext in extensions])
+    return json_response([f".{ext}" for ext in extensions])
 
 
 @app.route("/health")
 @limiter.exempt
 def health():
     """Health check for load balancers"""
-    return jsonify(
+    return json_response(
         {
             "status": "healthy",
             "version": GIT_COMMIT,
@@ -692,7 +706,7 @@ def health():
 @limiter.exempt
 def get_examples():
     """Return list of example modules"""
-    return jsonify(EXAMPLES)
+    return json_response(EXAMPLES)
 
 
 @app.route("/upload", methods=["POST"])
@@ -702,11 +716,11 @@ def upload_file():
     cleanup_old_files()
 
     if "file" not in request.files:
-        return jsonify({"error": "No file provided"}), 400
+        return json_response({"error": "No file provided"}, 400)
 
     file = request.files["file"]
     if file.filename == "":
-        return jsonify({"error": "No file selected"}), 400
+        return json_response({"error": "No file selected"}, 400)
 
     try:
         # Check browser FLAC support
@@ -726,7 +740,7 @@ def upload_file():
 
     except Exception as e:
         logger.error(f"Upload error: {e}")
-        return jsonify({"error": str(e)}), 500
+        return json_response({"error": str(e)}, 500)
 
 
 def process_module_and_respond(module_path, filename, use_flac):
@@ -743,7 +757,7 @@ def process_module_and_respond(module_path, filename, use_flac):
                 module_path.unlink(missing_ok=True)
                 if extract_dir.exists():
                     shutil.rmtree(extract_dir, ignore_errors=True)
-                return jsonify({"error": error}), 500
+                return json_response({"error": error}, 500)
             filename = music_file.name
             module_path = music_file
         elif is_zip_file(module_path):
@@ -753,7 +767,7 @@ def process_module_and_respond(module_path, filename, use_flac):
                 module_path.unlink(missing_ok=True)
                 if extract_dir.exists():
                     shutil.rmtree(extract_dir, ignore_errors=True)
-                return jsonify({"error": error}), 500
+                return json_response({"error": error}, 500)
             filename = music_file.name
             module_path = music_file
 
@@ -776,9 +790,9 @@ def process_module_and_respond(module_path, filename, use_flac):
         if extract_dir.exists():
             shutil.rmtree(extract_dir, ignore_errors=True)
         if not success:
-            return jsonify({"error": error}), 500
+            return json_response({"error": error}, 500)
 
-        return jsonify(
+        return json_response(
             {
                 "success": True,
                 "file_id": converted_file_id,
@@ -796,7 +810,7 @@ def process_module_and_respond(module_path, filename, use_flac):
 
     except Exception as e:
         logger.error(f"Conversion error: {e}")
-        return jsonify({"error": str(e)}), 500
+        return json_response({"error": str(e)}, 500)
 
 
 def is_safe_url(u):
@@ -874,13 +888,13 @@ def convert_url():
 
     data = request.get_json()
     if not data or "url" not in data:
-        return jsonify({"error": "No URL provided"}), 400
+        return json_response({"error": "No URL provided"}, 400)
 
     url = data["url"]
     sample_url = data.get("sample_url")
 
     if not is_safe_url(url) or (sample_url and not is_safe_url(sample_url)):
-        return jsonify({"error": "Unsafe or disallowed sample_url"}), 400
+        return json_response({"error": "Unsafe or disallowed sample_url"}, 400)
 
     try:
         # Check browser FLAC support
@@ -938,10 +952,10 @@ def convert_url():
 
     except requests.RequestException as e:
         logger.error(f"Download error: {e}")
-        return jsonify({"error": f"Download failed: {str(e)}"}), 500
+        return json_response({"error": f"Download failed: {str(e)}"}, 500)
     except Exception as e:
         logger.error(f"Convert URL error: {e}")
-        return jsonify({"error": str(e)}), 500
+        return json_response({"error": str(e)}, 500)
 
 
 def sanitized_url(url, log=True):
@@ -1004,7 +1018,7 @@ def play_example(example_id):
 
     example = next((ex for ex in EXAMPLES if ex["id"] == example_id), None)
     if not example:
-        return jsonify({"error": "Example not found"}), 404
+        return json_response({"error": "Example not found"}, 404)
 
     # Prepare payload for convert_url
     if example["type"] == "tfmx":
@@ -1051,7 +1065,7 @@ def serve_audio_file(file_id, as_attachment=False, custom_filename=None):
     Also checks remote cache if local file is missing.
     """
     if not re.fullmatch(r"[a-zA-Z0-9_-]+", file_id):
-        return jsonify({"error": "Invalid file_id"}), 400
+        return json_response({"error": "Invalid file_id"}, 400)
     # Sanitize file_id to ensure a safe filename
     safe_file_id = secure_filename(file_id)
 
@@ -1075,10 +1089,10 @@ def serve_audio_file(file_id, as_attachment=False, custom_filename=None):
                     filename = f"uade_{safe_file_id}{ext}"
                 break
         if not file_path:
-            return jsonify({"error": "File not found or forbidden"}), 404
+            return json_response({"error": "File not found or forbidden"}, 404)
     except ValueError:
         # Path not contained within converted_dir_base
-        return jsonify({"error": "File not found or forbidden"}), 404
+        return json_response({"error": "File not found or forbidden"}, 404)
 
     file_size = file_path.stat().st_size
 
