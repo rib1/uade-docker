@@ -1,28 +1,26 @@
 <!doctype html>
 <html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>UADE Web Player - Amiga Music in Your Browser</title>
-    <link rel="icon" type="image/x-icon" href="/static/favicon.ico" />
-    <link
-      rel="icon"
-      type="image/png"
-      sizes="32x32"
-      href="/static/favicon.png"
-    />
-    <link rel="stylesheet" href="/static/style.css" />
-  </head>
-  <body>
-    <div class="container">
-      <header>
-        <h1>🎵 UADE Web Player</h1>
-        <p>Play Amiga music modules in your browser</p>
-      </header>
 
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>UADE Web Player - Amiga Music in Your Browser</title>
+  <link rel="icon" type="image/x-icon" href="/static/favicon.ico">
+  <link rel="icon" type="image/png" sizes="32x32" href="/static/favicon.png">
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+
+<body>
+  <div class="container">
+    <header>
+      <h1>🎵 UADE Web Player</h1>
+      <p>Play Amiga music modules in your browser</p>
+    </header>
+
+    <main>
       <!-- Example Modules Section -->
       <section class="examples">
-        <h2>🕹️  Try These Classics</h2>
+        <h2>🕹️ Try These Classics</h2>
         <div id="examples-grid" class="examples-grid">
           <!-- Populated by JavaScript -->
         </div>
@@ -36,12 +34,7 @@
             <p>Drag &amp; drop your mod., ahx., cust., .lha, .zip, or other module file here</p>
             <p class="or">or</p>
             <label for="module-file-input" class="btn btn-primary">Browse Files</label>
-            <input
-              type="file"
-              id="module-file-input"
-              accept=".mod,.ahx,.tfmx,.mdat,.smpl,.cust,.lha,.zip"
-              hidden
-            />
+            <input type="file" id="module-file-input" accept=".mod,.ahx,.tfmx,.mdat,.smpl,.cust,.lha,.zip" hidden>
             <p class="file-info">Max size: 10MB • LHA and ZIP archives auto-extracted</p>
           </div>
         </div>
@@ -51,12 +44,7 @@
       <section class="url-section">
         <h2>🌐 Download from URL</h2>
         <div class="url-form">
-          <input
-            type="text"
-            id="url-input"
-            placeholder="https://modland.com/pub/modules/..."
-            class="input-url"
-          />
+          <input type="text" id="url-input" placeholder="https://modland.com/pub/modules/..." class="input-url" aria-label="Module URL">
           <button type="button" id="url-submit" class="btn btn-primary">
             Convert &amp; Play
           </button>
@@ -65,27 +53,19 @@
           <summary>Where to find modules?</summary>
           <ul>
             <li>
-              <a href="https://modland.com/pub/modules/" target="_blank"
-                >Modland</a
-              >
+              <a href="https://modland.com/pub/modules/" target="_blank">Modland</a>
               - Comprehensive module database
             </li>
             <li>
-              <a href="https://modarchive.org" target="_blank"
-                >The Mod Archive</a
-              >
+              <a href="https://modarchive.org" target="_blank">The Mod Archive</a>
               - Large collection
             </li>
             <li>
-              <a href="https://amp.dascene.net" target="_blank"
-                >Amiga Music Preservation</a
-              >
+              <a href="https://amp.dascene.net" target="_blank">Amiga Music Preservation</a>
               - Amiga-specific
             </li>
             <li>
-              <a href="https://www.exotica.org.uk/" target="_blank"
-                >ExoticA</a
-              >
+              <a href="https://www.exotica.org.uk/" target="_blank">ExoticA</a>
               - Amiga music and demoscene wiki and a large archive dedicated to classic Amiga music and software.
             </li>
             <li>
@@ -93,9 +73,7 @@
               - One of the Internet's oldest repositories, including mods
             </li>
             <li>
-              <a href="https://files.scene.org/browse/music" target="_blank"
-                >scene.org</a
-              >
+              <a href="https://files.scene.org/browse/music" target="_blank">scene.org</a>
               - Demoscene file archive
             </li>
           </ul>
@@ -109,18 +87,8 @@
           <summary>TFMX modules require two files</summary>
           <p>TFMX format needs both mdat.* (music data) and smpl.* (samples)</p>
           <div class="tfmx-form">
-            <input
-              type="text"
-              id="mdat-url"
-              placeholder="mdat URL (music data)"
-              class="input-url"
-            />
-            <input
-              type="text"
-              id="smpl-url"
-              placeholder="smpl URL (samples)"
-              class="input-url"
-            />
+            <input type="text" id="mdat-url" placeholder="mdat URL (music data)" class="input-url" aria-label="TFMX MDAT URL">
+            <input type="text" id="smpl-url" placeholder="smpl URL (samples)" class="input-url" aria-label="TFMX SMPL URL">
             <button type="button" id="tfmx-submit" class="btn btn-primary">
               Convert TFMX
             </button>
@@ -138,7 +106,8 @@
             <div id="custom-info" class="custom-info" style="display:none;">
               <span class="custom-info-icon">ℹ️</span>
               <span class="custom-info-text">
-                <strong>Custom module:</strong> This module contains both music data and its own replay routine (embedded player code). UADE runs the embedded replay code directly.
+                <strong>Custom module:</strong> This module contains both music data and its own replay routine
+                (embedded player code). UADE runs the embedded replay code directly.
               </span>
             </div>
           </div>
@@ -153,31 +122,27 @@
 
       <!-- Status Messages -->
       <div id="status-container"></div>
+    </main>
 
-      <!-- Info Footer -->
-      <footer>
-        <p>
-          Powered by
-          <a href="https://zakalwe.fi/uade/" target="_blank">UADE</a> - Unix
-          Amiga Delitracker Emulator
-        </p>
-        <p>
-          Supports 100+ Amiga music formats including Protracker, TFMX, AHX, and
-          more
-        </p>
-        <p>
-          <a href="https://github.com/rib1/uade-docker" target="_blank"
-            >GitHub</a
-          >
-          |
-          <a href="https://gitlab.com/uade-music-player/uade" target="_blank"
-            >UADE Repository</a
-          >
-        </p>
-        <p id="version-info" class="version-info">Loading version...</p>
-      </footer>
-    </div>
+    <!-- Info Footer -->
+    <footer>
+      <p>
+        Powered by
+        <a href="https://zakalwe.fi/uade/" target="_blank">UADE</a> - Unix Amiga Delitracker Emulator
+      </p>
+      <p>
+        Supports 100+ Amiga music formats including Protracker, TFMX, AHX, and more
+      </p>
+      <p>
+        <a href="https://github.com/rib1/uade-docker" target="_blank">GitHub</a>
+        |
+        <a href="https://gitlab.com/uade-music-player/uade" target="_blank">UADE Repository</a>
+      </p>
+      <p id="version-info" class="version-info">Loading version...</p>
+    </footer>
+  </div>
 
-    <script src="/static/app.js"></script>
-  </body>
+  <script src="/static/app.js"></script>
+</body>
+
 </html>
