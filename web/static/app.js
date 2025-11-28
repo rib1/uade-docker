@@ -358,22 +358,20 @@ function playFile(
   }
   currentTrack.textContent = trackDisplay;
 
-  const trackFormatElem = document.getElementById("track-format");
-  trackFormatElem.textContent = ""; // Clear previous content
-
+  trackFormat.textContent = ""; // Clear previous content
   if (moduleFormat && playerFormat && moduleFormat !== playerFormat) {
     // Show both if they're different, separated by a line break (use <br> safely)
-    trackFormatElem.appendChild(document.createTextNode(moduleFormat));
-    trackFormatElem.appendChild(document.createElement("br"));
-    trackFormatElem.appendChild(document.createTextNode(playerFormat));
+    trackFormat.appendChild(document.createTextNode(moduleFormat));
+    trackFormat.appendChild(document.createElement("br"));
+    trackFormat.appendChild(document.createTextNode(playerFormat));
   } else if (moduleFormat) {
     // Show module format if available
-    trackFormatElem.textContent = moduleFormat;
+    trackFormat.textContent = moduleFormat;
   } else if (playerFormat) {
     // Fallback to player format
-    trackFormatElem.textContent = playerFormat;
+    trackFormat.textContent = playerFormat;
   } else {
-    trackFormatElem.textContent = "Module";
+    trackFormat.textContent = "Module";
   }
 
   // Show infobox for Custom modules

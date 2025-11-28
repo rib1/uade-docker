@@ -76,6 +76,7 @@ CONVERTED_DIR: Final = Path("/tmp/converted")
 for directory in [MODULES_DIR, CONVERTED_DIR]:
     directory.mkdir(parents=True, exist_ok=True)
 
+
 def get_fs_and_root(uri, fs_kwargs=None):
     fs_kwargs = fs_kwargs or {}
     # Detect S3 URI for remote storage support
@@ -115,82 +116,84 @@ limiter: Final = Limiter(
 
 @app.errorhandler(429)
 def ratelimit_handler(e):
-    return json_response({"error": "Rate limit exceeded. Please wait and try again.", "code": 429}, 429)
+    return json_response(
+        {"error": "Rate limit exceeded. Please wait and try again.", "code": 429}, 429
+    )
 
 
 # Common Amiga module extensions and prefixes for detection module files in archives
 MODULE_FILE_EXTENSIONS: Final = {
-    "aam", # Art And Magic
-    "adsc", # Audio Sculpture
-    "ahx", # Abyss' Highest eXperience
-    "amc", # AM Composer
-    "aon", # Art Of Noise
-    "aon8", # Art Of Noise 8 voices
-    "ast", # Action Amics
-    "bd", # Ben Daglish
-    "bds", # Ben Daglish SID
-    "bp", # BP SoundMon 2
-    "bp3", # BP SoundMon 3
-    "bsi", # Future Composer BSI
-    "bss", # Beathoven Synthesizer
-    "cm", # CustomMade
-    "cust", # Custom module, including player routines
-    "dbm", # DigiBooster 2.x and 3.x
-    "di", # Digital Illusions aka GrapeTracker
-    "digi", # DigiBooster 1.x
-    "dl", # Dave Lowe
-    "dln", # Dave Lowe New
-    "dll", # Digital Mugician successor of SidMon
-    "dm", # Delta Music
-    "dm2", # Delta Music 2
-    "dmu", # Digital Mugician
-    "dp", # Delta Packer
-    "dw", # David Whittaker
-    "fc", # Future Composer 1.0 - 1.3
-    "fc13", # Future Composer 1.3
-    "fc14", # Future Composer 1.4
-    "fred", # Fred Gray
-    "gray", # FredMon
-    "hip", # Hippel
-    "hip7", # Hippel 7-channel
-    "hipc", # Hippel COSO
-    "hvl", # Hively Tracker
+    "aam",  # Art And Magic
+    "adsc",  # Audio Sculpture
+    "ahx",  # Abyss' Highest eXperience
+    "amc",  # AM Composer
+    "aon",  # Art Of Noise
+    "aon8",  # Art Of Noise 8 voices
+    "ast",  # Action Amics
+    "bd",  # Ben Daglish
+    "bds",  # Ben Daglish SID
+    "bp",  # BP SoundMon 2
+    "bp3",  # BP SoundMon 3
+    "bsi",  # Future Composer BSI
+    "bss",  # Beathoven Synthesizer
+    "cm",  # CustomMade
+    "cust",  # Custom module, including player routines
+    "dbm",  # DigiBooster 2.x and 3.x
+    "di",  # Digital Illusions aka GrapeTracker
+    "digi",  # DigiBooster 1.x
+    "dl",  # Dave Lowe
+    "dln",  # Dave Lowe New
+    "dll",  # Digital Mugician successor of SidMon
+    "dm",  # Delta Music
+    "dm2",  # Delta Music 2
+    "dmu",  # Digital Mugician
+    "dp",  # Delta Packer
+    "dw",  # David Whittaker
+    "fc",  # Future Composer 1.0 - 1.3
+    "fc13",  # Future Composer 1.3
+    "fc14",  # Future Composer 1.4
+    "fred",  # Fred Gray
+    "gray",  # FredMon
+    "hip",  # Hippel
+    "hip7",  # Hippel 7-channel
+    "hipc",  # Hippel COSO
+    "hvl",  # Hively Tracker
     "instr",
-    "jd", # Special FX
-    "jt", # Jeroen Tel
-    "mdat", # TFMX song data
+    "jd",  # Special FX
+    "jt",  # Jeroen Tel
+    "mdat",  # TFMX song data
     "mcmd",
-    "med", # OctaMED
-    "mmd0", # OctaMED MMD0
-    "mmd1", # OctaMED MMD1
-    "mmd2", # OctaMED MMD2
-    "mmd3", # OctaMED MMD3
-    "mmdc", # OctaMED MMDC
-    "mod", # NoiseTracker, Protracker and derivatives
-    "mug", # Digital Mugician 2
-    "mus", # Sidplayer / Stereo Sidplayer
-    "okt", # Oktalyzer
-    "okta", # Oktalyzer
-    "osp", # Synth Pack
-    "rk", # Ron Klaren
-    "sa", # Sonic Arranger
-    "sc", # SoundControl
-    "sid", # SidMon 1
-    "sid2", # SidMon 2
-    "smpl", # TFMX sample data
-    "smod", # Future Composer 1.0 - 1.3
+    "med",  # OctaMED
+    "mmd0",  # OctaMED MMD0
+    "mmd1",  # OctaMED MMD1
+    "mmd2",  # OctaMED MMD2
+    "mmd3",  # OctaMED MMD3
+    "mmdc",  # OctaMED MMDC
+    "mod",  # NoiseTracker, Protracker and derivatives
+    "mug",  # Digital Mugician 2
+    "mus",  # Sidplayer / Stereo Sidplayer
+    "okt",  # Oktalyzer
+    "okta",  # Oktalyzer
+    "osp",  # Synth Pack
+    "rk",  # Ron Klaren
+    "sa",  # Sonic Arranger
+    "sc",  # SoundControl
+    "sid",  # SidMon 1
+    "sid2",  # SidMon 2
+    "smpl",  # TFMX sample data
+    "smod",  # Future Composer 1.0 - 1.3
     "smus",
-    "sng", # Synder SNG-Player
+    "sng",  # Synder SNG-Player
     "ss",
     "ssd",
-    "sun", # SunTronic
-    "sonic", # Sonic Arranger
-    "syn", # Synthesis
+    "sun",  # SunTronic
+    "sonic",  # Sonic Arranger
+    "syn",  # Synthesis
     "tf",
-    "tfmx", # TFMX
-    "tfx", # TFMX
-    "tfm", #TFMX
-    "thx", # original name for the AHX
+    "tfmx",  # TFMX
+    "tfx",  # TFMX
+    "tfm",  # TFMX
+    "thx",  # original name for the AHX
     "ym",
 }
 
@@ -515,7 +518,7 @@ def detect_module_metadata(input_path):
     try:
         cmd = ["/usr/local/bin/uade123", "-g", str(input_path)]
         # Use encoding='latin1' to avoid decode errors with non-UTF-8 bytes in output
-        result = subprocess.run(cmd, capture_output=True, text=True, timeout=10, encoding='latin1')
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=10, encoding="latin1")
 
         module_name = None
         module_format = None
@@ -612,7 +615,7 @@ def process_audio_conversion(input_path, use_cache=True, compress_flac=False):
         ]  # Headless mode
 
         result = subprocess.run(
-            cmd, capture_output=True, text=True, timeout=10, encoding='latin1'
+            cmd, capture_output=True, text=True, timeout=300, encoding="latin1"
         )  # 5 minute timeout
 
         if result.returncode != 0:
@@ -625,7 +628,7 @@ def process_audio_conversion(input_path, use_cache=True, compress_flac=False):
                 None,
                 None,
                 None,
-                False, # Not from cache
+                False,  # Not from cache
             )
         if not output_path.exists():
             return (
@@ -636,7 +639,7 @@ def process_audio_conversion(input_path, use_cache=True, compress_flac=False):
                 None,
                 None,
                 None,
-                False, # Not from cache
+                False,  # Not from cache
             )
         final_output = output_path
 
@@ -658,7 +661,7 @@ def process_audio_conversion(input_path, use_cache=True, compress_flac=False):
             module_name,
             module_format,
             subsongs,
-            False, # Not from cache
+            False,  # Not from cache
         )
 
     except subprocess.TimeoutExpired:
@@ -670,7 +673,7 @@ def process_audio_conversion(input_path, use_cache=True, compress_flac=False):
             None,
             None,
             None,
-            False, # Not from cache
+            False,  # Not from cache
         )
     except Exception as e:
         logger.error(f"Conversion exception: {e}")
@@ -729,7 +732,7 @@ def upload_file():
     try:
         # Check browser FLAC support
         user_agent = request.headers.get("User-Agent", "")
-        sanitized_user_agent = user_agent.replace('\r', '').replace('\n', '')
+        sanitized_user_agent = user_agent.replace("\r", "").replace("\n", "")
         logger.info(f"User-Agent: {sanitized_user_agent}")
         use_flac = supports_flac(user_agent)
 
@@ -1004,12 +1007,14 @@ def extract_filename_from_url(url):
     Returns a normalized, secure filename string.
     """
     url_for_filename = sanitized_url(url, log=False)
-    if url_for_filename.count('api.modarchive'):
-        filename = url_for_filename.split('#')[-1]
-    elif url_for_filename.count('?file=') or url_for_filename.count('get:'):
-        filename = url_for_filename.split('?file=')[-1].split('get:')[-1].split('/')[-1].split('?')[0]
+    if url_for_filename.count("api.modarchive"):
+        filename = url_for_filename.split("#")[-1]
+    elif url_for_filename.count("?file=") or url_for_filename.count("get:"):
+        filename = (
+            url_for_filename.split("?file=")[-1].split("get:")[-1].split("/")[-1].split("?")[0]
+        )
     else:
-        filename = url_for_filename.split('/')[-1].split('?')[0]
+        filename = url_for_filename.split("/")[-1].split("?")[0]
     filename = filename[:100]  # Limit to 100 chars
     return secure_filename(filename) or "module"
 
