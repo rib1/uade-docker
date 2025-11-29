@@ -1,4 +1,3 @@
-
 name: Build and Test Web Player
 
 on:
@@ -37,6 +36,7 @@ jobs:
         password: ${{ secrets.GITHUB_TOKEN }}
 
     - name: Build and Push Web Player image
+      id: build-and-push
       uses: docker/build-push-action@v6
       with:
         context: .
@@ -45,8 +45,8 @@ jobs:
         load: true
         tags: |
           ghcr.io/${{ github.repository_owner }}/uade-web-player:test
-          ghcr.io/${{ github.repository_owner }}/uade-web-player:latest
           ghcr.io/${{ github.repository_owner }}/uade-web-player:${{ github.sha }}
+          ${{ github.ref == 'refs/heads/main' && format('ghcr.io/{0}/uade-web-player:latest', github.repository_owner) || '' }}
         cache-from: |
           type=gha,scope=web
         cache-to: |
@@ -57,7 +57,7 @@ jobs:
   
     - name: Start Web Player container
       run: |
-        docker run -d -p 5000:5000 --name uade-web-test ghcr.io/${{ github.repository_owner }}/uade-web-player:test
+        docker run -d -p 5000:5000 --name uade-web-test ghcr.io/${{ github.repository_owner }}/uade-web-player:${{ github.sha }}
         sleep 10
 
     - name: Test health endpoint
@@ -103,27 +103,39 @@ jobs:
     steps:
     - name: Checkout code
       uses: actions/checkout@v6
+
+    - name: Set deployment tag
+      id: set-tag
+      run: |
+        if [[ "${{ github.ref }}" == "refs/heads/main" ]]; then
+          echo "tag=latest" >> $GITHUB_OUTPUT
+        else
+          echo "tag=${{ github.sha }}" >> $GITHUB_OUTPUT
+        fi
+
     - name: Authenticate to Google Cloud
       uses: google-github-actions/auth@v3
       with:
         credentials_json: ${{ secrets.GCP_SA_KEY }}
-    
+
     - name: Set up Cloud SDK
       uses: google-github-actions/setup-gcloud@v3
-    
+
     - name: Configure Docker for GCR
       run: gcloud auth configure-docker
+
     - name: Pull UADE web image from GHCR
-      run: docker pull ghcr.io/${{ github.repository_owner }}/uade-web-player:latest
+      run: docker pull ghcr.io/${{ github.repository_owner }}/uade-web-player:${{ github.sha }}
+
     - name: Tag and push to Google Container Registry
       run: |
-        docker tag ghcr.io/${{ github.repository_owner }}/uade-web-player:latest gcr.io/${{ env.PROJECT_ID }}/${{ env.SERVICE_NAME }}:latest
-        docker push gcr.io/${{ env.PROJECT_ID }}/${{ env.SERVICE_NAME }}:latest
+        docker tag ghcr.io/${{ github.repository_owner }}/uade-web-player:${{ github.sha }} gcr.io/${{ env.PROJECT_ID }}/${{ env.SERVICE_NAME }}:${{ steps.set-tag.outputs.tag }}
+        docker push gcr.io/${{ env.PROJECT_ID }}/${{ env.SERVICE_NAME }}:${{ steps.set-tag.outputs.tag }}
 
     - name: Deploy to Cloud Run
       run: |
         gcloud run deploy ${{ env.SERVICE_NAME }} \
-          --image gcr.io/${{ env.PROJECT_ID }}/${{ env.SERVICE_NAME }}:latest \
+          --image gcr.io/${{ env.PROJECT_ID }}/${{ env.SERVICE_NAME }}:${{ steps.set-tag.outputs.tag }} \
           --platform managed \
           --region ${{ env.REGION }} \
           --allow-unauthenticated \
@@ -162,6 +174,3 @@ jobs:
             repo: context.repo.repo,
             body: '🚀 Deployed to Cloud Run: ${{ steps.get-url.outputs.url }}'
           })
-
-
-
