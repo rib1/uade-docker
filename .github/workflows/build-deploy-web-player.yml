@@ -165,13 +165,14 @@ jobs:
       uses: actions/github-script@v8
       with:
         script: |
+          const queryParam = 'branch%3Amain';
           const body = `
           🚀 Deployed to Cloud Run: ${{ steps.get-url.outputs.url }}
 
           ---
           *This is a preview deployment. It will be replaced by subsequent pushes to this PR.*
 
-          🔄 To revert this preview to the stable version, go to the [Actions tab](https://github.com/${{ github.repository }}/actions/workflows/build-deploy-web-player.yml?query=branch%3Amain), select the `main` branch, and click 'Run workflow'.
+          🔄 To revert this preview to the stable version, go to the [Actions tab](https://github.com/${{ github.repository }}/actions/workflows/build-deploy-web-player.yml?query=${queryParam}), and click 'Run workflow'.
           `;
           github.rest.issues.createComment({
             issue_number: context.issue.number,
