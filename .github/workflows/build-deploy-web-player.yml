@@ -1,7 +1,7 @@
-
 name: Build and Test Web Player
 
 on:
+  workflow_dispatch:
   push:
     branches: [ main ]
     paths:
@@ -37,6 +37,7 @@ jobs:
         password: ${{ secrets.GITHUB_TOKEN }}
 
     - name: Build and Push Web Player image
+      id: build-and-push
       uses: docker/build-push-action@v6
       with:
         context: .
@@ -47,6 +48,7 @@ jobs:
           ghcr.io/${{ github.repository_owner }}/uade-web-player:test
           ghcr.io/${{ github.repository_owner }}/uade-web-player:latest
           ghcr.io/${{ github.repository_owner }}/uade-web-player:${{ github.sha }}
+          ${{ github.ref == 'refs/heads/main' && format('ghcr.io/{0}/uade-web-player:stable', github.repository_owner) || '' }}
         cache-from: |
           type=gha,scope=web
         cache-to: |
@@ -57,7 +59,7 @@ jobs:
   
     - name: Start Web Player container
       run: |
-        docker run -d -p 5000:5000 --name uade-web-test ghcr.io/${{ github.repository_owner }}/uade-web-player:test
+        docker run -d -p 5000:5000 --name uade-web-test ghcr.io/${{ github.repository_owner }}/uade-web-player:${{ github.sha }}
         sleep 10
 
     - name: Test health endpoint
@@ -103,21 +105,28 @@ jobs:
     steps:
     - name: Checkout code
       uses: actions/checkout@v6
+
     - name: Authenticate to Google Cloud
       uses: google-github-actions/auth@v3
       with:
         credentials_json: ${{ secrets.GCP_SA_KEY }}
-    
+
     - name: Set up Cloud SDK
       uses: google-github-actions/setup-gcloud@v3
-    
+
     - name: Configure Docker for GCR
       run: gcloud auth configure-docker
+
     - name: Pull UADE web image from GHCR
-      run: docker pull ghcr.io/${{ github.repository_owner }}/uade-web-player:latest
+      run: docker pull ghcr.io/${{ github.repository_owner }}/uade-web-player:${{ github.sha }}
+
     - name: Tag and push to Google Container Registry
       run: |
-        docker tag ghcr.io/${{ github.repository_owner }}/uade-web-player:latest gcr.io/${{ env.PROJECT_ID }}/${{ env.SERVICE_NAME }}:latest
+        # GCR (Google Container Registry) only needs the specific image version this branch wants to deploy.
+        # The best practice is to copy that specific version (identified by its SHA) into Google's local
+        # registry (GCR) to make the final deployment as fast, secure, and reliable as possible.
+        # Currently, we are deploying to a single Cloud Run service, so the GCR image is tagged ':latest'.
+        docker tag ghcr.io/${{ github.repository_owner }}/uade-web-player:${{ github.sha }} gcr.io/${{ env.PROJECT_ID }}/${{ env.SERVICE_NAME }}:latest
         docker push gcr.io/${{ env.PROJECT_ID }}/${{ env.SERVICE_NAME }}:latest
 
     - name: Deploy to Cloud Run
@@ -156,12 +165,18 @@ jobs:
       uses: actions/github-script@v8
       with:
         script: |
+          const queryParam = 'branch%3Amain';
+          const body = `
+          🚀 Deployed to Cloud Run: ${{ steps.get-url.outputs.url }}
+
+          ---
+          *This is a preview deployment. It will be replaced by subsequent pushes to this PR.*
+
+          🔄 To revert this preview to the stable version, go to the [Actions tab](https://github.com/${{ github.repository }}/actions/workflows/build-deploy-web-player.yml?query=${queryParam}), and click 'Run workflow'.
+          `;
           github.rest.issues.createComment({
             issue_number: context.issue.number,
             owner: context.repo.owner,
             repo: context.repo.repo,
-            body: '🚀 Deployed to Cloud Run: ${{ steps.get-url.outputs.url }}'
+            body: body
           })
-
-
-
