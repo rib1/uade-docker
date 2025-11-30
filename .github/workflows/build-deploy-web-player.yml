@@ -1,6 +1,7 @@
 name: Build and Test Web Player
 
 on:
+  workflow_dispatch:
   push:
     branches: [ main ]
     paths:
@@ -170,7 +171,7 @@ jobs:
           ---
           *This is a preview deployment. It will be replaced by subsequent pushes to this PR.*
 
-          🔄 To revert this preview to the stable version, [click here to redeploy the \`main\` branch](https://github.com/${{ github.repository }}/actions/workflows/build-deploy-web-player.yml?query=branch%3Amain).
+          🔄 To revert this preview to the stable version, go to the [Actions tab](https://github.com/${{ github.repository }}/actions/workflows/build-deploy-web-player.yml?query=branch%3Amain), select the `main` branch, and click 'Run workflow'.
           `;
           github.rest.issues.createComment({
             issue_number: context.issue.number,
