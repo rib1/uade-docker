@@ -23,8 +23,14 @@
 
 body {
   font-family:
-    -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen, Ubuntu,
-    Cantarell, sans-serif;
+    -apple-system,
+    BlinkMacSystemFont,
+    "Segoe UI",
+    Roboto,
+    Oxygen,
+    Ubuntu,
+    Cantarell,
+    sans-serif;
   background: var(--background);
   color: var(--text);
   line-height: 1.6;
@@ -72,6 +78,27 @@ h2 {
   margin-bottom: 20px;
   color: var(--primary);
   font-size: 1.5rem;
+}
+
+/* Footer */
+footer {
+  text-align: center;
+  padding: 30px 20px;
+  color: var(--text-dim);
+  font-size: 0.9rem;
+}
+
+footer p {
+  margin-bottom: 5px;
+}
+
+footer a {
+  color: var(--primary);
+  text-decoration: none;
+}
+
+footer a:hover {
+  text-decoration: underline;
 }
 
 /* Examples Grid */
@@ -322,6 +349,7 @@ audio {
     transform: translateX(400px);
     opacity: 0;
   }
+
   to {
     transform: translateX(0);
     opacity: 1;
@@ -365,27 +393,7 @@ audio {
   }
 }
 
-/* Footer */
-footer {
-  text-align: center;
-  padding: 30px 20px;
-  color: var(--text-dim);
-  font-size: 0.9rem;
-}
-
-footer p {
-  margin-bottom: 5px;
-}
-
-footer a {
-  color: var(--primary);
-  text-decoration: none;
-}
-
-footer a:hover {
-  text-decoration: underline;
-}
-
+/* Version Info */
 .version-info {
   font-size: 0.8rem;
   color: #666 !important;
