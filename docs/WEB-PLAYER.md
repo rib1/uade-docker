@@ -5,7 +5,7 @@ Play Amiga music modules directly in your web browser! No desktop software requi
 ## Features
 
 - 🎵 **Play in Browser** - Upload or download modules, hear them instantly
-- 🎮 **Example Modules** - Try famous Amiga classics with one click
+- 🕹️ **Example Modules** - Try famous Amiga classics with one click
 - 🌐 **URL Support** - Download directly from Modland, ModArchive, etc.
 - 📦 **LHA & ZIP Archive Support** - Automatically extracts classic Amiga LHA archives (and ZIP)
 - 🎹 **TFMX Support** - Handles dual-file TFMX modules automatically
