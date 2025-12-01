@@ -1,11 +1,12 @@
 :root {
   --primary: #4a9eff;
-  --primary-dark: #3380d6;
+  --primary-dark: #4877bf;
   --secondary: #6c757d;
   --success: #28a745;
   --danger: #dc3545;
   --warning: #ffc107;
   --info: #17a2b8;
+  --info-dark: #117a8c;
   --background: #1a1a2e;
   --surface: #16213e;
   --surface-light: #1f2b47;
@@ -22,8 +23,14 @@
 
 body {
   font-family:
-    -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen, Ubuntu,
-    Cantarell, sans-serif;
+    -apple-system,
+    BlinkMacSystemFont,
+    "Segoe UI",
+    Roboto,
+    Oxygen,
+    Ubuntu,
+    Cantarell,
+    sans-serif;
   background: var(--background);
   color: var(--text);
   line-height: 1.6;
@@ -73,6 +80,27 @@ h2 {
   font-size: 1.5rem;
 }
 
+/* Footer */
+footer {
+  text-align: center;
+  padding: 30px 20px;
+  color: var(--text-dim);
+  font-size: 0.9rem;
+}
+
+footer p {
+  margin-bottom: 5px;
+}
+
+footer a {
+  color: var(--primary);
+  text-decoration: none;
+}
+
+footer a:hover {
+  text-decoration: underline;
+}
+
 /* Examples Grid */
 .examples-grid {
   display: grid;
@@ -110,7 +138,7 @@ h2 {
 }
 
 .example-card .format-badge {
-  background: var(--primary);
+  background: var(--primary-dark);
   color: white;
   padding: 2px 8px;
   border-radius: 4px;
@@ -121,7 +149,7 @@ h2 {
 .example-card .play-btn {
   width: 100%;
   padding: 8px;
-  background: var(--primary);
+  background: var(--primary-dark);
   color: white;
   border: none;
   border-radius: 6px;
@@ -131,7 +159,7 @@ h2 {
 }
 
 .example-card .play-btn:hover {
-  background: var(--primary-dark);
+  background: var(--primary);
 }
 
 .example-card .play-btn:disabled {
@@ -237,12 +265,12 @@ h2 {
 }
 
 .btn-primary {
-  background: var(--primary);
+  background: var(--primary-dark);
   color: white;
 }
 
 .btn-primary:hover {
-  background: var(--primary-dark);
+  background: var(--primary);
   transform: translateY(-1px);
   box-shadow: 0 4px 8px rgba(74, 158, 255, 0.3);
 }
@@ -281,7 +309,7 @@ h2 {
 
 .player-info .format-badge {
   display: inline-block;
-  background: var(--info);
+  background: var(--info-dark);
   color: white;
   padding: 4px 10px;
   border-radius: 4px;
@@ -321,6 +349,7 @@ audio {
     transform: translateX(400px);
     opacity: 0;
   }
+
   to {
     transform: translateX(0);
     opacity: 1;
@@ -344,7 +373,7 @@ audio {
 
 .status-warning {
   background: var(--warning);
-  color: #333;
+  color: black;
 }
 
 /* Loading Spinner */
@@ -364,27 +393,7 @@ audio {
   }
 }
 
-/* Footer */
-footer {
-  text-align: center;
-  padding: 30px 20px;
-  color: var(--text-dim);
-  font-size: 0.9rem;
-}
-
-footer p {
-  margin-bottom: 5px;
-}
-
-footer a {
-  color: var(--primary);
-  text-decoration: none;
-}
-
-footer a:hover {
-  text-decoration: underline;
-}
-
+/* Version Info */
 .version-info {
   font-size: 0.8rem;
   color: #666 !important;

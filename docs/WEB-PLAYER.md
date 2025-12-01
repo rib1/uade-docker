@@ -350,6 +350,32 @@ UADE Web Player uses per-endpoint and global rate limits to prevent abuse and en
 
 You can adjust limits via the `RATE_LIMIT` environment variable and endpoint decorators in `server.py`.
 
+## Accessibility (WCAG Compliance)
+
+The UADE Web Player strives to meet Web Content Accessibility Guidelines (WCAG) 2.1 AA standards to ensure a usable experience for all. Key accessibility features include:
+
+### Color Contrast
+
+UI elements maintain a minimum contrast ratio of 4.5:1 for normal text, complying with WCAG AA requirements. This applies to:
+
+- **Format Badges:** Background colors for badges in example cards and the player section ensure sufficient contrast with white text.
+- **Primary Buttons:** Default and hover states for primary buttons meet contrast guidelines.
+- **Warning and Status Messages:** Text color for messages have sufficient contrast against their background.
+
+### Semantic Structure and Landmark Roles
+
+The HTML structure includes appropriate landmark roles, aiding navigation for users of assistive technologies:
+
+- **Header:** The top section of each page, containing introductory content or navigational links, is semantically marked with a `<header>` tag.
+- **Main Content Landmark:** Primary content sections of the application are enclosed within a `<main>` tag, allowing screen readers to easily navigate to the main content area.
+- **Footer:** The bottom section of each page, typically containing copyright information, navigation, or contact details, is semantically marked with a `<footer>` tag.
+
+### Form Field Labels
+
+Interactive input fields have associated accessible names to ensure they are properly identified by assistive technologies:
+
+- **`aria-label` Attributes:** Input fields for URL entry and TFMX module components (`mdat-url`, `smpl-url`) utilize `aria-label` attributes, providing clear programmatic labels for screen reader users.
+
 ## Troubleshooting
 
 **Build fails:**
