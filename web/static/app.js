@@ -401,6 +401,28 @@ function playFile(
     console.error("Playback error:", err);
     showStatus("Playback error - check browser console", "error");
   });
+
+  // Update media session for lock screen
+  updateMediaSession(moduleName, "UADE Web Player", playerFormat || "Amiga Module");
+}
+
+// Update Media Session
+function updateMediaSession(title, artist, album) {
+  if ("mediaSession" in navigator) {
+    navigator.mediaSession.metadata = new MediaMetadata({
+      title: title,
+      artist: artist,
+      album: album,
+      artwork: [
+        { src: "/static/favicon.png", sizes: "96x96", type: "image/png" },
+        { src: "/static/favicon.png", sizes: "128x128", type: "image/png" },
+        { src: "/static/favicon.png", sizes: "192x192", type: "image/png" },
+        { src: "/static/favicon.png", sizes: "256x256", type: "image/png" },
+        { src: "/static/favicon.png", sizes: "384x384", type: "image/png" },
+        { src: "/static/favicon.png", sizes: "512x512", type: "image/png" },
+      ],
+    });
+  }
 }
 
 // Download Button
