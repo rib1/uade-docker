@@ -107,6 +107,7 @@ jobs:
       uses: actions/checkout@v6
 
     - name: Authenticate to Google Cloud
+      if: github.actor != 'dependabot[bot]'
       uses: google-github-actions/auth@v3
       with:
         credentials_json: ${{ secrets.GCP_SA_KEY }}
