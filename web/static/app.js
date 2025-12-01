@@ -403,7 +403,7 @@ function playFile(
   });
 
   // Update media session for lock screen
-  updateMediaSession(moduleName, "UADE Web Player", playerFormat || "Amiga Module");
+  updateMediaSession(moduleName, moduleFormat || playerFormat || "Amiga Module", "UADE Web Player");
 }
 
 // Update Media Session
@@ -414,12 +414,12 @@ function updateMediaSession(title, artist, album) {
       artist: artist,
       album: album,
       artwork: [
-        { src: "/static/favicon.png", sizes: "96x96", type: "image/png" },
-        { src: "/static/favicon.png", sizes: "128x128", type: "image/png" },
-        { src: "/static/favicon.png", sizes: "192x192", type: "image/png" },
-        { src: "/static/favicon.png", sizes: "256x256", type: "image/png" },
-        { src: "/static/favicon.png", sizes: "384x384", type: "image/png" },
-        { src: "/static/favicon.png", sizes: "512x512", type: "image/png" },
+        { src: "/static/protracker_square.png", sizes: "96x96", type: "image/png" },
+        { src: "/static/protracker_square.png", sizes: "128x128", type: "image/png" },
+        { src: "/static/protracker_square.png", sizes: "192x192", type: "image/png" },
+        { src: "/static/protracker_square.png", sizes: "256x256", type: "image/png" },
+        { src: "/static/protracker_square.png", sizes: "384x384", type: "image/png" },
+        { src: "/static/protracker_square.png", sizes: "512x512", type: "image/png" },
       ],
     });
   }
