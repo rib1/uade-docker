@@ -403,7 +403,7 @@ function playFile(
   });
 
   // Update media session for lock screen
-  updateMediaSession(moduleName, moduleFormat || playerFormat || "Amiga Module", "UADE Web Player");
+  updateMediaSession(trackDisplay, moduleFormat || playerFormat || "Amiga Module", "UADE Web Player");
 }
 
 // Update Media Session
