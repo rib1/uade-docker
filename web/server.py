@@ -911,7 +911,7 @@ def convert_url():
         # --- Caching logic for main module file ---
         filename = extract_filename_from_url(url)
         # Compute cache hash from URL
-        url_hash = hashlib.md5(url.encode(), usedforsecurity=False).hexdigest()
+        url_hash = hashlib.md5(sanitized_url(url, log=False).encode(), usedforsecurity=False).hexdigest()
         module_path = MODULES_DIR / f"{filename}_{url_hash}"
 
         if module_path.exists():
@@ -930,7 +930,7 @@ def convert_url():
         # --- Caching logic for TFMX sample file ---
         sample_path = None
         if sample_url and sample_url != url:
-            sample_url_hash = hashlib.md5(sample_url.encode(), usedforsecurity=False).hexdigest()
+            sample_url_hash = hashlib.md5(sanitized_url(sample_url, log=False).encode(), usedforsecurity=False).hexdigest()
             # Ensure filename matches mdat except for prefix
             if filename.startswith("mdat"):
                 smplfilename = "smpl" + filename[4:]
