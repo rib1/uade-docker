@@ -520,10 +520,10 @@ def detect_module_metadata(input_path):
         # Use encoding='latin1' to avoid decode errors with non-UTF-8 bytes in output
         result = subprocess.run(cmd, capture_output=True, text=True, timeout=10, encoding="latin1")
 
-        metadata_success = False # Flag to indicate if a player was found
+        metadata_success = False  # Flag to indicate if a player was found
         module_name = None
         module_format = None
-        player_format = "Module" # Default player format
+        player_format = "Module"  # Default player format
         subsongs = 1
 
         # Parse output to extract metadata
@@ -541,7 +541,7 @@ def detect_module_metadata(input_path):
                 module_format = module_format.replace("type:", "", 1).strip()
             elif line.startswith("playername:"):
                 player_format = line.split(":", 1)[1].strip()
-                metadata_success = True # A player was explicitly found
+                metadata_success = True  # A player was explicitly found
             elif line.startswith("subsongs:"):
                 # Parse "subsongs: cur 1 min 1 max 1"
                 parts = line.split()
@@ -555,7 +555,7 @@ def detect_module_metadata(input_path):
         # Check for 'uade:is_custom': True in output
         if "'uade:is_custom': True" in result.stdout:
             player_format = "Custom"
-            metadata_success = True # Custom module also means metadata was successful
+            metadata_success = True  # Custom module also means metadata was successful
             if not module_format:
                 module_format = "Custom"
 
@@ -586,13 +586,13 @@ def process_audio_conversion(input_path, use_cache=True, compress_flac=False):
         cache_hash (str or None): The MD5 hash of the input file.
     """
     # Hold metadata to return to the caller, even if conversion fails.
-    (
-        metadata_success,
-        module_name,
-        module_format,
-        player_format,
-        subsongs
-    ) = (False, None, None, None, 1)
+    (metadata_success, module_name, module_format, player_format, subsongs) = (
+        False,
+        None,
+        None,
+        None,
+        1,
+    )
     cache_hash = None
 
     try:
@@ -601,7 +601,7 @@ def process_audio_conversion(input_path, use_cache=True, compress_flac=False):
         if not (input_resolved.is_relative_to(MODULES_DIR.resolve())):
             logger.error("Aborting: attempted read outside allowed directories")
             return (
-                False, 
+                False,
                 "Illegal input file path",
                 None,
                 player_format,
@@ -613,18 +613,14 @@ def process_audio_conversion(input_path, use_cache=True, compress_flac=False):
             )
 
         # Detect module metadata before conversion
-        (
-            metadata_success,
-            module_name,
-            module_format,
-            player_format,
-            subsongs
-        ) = detect_module_metadata(input_path)
+        (metadata_success, module_name, module_format, player_format, subsongs) = (
+            detect_module_metadata(input_path)
+        )
 
         # Calculate hash, before potential input file deletion
         cache_hash = get_file_hash(input_path)
 
-        # Deletes file if metadata detection fails (prevents disk abuse). 
+        # Deletes file if metadata detection fails (prevents disk abuse).
         # Retains file if metadata is detected but conversion fails (for debug).
         if not metadata_success:
             logger.warning(f"Could not detect metadata for {input_path}. Deleting file.")
@@ -982,7 +978,9 @@ def convert_url():
         # --- Caching logic for main module file ---
         filename = extract_filename_from_url(url)
         # Compute cache hash from URL
-        url_hash = hashlib.md5(sanitized_url(url, log=False).encode(), usedforsecurity=False).hexdigest()
+        url_hash = hashlib.md5(
+            sanitized_url(url, log=False).encode(), usedforsecurity=False
+        ).hexdigest()
         module_path = MODULES_DIR / f"{filename}_{url_hash}"
 
         if module_path.exists():
@@ -1001,7 +999,9 @@ def convert_url():
         # --- Caching logic for TFMX sample file ---
         sample_path = None
         if sample_url and sample_url != url:
-            sample_url_hash = hashlib.md5(sanitized_url(sample_url, log=False).encode(), usedforsecurity=False).hexdigest()
+            sample_url_hash = hashlib.md5(
+                sanitized_url(sample_url, log=False).encode(), usedforsecurity=False
+            ).hexdigest()
             # Ensure filename matches mdat except for prefix
             if filename.startswith("mdat"):
                 smplfilename = "smpl" + filename[4:]
