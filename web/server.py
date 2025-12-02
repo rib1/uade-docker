@@ -513,16 +513,17 @@ def fetch_cached_file(cache_hash, prefer_flac=False):
 
 def detect_module_metadata(input_path):
     """Detect module metadata using uade123 -g
-    Returns: (module_name, module_format, player_format, subsongs)
+    Returns: (metadata_success, module_name, module_format, player_format, subsongs)
     """
     try:
         cmd = ["/usr/local/bin/uade123", "-g", str(input_path)]
         # Use encoding='latin1' to avoid decode errors with non-UTF-8 bytes in output
         result = subprocess.run(cmd, capture_output=True, text=True, timeout=10, encoding="latin1")
 
+        metadata_success = False # Flag to indicate if a player was found
         module_name = None
         module_format = None
-        player_format = "Module"
+        player_format = "Module" # Default player format
         subsongs = 1
 
         # Parse output to extract metadata
@@ -540,6 +541,7 @@ def detect_module_metadata(input_path):
                 module_format = module_format.replace("type:", "", 1).strip()
             elif line.startswith("playername:"):
                 player_format = line.split(":", 1)[1].strip()
+                metadata_success = True # A player was explicitly found
             elif line.startswith("subsongs:"):
                 # Parse "subsongs: cur 1 min 1 max 1"
                 parts = line.split()
@@ -553,44 +555,86 @@ def detect_module_metadata(input_path):
         # Check for 'uade:is_custom': True in output
         if "'uade:is_custom': True" in result.stdout:
             player_format = "Custom"
+            metadata_success = True # Custom module also means metadata was successful
             if not module_format:
                 module_format = "Custom"
 
         logger.info(
-            f"Detected: modulename={module_name}, moduleformat={module_format}, player={player_format}, subsongs={subsongs}"
+            f"Detected: metadata_success={metadata_success}, modulename={module_name}, moduleformat={module_format}, player={player_format}, subsongs={subsongs}"
         )
-        return module_name, module_format, player_format, subsongs
+        return metadata_success, module_name, module_format, player_format, subsongs
 
     except Exception as e:
         logger.warning(f"Could not detect metadata: {e}")
-        return None, None, "Module", 1
+        # On exception, metadata detection is a failure
+        return False, None, None, "Module", 1
 
 
 def process_audio_conversion(input_path, use_cache=True, compress_flac=False):
     """Convert module to WAV using UADE with optional caching and FLAC compression.
 
     Returns:
+        A tuple containing:
         success (bool): True if conversion succeeded, False otherwise.
         error (str or None): Error message if conversion failed, None otherwise.
         final_file (Path or None): Path to the converted audio file (WAV or FLAC).
         player_format (str or None): Detected player format.
         module_name (str or None): Detected module name.
         module_format (str or None): Detected module format.
-        subsongs (int): Number of subsongs detected in the module (e.g., for multi-track modules).
-        cached (bool): True if the audio was served from cache, False otherwise.
+        subsongs (int or None): Number of subsongs detected.
+        cached (bool): True if the audio was served from cache.
+        cache_hash (str or None): The MD5 hash of the input file.
     """
+    # Hold metadata to return to the caller, even if conversion fails.
+    (
+        metadata_success,
+        module_name,
+        module_format,
+        player_format,
+        subsongs
+    ) = (False, None, None, "Module", 1)
+    cache_hash = None  # Initialize hash to None
+
     try:
         # Defensive: Restrict input_path to MODULES_DIR
         input_resolved = Path(input_path).resolve()
         if not (input_resolved.is_relative_to(MODULES_DIR.resolve())):
             logger.error("Aborting: attempted read outside allowed directories")
-            return False, "Illegal input file path", None, None, None, None, None, False
+            return (
+                False, "Illegal input file path", None, None, None, None, None, False, None
+            )
+
         # Detect module metadata before conversion
-        module_name, module_format, player_format, subsongs = detect_module_metadata(input_path)
-        # Always compute cache_hash for later use
+        (
+            metadata_success,
+            module_name,
+            module_format,
+            player_format,
+            subsongs
+        ) = detect_module_metadata(input_path)
+
+        # Calculate hash, before potential input file deletion
         cache_hash = get_file_hash(input_path)
-        # Output path is always in CONVERTED_DIR
+
+        # Deletes file if metadata detection fails (prevents disk abuse). 
+        # Retains file if metadata is detected but conversion fails (for debug).
+        if not metadata_success:
+            logger.warning(f"Could not detect metadata for {input_path}. Deleting file.")
+            input_resolved.unlink(missing_ok=True)
+            return (
+                False,
+                "Could not detect module metadata. The file may be corrupt or not a supported module.",
+                None,
+                player_format,
+                module_name,
+                module_format,
+                subsongs,
+                False,
+                cache_hash,
+            )
+
         output_path = CONVERTED_DIR / f"{cache_hash}.wav"
+
         # Check remote cache first
         if use_cache:
             cached_file = fetch_cached_file(cache_hash, prefer_flac=compress_flac)
@@ -604,6 +648,7 @@ def process_audio_conversion(input_path, use_cache=True, compress_flac=False):
                     module_format,
                     subsongs,
                     True,
+                    cache_hash,
                 )
 
         cmd = [
@@ -624,23 +669,27 @@ def process_audio_conversion(input_path, use_cache=True, compress_flac=False):
                 False,
                 f"Conversion failed: {result.stderr}",
                 None,
-                None,
-                None,
-                None,
-                None,
-                False,  # Not from cache
+                player_format,
+                module_name,
+                module_format,
+                subsongs,
+                False,
+                cache_hash,
             )
+
         if not output_path.exists():
             return (
                 False,
                 "Conversion failed: Output file not created",
                 None,
-                None,
-                None,
-                None,
-                None,
-                False,  # Not from cache
+                player_format,
+                module_name,
+                module_format,
+                subsongs,
+                False,
+                cache_hash,
             )
+
         final_output = output_path
 
         # Compress to FLAC if requested
@@ -661,23 +710,39 @@ def process_audio_conversion(input_path, use_cache=True, compress_flac=False):
             module_name,
             module_format,
             subsongs,
-            False,  # Not from cache
+            False,
+            cache_hash,
         )
+
+    except FileNotFoundError:
+        logger.error(f"File not found for processing: {input_path}")
+        return (False, f"File not found: {input_path}", None, None, None, None, 1, False, None)
 
     except subprocess.TimeoutExpired:
         return (
             False,
             "Conversion timeout (5 minutes exceeded)",
             None,
-            None,
-            None,
-            None,
-            None,
-            False,  # Not from cache
+            player_format,
+            module_name,
+            module_format,
+            subsongs,
+            False,
+            cache_hash,
         )
     except Exception as e:
         logger.error(f"Conversion exception: {e}")
-        return False, str(e), None, None, None, None, None, False
+        return (
+            False,
+            str(e),
+            None,
+            player_format,
+            module_name,
+            module_format,
+            subsongs,
+            False,
+            cache_hash,
+        )
 
 
 @app.route("/")
@@ -788,10 +853,8 @@ def process_module_and_respond(module_path, filename, use_flac):
             module_format,
             subsongs,
             cached,
+            converted_file_id,
         ) = process_audio_conversion(module_path, compress_flac=use_flac)
-
-        # Cache hash, must be computed before cleanup
-        converted_file_id = get_file_hash(module_path)
 
         # Clean up extracted files only (do not delete cached files)
         if extract_dir.exists():

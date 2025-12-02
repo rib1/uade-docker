@@ -143,8 +143,9 @@ Drag and drop .mod, .ahx, or other module files directly into the browser.
 
 **Supported formats:**
 
-- Individual modules (.mod, .ahx, .tfmx, .okta, .sid, etc.)
-- LHA (.lha) and ZIP archives (.zip) - Automatically extracted and played
+- Individual modules (mod., .ahx, .tfmx, .okta, .sid, etc.)
+- Full list of supported formats: <https://gitlab.com/uade-music-player/uade/-/tree/master/players>
+- Modules inside LHA (.lha) and ZIP (.zip) archives are automatically extracted and played.
 
 ### 3. Download from URL
 
