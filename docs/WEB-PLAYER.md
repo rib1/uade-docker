@@ -15,6 +15,7 @@ Play Amiga music modules directly in your web browser! No desktop software requi
 - 💻 **Client-Side Caching** - Converted audio is cached in your browser for one month for instant repeat playback.
 - ✅ **Cache Indicator** - The UI indicates when audio is served from the server-side cache.
 - 📱 **Mobile Friendly** - Works on phones and tablets
+- 🎵 **Media Session Integration** - Control playback from your phone's lock screen, with track and format information.
 - ⚡ **Performance** - MD5-based module file and URL caching for instant replay and computing and bandwidth savings
 
 ## Quick Start

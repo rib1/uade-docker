@@ -180,6 +180,7 @@ architecture-beta
 - **Language:** JavaScript (ES6+)
 - **Styling:** CSS3 with Protracker theme
 - **Icons:** Protracker favicon
+- **Mobile lock screen integration:** Media Session API
 
 ### Infrastructure
 
