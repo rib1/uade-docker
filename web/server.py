@@ -581,7 +581,7 @@ def process_audio_conversion(input_path, use_cache=True, compress_flac=False):
         player_format (str or None): Detected player format.
         module_name (str or None): Detected module name.
         module_format (str or None): Detected module format.
-        subsongs (int or None): Number of subsongs detected.
+        subsongs (int): Number of subsongs detected.
         cached (bool): True if the audio was served from cache.
         cache_hash (str or None): The MD5 hash of the input file.
     """
@@ -592,8 +592,8 @@ def process_audio_conversion(input_path, use_cache=True, compress_flac=False):
         module_format,
         player_format,
         subsongs
-    ) = (False, None, None, "Module", 1)
-    cache_hash = None  # Initialize hash to None
+    ) = (False, None, None, None, 1)
+    cache_hash = None
 
     try:
         # Defensive: Restrict input_path to MODULES_DIR
@@ -601,7 +601,15 @@ def process_audio_conversion(input_path, use_cache=True, compress_flac=False):
         if not (input_resolved.is_relative_to(MODULES_DIR.resolve())):
             logger.error("Aborting: attempted read outside allowed directories")
             return (
-                False, "Illegal input file path", None, None, None, None, None, False, None
+                False, 
+                "Illegal input file path",
+                None,
+                player_format,
+                module_name,
+                module_format,
+                subsongs,
+                False,
+                cache_hash,
             )
 
         # Detect module metadata before conversion
