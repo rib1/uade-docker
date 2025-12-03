@@ -8,9 +8,9 @@ const dropZone = document.getElementById("drop-zone");
 const fileInput = document.getElementById("module-file-input");
 const urlInput = document.getElementById("url-input");
 const urlSubmit = document.getElementById("url-submit");
-const mdatInput = document.getElementById("mdat-url");
-const smplInput = document.getElementById("smpl-url");
-const tfmxSubmit = document.getElementById("tfmx-submit");
+const mainUrlInput = document.getElementById("main-url");
+const sampleUrlInput = document.getElementById("sample-url");
+const dualFileSubmit = document.getElementById("dual-file-submit");
 const audioPlayer = document.getElementById("audio-player");
 const playerSection = document.getElementById("player-section");
 const currentTrack = document.getElementById("current-track");
@@ -24,7 +24,7 @@ document.addEventListener("DOMContentLoaded", () => {
   setupDragAndDrop();
   setupFileInput();
   setupUrlForm();
-  setupTfmxForm();
+  setupDualFileForm();
   setupDownloadButton();
   loadExamples();
   loadVersionInfo();
@@ -182,22 +182,22 @@ async function handleUrlConvert() {
   }
 }
 
-// TFMX Form
-function setupTfmxForm() {
-  tfmxSubmit.addEventListener("click", handleTfmxConvert);
+// Dual-File Form
+function setupDualFileForm() {
+  dualFileSubmit.addEventListener("click", handleDualFileConvert);
 }
 
-async function handleTfmxConvert() {
-  const mdatUrl = mdatInput.value.trim();
-  const smplUrl = smplInput.value.trim();
+async function handleDualFileConvert() {
+  const mainUrl = mainUrlInput.value.trim();
+  const sampleUrl = sampleUrlInput.value.trim();
 
-  if (!mdatUrl || !smplUrl) {
-    showStatus("Please enter both TFMX URLs", "warning");
+  if (!mainUrl || !sampleUrl) {
+    showStatus("Please enter both URLs for the dual-file module", "warning");
     return;
   }
 
-  showStatus("Converting TFMX module...", "info");
-  tfmxSubmit.disabled = true;
+  showStatus("Converting dual-file module...", "info");
+  dualFileSubmit.disabled = true;
 
   try {
     // Call convert-url with both URLs
@@ -207,8 +207,8 @@ async function handleTfmxConvert() {
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        url: mdatUrl,
-        sample_url: smplUrl,
+        url: mainUrl,
+        sample_url: sampleUrl,
       }),
     });
 
@@ -217,27 +217,27 @@ async function handleTfmxConvert() {
     if (response.ok) {
       const statusMessage = data.cached
         ? `✓ From cache: ${data.module_name || data.filename}`
-        : `✓ TFMX converted successfully: ${data.module_name || data.filename}`;
+        : `✓ Dual-file module converted successfully: ${data.module_name || data.filename}`;
       showStatus(statusMessage, "success");
       playFile(
         data.file_id,
         data.module_name || data.filename,
         data.play_url,
         data.download_url,
-        data.player_format || "TFMX",
+        data.player_format || "Dual-File Module", // Generic description for player format
         data.audio_format || "wav",
         data.module_format,
         data.subsongs
       );
-      mdatInput.value = "";
-      smplInput.value = "";
+      mainUrlInput.value = "";
+      sampleUrlInput.value = "";
     } else {
       showStatus(`✗ Error: ${data.error}`, "error");
     }
   } catch (error) {
-    showStatus(`✗ TFMX conversion failed: ${error.message}`, "error");
+    showStatus(`✗ Dual-file module conversion failed: ${error.message}`, "error");
   } finally {
-    tfmxSubmit.disabled = false;
+    dualFileSubmit.disabled = false;
   }
 }
 

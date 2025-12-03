@@ -80,17 +80,20 @@
         </details>
       </section>
 
-      <!-- TFMX Section -->
-      <section class="tfmx-section">
-        <h2>🎹 TFMX Module</h2>
+      <!-- Dual-File Modules Section -->
+      <section class="dual-file-section">
+        <h2>🎹 Dual-File Modules</h2>
         <details>
-          <summary>TFMX modules require two files</summary>
-          <p>TFMX format needs both mdat.* (music data) and smpl.* (samples)</p>
-          <div class="tfmx-form">
-            <input type="text" id="mdat-url" placeholder="mdat URL (music data)" class="input-url" aria-label="TFMX MDAT URL">
-            <input type="text" id="smpl-url" placeholder="smpl URL (samples)" class="input-url" aria-label="TFMX SMPL URL">
-            <button type="button" id="tfmx-submit" class="btn btn-primary">
-              Convert TFMX
+          <summary>Some module formats require dual files</summary>
+          <p>
+            Formats like TFMX (mdat.* and smpl.*) and Richard Joseph Player (rjp.* and smp.*)
+            often need both a main music data file and a separate samples file.
+          </p>
+          <div class="dual-file-form">
+            <input type="text" id="main-url" placeholder="Main Module URL (e.g., mdat.* or rjp.*)" class="input-url" aria-label="Main Module URL">
+            <input type="text" id="sample-url" placeholder="Sample Data URL (e.g., smpl.* or smp.*)" class="input-url" aria-label="Sample Data URL">
+            <button type="button" id="dual-file-submit" class="btn btn-primary">
+              Convert Dual-File Module
             </button>
           </div>
         </details>

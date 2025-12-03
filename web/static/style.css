@@ -245,8 +245,8 @@ footer a:hover {
   text-decoration: underline;
 }
 
-/* TFMX Section */
-.tfmx-form {
+/* Dual-File Modules Section */
+.dual-file-form {
   display: flex;
   flex-direction: column;
   gap: 10px;

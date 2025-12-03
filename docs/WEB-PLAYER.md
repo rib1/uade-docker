@@ -8,7 +8,7 @@ Play Amiga music modules directly in your web browser! No desktop software requi
 - 🕹️ **Example Modules** - Try famous Amiga classics with one click
 - 🌐 **URL Support** - Download directly from Modland, ModArchive, etc.
 - 📦 **LHA & ZIP Archive Support** - Automatically extracts classic Amiga LHA archives (and ZIP)
-- 🎹 **TFMX Support** - Handles dual-file TFMX modules automatically
+- 🗂️ **Dual-File Module Support** - Handles dual-file modules (e.g., TFMX, RJP) automatically
 - 💿 **Smart Compression** - Automatic FLAC compression for capable browsers (50-70% smaller files)
 - ⬇️ **Download Audio** - Save as FLAC or WAV for offline playback
 - 🚀 **Cloud Ready & Stateless Caching** - Designed for cloud platforms with stateless, shareable server-side cache support (S3/GCS/local).
@@ -172,12 +172,12 @@ The web player automatically detects and extracts classic Amiga LHA archives. Ma
 - Supports all common Amiga module formats inside archives
 - No manual extraction needed!
 
-### 4. TFMX Modules
+### 4. Dual-File Modules
 
-For TFMX modules (requires two files), expand the TFMX section and provide both URLs:
+For dual-file modules (e.g., TFMX, RJP, which require two files), expand the Dual-File Modules section and provide both URLs:
 
-- mdat URL (music data)
-- smpl URL (samples)
+- Main module URL (e.g., mdat.\* or rjp.\*)
+- Sample data URL (e.g., smpl.\* or smp.\*)
 
 ## API Reference
 
@@ -211,15 +211,15 @@ Content-Type: application/json
 }
 ```
 
-### Convert TFMX
+### Convert TFMX or other dual-file format
 
 ```http
-POST /convert-tfmx
+POST /convert-url
 Content-Type: application/json
 
 {
-  "mdat_url": "https://...",
-  "smpl_url": "https://..."
+  "url": "https://...",
+  "sample_url": "https://..."
 }
 ```
 
@@ -376,7 +376,7 @@ The HTML structure includes appropriate landmark roles, aiding navigation for us
 
 Interactive input fields have associated accessible names to ensure they are properly identified by assistive technologies:
 
-- **`aria-label` Attributes:** Input fields for URL entry and TFMX module components (`mdat-url`, `smpl-url`) utilize `aria-label` attributes, providing clear programmatic labels for screen reader users.
+- **`aria-label` Attributes:** Input fields for URL entry and dual-file module components (`main-url`, `sample-url`) utilize `aria-label` attributes, providing clear programmatic labels for screen reader users.
 
 ## Troubleshooting
 

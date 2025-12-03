@@ -175,6 +175,7 @@ MODULE_FILE_EXTENSIONS: Final = {
     "okt",  # Oktalyzer
     "okta",  # Oktalyzer
     "osp",  # Synth Pack
+    "rjp",  # Richard Joseph Player, needs smp files (samples)
     "rk",  # Ron Klaren
     "sa",  # Sonic Arranger
     "sc",  # SoundControl
@@ -183,7 +184,7 @@ MODULE_FILE_EXTENSIONS: Final = {
     "smpl",  # TFMX sample data
     "smod",  # Future Composer 1.0 - 1.3
     "smus",
-    "sng",  # Synder SNG-Player
+    "sng",  # Richard Joseph Player /Synder SNG-Player
     "ss",
     "ssd",
     "sun",  # SunTronic
@@ -228,8 +229,8 @@ EXAMPLES: Final = [
         "name": "Chris Huelsbeck - Turrican 2",
         "format": "TFMX",
         "duration": "12 min (Level 0 Intro)",
-        "mdat_url": "https://modland.com/pub/modules/TFMX/Chris%20Huelsbeck/mdat.turrican%202%20level%200-intro",
-        "smpl_url": "https://modland.com/pub/modules/TFMX/Chris%20Huelsbeck/smpl.turrican%202%20level%200-intro",
+        "url": "https://modland.com/pub/modules/TFMX/Chris%20Huelsbeck/mdat.turrican%202%20level%200-intro",
+        "sample_url": "https://modland.com/pub/modules/TFMX/Chris%20Huelsbeck/smpl.turrican%202%20level%200-intro",
         "type": "tfmx",
     },
     {
@@ -951,11 +952,11 @@ def is_safe_url(u):
 def convert_url():
     """
     Download a module file from a given URL and convert it for playback.
-    Supports an optional 'sample_url' parameter for TFMX modules.
+    Supports an optional 'sample_url' parameter for dual-file (e.g., TFMX, RJP) modules.
     The request JSON should be:
         {
             "url": "<module file URL>",
-            "sample_url": "<TFMX sample file URL>"  # Optional, only for TFMX modules
+            "sample_url": "<sample file URL>"  # Optional, only for dual-file modules
         }
     """
     cleanup_old_files()
@@ -1002,13 +1003,15 @@ def convert_url():
             sample_url_hash = hashlib.md5(
                 sanitized_url(sample_url, log=False).encode(), usedforsecurity=False
             ).hexdigest()
-            # Ensure filename matches mdat except for prefix
-            if filename.startswith("mdat"):
-                smplfilename = "smpl" + filename[4:]
-            else:
-                smplfilename = "smpl." + filename
-            sample_path = MODULES_DIR / f"{smplfilename}_{url_hash}"
-            cached_sample_path = MODULES_DIR / f"{smplfilename}_{sample_url_hash}"
+            # Ensure filename matches for multi-file formats (TFMX, RJP)
+            if filename.startswith("mdat"):  # TFMX
+                sample_filename = "smpl" + filename[4:]
+            elif filename.startswith("rjp"):  # RJP
+                sample_filename = "smp" + filename[3:]
+            else:  # Generic fallback for other multi-file formats (e.g., if a file is just "mod" use "smpl.mod")
+                sample_filename = "smpl." + filename
+            sample_path = MODULES_DIR / f"{sample_filename}_{url_hash}"
+            cached_sample_path = MODULES_DIR / f"{sample_filename}_{sample_url_hash}"
             if cached_sample_path.exists():
                 if sample_path.exists() or sample_path.is_symlink():
                     sample_path.unlink(missing_ok=True)
@@ -1101,10 +1104,9 @@ def play_example(example_id):
         return json_response({"error": "Example not found"}, 404)
 
     # Prepare payload for convert_url
-    if example["type"] == "tfmx":
-        payload = {"url": example["mdat_url"], "sample_url": example["smpl_url"]}
-    else:
-        payload = {"url": example["url"]}
+    payload = {"url": example["url"]}
+    if example["sample_url"]:
+        payload["sample_url"] = example["sample_url"]
 
     # Directly call convert_url with the payload
     # Save and restore request._cached_json to avoid side effects
