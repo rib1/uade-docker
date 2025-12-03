@@ -198,6 +198,12 @@ MODULE_FILE_EXTENSIONS: Final = {
     "ym",
 }
 
+DUAL_FILE_MODULES: Final = [
+    {"pattern_data": "mdat", "sample_data": "smpl"},
+    {"pattern_data": "rjp", "sample_data": "smp"},
+    {"pattern_data": "sng", "sample_data": "ins"},
+]
+
 # Example modules - keeping it simple with proven working examples
 EXAMPLES: Final = [
     {
@@ -947,6 +953,38 @@ def is_safe_url(u):
         return False
 
 
+def get_dual_file_module_filenames(filename):
+    """
+    Determines the correct filenames and suffixes for dual-file modules using DUAL_FILE_MODULES.
+    Handles both suffix-based and prefix-based matching for pattern_data and sample_data.
+    Returns: (filename, suffix, sample_filename, sample_suffix)
+    """
+    # Use DUAL_FILE_MODULES array for module pattern matching
+    suffix = ""
+    sample_suffix = ""
+    sample_filename = None
+    for entry in DUAL_FILE_MODULES:
+        pat = entry["pattern_data"]
+        samp = entry["sample_data"]
+        # Suffix-based match
+        if filename.lower().endswith(f".{pat}"):
+            filename = filename.removesuffix(f".{pat}")
+            sample_filename = filename
+            suffix = f".{pat}"
+            sample_suffix = f".{samp}"
+            break
+    # Prefix-based match using DUAL_FILE_MODULES
+    if not suffix:
+        for entry in DUAL_FILE_MODULES:
+            pat = entry["pattern_data"]
+            samp = entry["sample_data"]
+            if filename.startswith(f"{pat}."):
+                sample_filename = f"{samp}." + filename[len(f"{pat}."):]
+                sample_suffix = ""
+                break
+    return filename, suffix, sample_filename, sample_suffix
+
+
 @app.route("/convert-url", methods=["POST"])
 @limiter.limit("10 per minute")
 def convert_url():
@@ -971,7 +1009,7 @@ def convert_url():
     if not is_safe_url(url) or (sample_url and not is_safe_url(sample_url)):
         return json_response({"error": "Unsafe or disallowed sample_url"}, 400)
 
-    try:
+    try:        
         # Check browser FLAC support
         user_agent = request.headers.get("User-Agent", "")
         use_flac = supports_flac(user_agent)
@@ -982,7 +1020,11 @@ def convert_url():
         url_hash = hashlib.md5(
             sanitized_url(url, log=False).encode(), usedforsecurity=False
         ).hexdigest()
-        module_path = MODULES_DIR / f"{filename}_{url_hash}"
+
+        # Unpack dual-file module info: main_filename, main_suffix, sample_filename, sample_suffix
+        filename, suffix, sample_filename, sample_suffix = get_dual_file_module_filenames(filename)
+        # The suffix must be placed after the hash for UADE to correctly recognize the file type in dual-file modules
+        module_path = MODULES_DIR / f"{filename}_{url_hash}{suffix}"
 
         if module_path.exists():
             logger.info(
@@ -997,37 +1039,36 @@ def convert_url():
             module_path.write_bytes(response.content)
             logger.info(f"Cached module_path: {module_path}")
 
-        # --- Caching logic for TFMX sample file ---
+        # --- Caching logic for dual-file module sample file ---
         sample_path = None
         if sample_url and sample_url != url:
+            if sample_filename is None:
+                logger.error("Dual-file module: could not determine sample_filename from URL/filename.")
+                return json_response({"error": "Could not determine sample file name for dual-file module."}, 400)
+
             sample_url_hash = hashlib.md5(
                 sanitized_url(sample_url, log=False).encode(), usedforsecurity=False
             ).hexdigest()
-            # Ensure filename matches for multi-file formats (TFMX, RJP)
-            if filename.startswith("mdat"):  # TFMX
-                sample_filename = "smpl" + filename[4:]
-            elif filename.startswith("rjp"):  # RJP
-                sample_filename = "smp" + filename[3:]
-            else:  # Generic fallback for other multi-file formats (e.g., if a file is just "mod" use "smpl.mod")
-                sample_filename = "smpl." + filename
-            sample_path = MODULES_DIR / f"{sample_filename}_{url_hash}"
-            cached_sample_path = MODULES_DIR / f"{sample_filename}_{sample_url_hash}"
+
+            # The suffix must be placed after the hash for UADE to correctly recognize the file type in dual-file modules
+            sample_path = MODULES_DIR / f"{sample_filename}_{url_hash}{sample_suffix}"
+            cached_sample_path = MODULES_DIR / f"{sample_filename}_{sample_url_hash}{sample_suffix}"
             if cached_sample_path.exists():
                 if sample_path.exists() or sample_path.is_symlink():
                     sample_path.unlink(missing_ok=True)
                 os.symlink(cached_sample_path, sample_path)
                 logger.info(
-                    f"Cache hit for TFMX sample: {sanitized_url(sample_url)}, using cached file {cached_sample_path}, linking to {sample_path}"
+                    f"Cache hit for sample file: {sanitized_url(sample_url)}, using cached file {cached_sample_path}, linking to {sample_path}"
                 )
             else:
-                logger.info(f"Downloading TFMX sample: {sanitized_url(sample_url)}")
+                logger.info(f"Downloading sample file: {sanitized_url(sample_url)}")
                 sample_response = requests.get(
                     sample_url, timeout=30, verify=False, allow_redirects=True
                 )
                 sample_response.raise_for_status()
                 cached_sample_path.write_bytes(sample_response.content)
                 os.symlink(cached_sample_path, sample_path)
-                logger.info(f"Cached sample_path: {cached_sample_path}, linking to {sample_path}")
+                logger.info(f"Cached sample file: {cached_sample_path}, linking to {sample_path}")
 
         return process_module_and_respond(module_path, filename, use_flac)
 
@@ -1105,7 +1146,7 @@ def play_example(example_id):
 
     # Prepare payload for convert_url
     payload = {"url": example["url"]}
-    if example["sample_url"]:
+    if "sample_url" in example:
         payload["sample_url"] = example["sample_url"]
 
     # Directly call convert_url with the payload
