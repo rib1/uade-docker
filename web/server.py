@@ -1040,12 +1040,10 @@ def convert_url():
             logger.info(f"Cached module_path: {module_path}")
 
         # --- Caching logic for dual-file module sample file ---
-        sample_path = None
         if sample_url and sample_url != url:
-            if sample_filename is None:
-                logger.error("Dual-file module: could not determine sample_filename from URL/filename.")
-                return json_response({"error": "Could not determine sample file name for dual-file module."}, 400)
-
+            if not sample_filename:
+              sample_filename = extract_filename_from_url(sample_url)
+            # Compute cache hash from URL
             sample_url_hash = hashlib.md5(
                 sanitized_url(sample_url, log=False).encode(), usedforsecurity=False
             ).hexdigest()
