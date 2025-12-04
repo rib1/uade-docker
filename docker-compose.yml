@@ -1,3 +1,9 @@
+# To run tests:
+# 1. Build and run the test runner service:
+#    docker-compose up --build uade-test-runner
+# 2. To run tests again:
+#    docker-compose run --rm uade-test-runner
+
 services:
   uade-web:
     build:
@@ -26,7 +32,23 @@ services:
       timeout: 3s
       retries: 3
       start_period: 10s
+    networks:
+      - uade-net
+
+  uade-test-runner:
+    build:
+      context: .
+      dockerfile: test/Dockerfile.test
+    depends_on:
+      uade-web:
+        condition: service_healthy
+    networks:
+      - uade-net
 
 volumes:
   uade-tmp:
     driver: local
+
+networks:
+  uade-net:
+    driver: bridge
