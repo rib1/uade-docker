@@ -625,9 +625,13 @@ def process_audio_conversion(input_path, use_cache=True, compress_flac=False):
             )
 
         # Detect module metadata before conversion
-        (metadata_success, module_name, module_format, player_format, subsongs) = (
-            detect_module_metadata(input_path)
-        )
+        (
+            metadata_success,
+            module_name,
+            module_format,
+            player_format,
+            subsongs,
+        ) = detect_module_metadata(input_path)
 
         # Calculate hash, before potential input file deletion
         cache_hash = get_file_hash(input_path)
@@ -671,7 +675,7 @@ def process_audio_conversion(input_path, use_cache=True, compress_flac=False):
             "/usr/local/bin/uade123",
             "-c",
             "-f",
-            str(output_path),
+            str(outpqut_path),
             str(input_path),
         ]  # Headless mode
 
@@ -732,7 +736,17 @@ def process_audio_conversion(input_path, use_cache=True, compress_flac=False):
 
     except FileNotFoundError:
         logger.error(f"File not found for processing: {input_path}")
-        return (False, f"File not found: {input_path}", None, None, None, None, 0, False, None)
+        return (
+            False,
+            f"File not found: {input_path}",
+            None,
+            None,
+            None,
+            None,
+            0,
+            False,
+            None,
+        )
 
     except subprocess.TimeoutExpired:
         return (
@@ -984,7 +998,7 @@ def get_dual_file_module_filenames(filename):
             pat = entry["pattern_data"]
             samp = entry["sample_data"]
             if filename.startswith(f"{pat}."):
-                sample_filename = f"{samp}." + filename[len(f"{pat}."):]
+                sample_filename = f"{samp}." + filename[len(f"{pat}.") :]
                 sample_suffix = ""
                 break
     return filename, suffix, sample_filename, sample_suffix
@@ -1014,7 +1028,7 @@ def convert_url():
     if not is_safe_url(url) or (sample_url and not is_safe_url(sample_url)):
         return json_response({"error": "Unsafe or disallowed sample_url"}, 400)
 
-    try:        
+    try:
         # Check browser FLAC support
         user_agent = request.headers.get("User-Agent", "")
         use_flac = supports_flac(user_agent)
@@ -1027,7 +1041,12 @@ def convert_url():
         ).hexdigest()
 
         # Unpack dual-file module info: main_filename, main_suffix, sample_filename, sample_suffix
-        filename, suffix, sample_filename, sample_suffix = get_dual_file_module_filenames(filename)
+        (
+            filename,
+            suffix,
+            sample_filename,
+            sample_suffix,
+        ) = get_dual_file_module_filenames(filename)
         # The suffix must be placed after the hash for UADE to correctly recognize the file type in dual-file modules
         module_path = MODULES_DIR / f"{filename}_{url_hash}{suffix}"
 
@@ -1047,7 +1066,7 @@ def convert_url():
         # --- Caching logic for dual-file module sample file ---
         if sample_url and sample_url != url:
             if not sample_filename:
-              sample_filename = extract_filename_from_url(sample_url)
+                sample_filename = extract_filename_from_url(sample_url)
             # Compute cache hash from URL
             sample_url_hash = hashlib.md5(
                 sanitized_url(sample_url, log=False).encode(), usedforsecurity=False
