@@ -682,7 +682,7 @@ def process_audio_conversion(input_path, use_cache=True, compress_flac=False):
             "/usr/local/bin/uade123",
             "-c",
             "-f",
-            str(outpqut_path),
+            str(output_path),
             str(input_path),
         ]  # Headless mode
 
