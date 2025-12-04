@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """
 UADE Web Player - Flask Server
+
 Converts Amiga music modules to FLAC or WAV for browser playback
 Cloud-ready with proper logging, error handling, stateless caching, and cleanup
 """
@@ -286,7 +287,7 @@ EXAMPLES: Final = [
 
 def json_response(data, status=200):
     """
-    Custom JSON response function that ensures Content-Type header includes charset=utf-8.
+    Wrap jsonify to enforce charset=utf-8 in the Content-Type header.
 
     Args:
         data: The data to be returned as JSON.
@@ -434,7 +435,9 @@ def is_zip_file(file_path):
 
 
 def extract_lha(lha_path, extract_dir):
-    """Extract LHA archive and return first music file found
+    """
+    Extract LHA archive and return first music file found
+
     Returns: (success, error_message, music_file_path or None)
     """
     try:
@@ -465,7 +468,9 @@ def extract_lha(lha_path, extract_dir):
 
 
 def extract_zip(zip_path, extract_dir):
-    """Extract ZIP archive and return first music file found
+    """
+    Extract ZIP archive and return first music file found
+
     Returns: (success, error_message, music_file_path or None)
     """
     try:
@@ -519,7 +524,9 @@ def fetch_cached_file(cache_hash, prefer_flac=False):
 
 
 def detect_module_metadata(input_path):
-    """Detect module metadata using uade123 -g
+    """
+    Detect module metadata using uade123 -g
+
     Returns: (metadata_success, module_name, module_format, player_format, subsongs)
     """
     try:
@@ -846,9 +853,7 @@ def upload_file():
 
 
 def process_module_and_respond(module_path, filename, use_flac):
-    """
-    Shared logic for archive detection, extraction, conversion, metadata, cleanup, and response.
-    """
+    """Shared logic for archive detection, extraction, conversion, metadata, cleanup, and response."""
     try:
         # Check if it's an LHA or ZIP archive
         extract_dir = Path(f"{module_path}_extracted")
@@ -974,7 +979,8 @@ def is_safe_url(u):
 
 def get_dual_file_module_filenames(filename):
     """
-    Determines the correct filenames and suffixes for dual-file modules using DUAL_FILE_MODULES.
+    Determine the correct filenames and suffixes for dual-file modules using DUAL_FILE_MODULES.
+
     Handles both suffix-based and prefix-based matching for pattern_data and sample_data.
     Returns: (filename, suffix, sample_filename, sample_suffix)
     """
@@ -982,24 +988,23 @@ def get_dual_file_module_filenames(filename):
     suffix = ""
     sample_suffix = ""
     sample_filename = None
+    # Prefix-based match using DUAL_FILE_MODULES
     for entry in DUAL_FILE_MODULES:
         pat = entry["pattern_data"]
         samp = entry["sample_data"]
-        # Suffix-based match
-        if filename.lower().endswith(f".{pat}"):
-            filename = filename.removesuffix(f".{pat}")
-            sample_filename = filename
-            suffix = f".{pat}"
-            sample_suffix = f".{samp}"
+        if filename.startswith(f"{pat}."):
+            sample_filename = f"{samp}." + filename[len(f"{pat}.") :]
             break
-    # Prefix-based match using DUAL_FILE_MODULES
-    if not suffix:
+    if not sample_filename:
         for entry in DUAL_FILE_MODULES:
             pat = entry["pattern_data"]
             samp = entry["sample_data"]
-            if filename.startswith(f"{pat}."):
-                sample_filename = f"{samp}." + filename[len(f"{pat}.") :]
-                sample_suffix = ""
+            # Suffix-based match
+            if filename.lower().endswith(f".{pat}"):
+                filename = filename.removesuffix(f".{pat}")
+                sample_filename = filename
+                suffix = f".{pat}"
+                sample_suffix = f".{samp}"
                 break
     return filename, suffix, sample_filename, sample_suffix
 
@@ -1009,6 +1014,7 @@ def get_dual_file_module_filenames(filename):
 def convert_url():
     """
     Download a module file from a given URL and convert it for playback.
+
     Supports an optional 'sample_url' parameter for dual-file (e.g., TFMX, RJP) modules.
     The request JSON should be:
         {
@@ -1137,7 +1143,8 @@ def sanitized_url(url, log=True):
 
 def extract_filename_from_url(url):
     """
-    Extracts a safe filename from a URL.
+    Extract a safe filename from a URL.
+
     For ModArchive, gets the fragment filename.
     For Modland and similar, it gets the last path segment.
     For query-based URLs (Exotica, Scene.org), gets the last segment of the query path.
@@ -1183,9 +1190,7 @@ def play_example(example_id):
 @app.route("/play/<file_id>")
 @limiter.limit("50 per minute")
 def play_file(file_id):
-    """
-    Stream audio file for playback (FLAC or WAV) with range request support.
-    """
+    """Stream audio file for playback (FLAC or WAV) with range request support."""
     return serve_audio_file(file_id, as_attachment=False)
 
 
@@ -1194,6 +1199,7 @@ def play_file(file_id):
 def download_file(file_id):
     """
     Download audio file (FLAC or WAV) with custom filename support.
+
     Client can pass ?filename=desired_name excluding extension to set the download filename.
     """
     custom_filename = request.args.get("filename")
@@ -1206,6 +1212,7 @@ def download_file(file_id):
 def serve_audio_file(file_id, as_attachment=False, custom_filename=None):
     """
     Shared logic for serving audio files (FLAC/WAV) with range support.
+
     If as_attachment is True, sets Content-Disposition for download.
     Also checks remote cache if local file is missing.
     """
@@ -1313,6 +1320,7 @@ def stream_file_range(file_path, start, length, chunk_size=8192):
 def parse_range_header(range_header, file_size):
     """
     Parse and validate a Range header for a file of given size.
+
     Returns (start, end, length) if valid, else None.
     Only supports single range: bytes=start-end
     """
