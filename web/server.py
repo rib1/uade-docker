@@ -189,7 +189,7 @@ MODULE_FILE_EXTENSIONS: Final = {
     "ssd",
     "sun",  # SunTronic
     "sonic",  # Sonic Arranger
-    "syn",  # Synthesis
+    "syn",  # Synthesis / Synder SNG-Player
     "tf",
     "tfmx",  # TFMX
     "tfx",  # TFMX
@@ -525,9 +525,12 @@ def detect_module_metadata(input_path):
     try:
         cmd = ["/usr/local/bin/uade123", "-g", str(input_path)]
         # Use encoding='latin1' to avoid decode errors with non-UTF-8 bytes in output
-        result = subprocess.run(cmd, capture_output=True, text=True, timeout=10, encoding="latin1")
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=5, encoding="latin1")
+        if result.returncode != 0:
+            logger.error(f"UADE metadata detection error: {result.stderr}")
+            return False, None, None, None, 0
 
-        metadata_success = False  # Flag to indicate if a player was found
+        metadata_success = False
         module_name = None
         module_format = None
         player_format = "Module"  # Default player format
@@ -571,10 +574,12 @@ def detect_module_metadata(input_path):
         )
         return metadata_success, module_name, module_format, player_format, subsongs
 
+    except subprocess.TimeoutExpired:
+        logger.warning(f"Detect metadata timeout (5 seconds exceeded) for file: {input_path}")
+        return False, None, None, None, 0
     except Exception as e:
         logger.warning(f"Could not detect metadata: {e}")
-        # On exception, metadata detection is a failure
-        return False, None, None, "Module", 1
+        return False, None, None, None, 0
 
 
 def process_audio_conversion(input_path, use_cache=True, compress_flac=False):
@@ -598,7 +603,7 @@ def process_audio_conversion(input_path, use_cache=True, compress_flac=False):
         None,
         None,
         None,
-        1,
+        0,
     )
     cache_hash = None
 
@@ -727,7 +732,7 @@ def process_audio_conversion(input_path, use_cache=True, compress_flac=False):
 
     except FileNotFoundError:
         logger.error(f"File not found for processing: {input_path}")
-        return (False, f"File not found: {input_path}", None, None, None, None, 1, False, None)
+        return (False, f"File not found: {input_path}", None, None, None, None, 0, False, None)
 
     except subprocess.TimeoutExpired:
         return (
