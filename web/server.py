@@ -1053,7 +1053,7 @@ def convert_url():
     sample_url = data.get("sample_url")
 
     if not is_safe_url(url) or (sample_url and not is_safe_url(sample_url)):
-        return json_response({"error": "Unsafe or disallowed sample_url"}, 400)
+        return json_response({"error": "Unsafe or disallowed URL provided"}, 400)
 
     try:
         # Check browser FLAC support
