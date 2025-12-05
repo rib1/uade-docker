@@ -1,0 +1,16 @@
+# To run tests:
+#    docker-compose -f docker-compose.yml -f docker-compose.ratelimit.yml up --build uade-test-ratelimit-runner
+services:
+  uade-web:
+    environment:
+      - RATE_LIMIT_DISABLED=0
+  uade-test-ratelimit-runner:
+    build:
+      context: .
+      dockerfile: test/Dockerfile.test
+    depends_on:
+      uade-web:
+        condition: service_healthy
+    networks:
+      - uade-net
+    command: ./test_ratelimit.sh

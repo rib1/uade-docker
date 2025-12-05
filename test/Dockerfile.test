@@ -5,6 +5,8 @@ RUN apk add --no-cache curl jq bash
 # Create a non-root user and group
 RUN addgroup -S tester && adduser -S tester -G tester
 
+RUN mkdir -p /home/tester/app && chown -R tester:tester /home/tester/app
+
 WORKDIR /home/tester/app
 
 # Create a directory for test fixtures and set ownership

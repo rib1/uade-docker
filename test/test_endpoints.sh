@@ -10,6 +10,7 @@ BASE_URL="http://uade-web-player:5000"
 
 # Create test fixtures on the fly
 mkdir -p fixtures/invalid
+touch fixtures/invalid/empty.bin
 head -c 11534336 /dev/urandom > fixtures/invalid/too-large.bin
 
 
