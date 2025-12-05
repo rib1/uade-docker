@@ -837,6 +837,13 @@ def upload_file():
     if file.filename == "":
         return json_response({"error": "No file selected"}, 400)
 
+    # Check for empty file content
+    file.seek(0, os.SEEK_END)
+    file_size = file.tell()
+    file.seek(0, os.SEEK_SET)  # Reset file pointer
+    if file_size == 0:
+        return json_response({"error": "Empty file provided"}, 400)
+
     try:
         # Check browser FLAC support
         user_agent = request.headers.get("User-Agent", "")
@@ -982,7 +989,7 @@ def is_safe_url(u):
         unquoted_query = urllib.parse.unquote(parsed.query)
 
         # Explicitly check for problematic characters that might cause shell injection
-        problematic_chars = ['`', '\n', '\r', ';', '&', '|', '<', '>', '[', ']', '{', '}', '\\']
+        problematic_chars = ["`", "\n", "\r", ";", "&", "|", "<", ">", "[", "]", "{", "}", "\\"]
         for char in problematic_chars:
             if char in unquoted_path or char in unquoted_query:
                 logger.warning(

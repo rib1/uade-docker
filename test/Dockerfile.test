@@ -7,6 +7,9 @@ RUN addgroup -S tester && adduser -S tester -G tester
 
 WORKDIR /home/tester/app
 
+# Create a directory for test fixtures and set ownership
+RUN mkdir -p /home/tester/app/fixtures/invalid && chown -R tester:tester /home/tester/app/fixtures
+
 # Copy the scripts and give ownership to the non-root user
 COPY --chown=tester:tester test/*.sh .
 
