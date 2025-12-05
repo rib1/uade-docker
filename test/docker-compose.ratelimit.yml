@@ -1,5 +1,5 @@
-# To run tests:
-#    docker-compose -f docker-compose.yml -f docker-compose.ratelimit.yml up --build uade-test-ratelimit-runner
+# To run ratelimit-tests:
+#    docker-compose -f docker-compose.yml -f test/docker-compose.ratelimit.yml up --build uade-test-ratelimit-runner
 services:
   uade-web:
     environment:
