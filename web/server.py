@@ -921,7 +921,7 @@ def process_module_and_respond(module_path, filename, use_flac):
                 "subsongs": subsongs,
                 "audio_format": final_file.suffix[1:] if final_file else "wav",
                 "play_url": f"/play/{converted_file_id}",
-                "download_url": f"/download/{converted_file_id}?filename={module_name or filename}",
+                "download_url": f"/download/{converted_file_id}?filename={urllib.parse.quote(module_name or filename)}",
                 "cached": cached,
             }
         )
