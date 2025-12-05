@@ -105,6 +105,8 @@ fs_cache, root_cache = get_fs_and_root(CACHE_URI)
 if fs_cache.protocol == "file":
     Path(root_cache).mkdir(parents=True, exist_ok=True)
 
+# Rate limiting, disabled if RATE_LIMIT_DISABLED is set to "1"
+rate_limit_enabled = os.getenv("RATE_LIMIT_DISABLED", "0") != "1"
 limiter: Final = Limiter(
     get_remote_address,
     app=app,
@@ -112,7 +114,11 @@ limiter: Final = Limiter(
     default_limits={
         f"{RATE_LIMIT}/hour"
     },  # An instance/pod wide rate limit of requests per hour for all endpoints
+    enabled=rate_limit_enabled,
 )
+
+if not rate_limit_enabled:
+    logger.info("Rate limiting is disabled via RATE_LIMIT_DISABLED env variable")
 
 
 @app.errorhandler(429)
@@ -969,6 +975,21 @@ def is_safe_url(u):
             ):
                 logger.warning(f"is_safe_url: rejected IP '{ip}' for URL: {sanitized_url_for_log}")
                 return False
+
+        # Check for shell-sensitive characters in path and query
+        # Unquote path and query before checking
+        unquoted_path = urllib.parse.unquote(parsed.path)
+        unquoted_query = urllib.parse.unquote(parsed.query)
+
+        # Explicitly check for problematic characters that might cause shell injection
+        problematic_chars = ['`', '\n', '\r', ';', '&', '|', '<', '>', '[', ']', '{', '}', '\\']
+        for char in problematic_chars:
+            if char in unquoted_path or char in unquoted_query:
+                logger.warning(
+                    f"is_safe_url: rejected URL due to problematic character '{char}' in path/query for URL: {sanitized_url_for_log}"
+                )
+                return False
+
         # All checks passed
         logger.info(f"is_safe_url: accepted URL: {sanitized_url_for_log}")
         return True

@@ -254,6 +254,7 @@ CLEANUP_INTERVAL: 3600 # File cleanup (1 hour)
 CACHE_CLEANUP_INTERVAL: # Cache cleanup interval (24 hours)
 CACHE_URI: # Remote cache URI (default: file:///tmp/cache)
 RATE_LIMIT: 200 # Max Requests/hour per IP (all endpoints combined)
+RATE_LIMIT_DISABLED: 0 # Set to 1 to disable rate limiting for local development/testing
 ```
 
 ## Caching
@@ -350,7 +351,7 @@ UADE Web Player uses per-endpoint and global rate limits to prevent abuse and en
 > **Note:**
 > Rate limits are enforced per instance/pod. In multi-instance/cloud deployments, limits are not global unless a distributed backend (e.g., Redis) is configured for Flask-Limiter.
 
-You can adjust limits via the `RATE_LIMIT` environment variable and endpoint decorators in `server.py`.
+You can adjust limits via the `RATE_LIMIT` and `RATE_LIMIT_DISABLED` environment variables and endpoint decorators in `server.py`.
 
 ## Accessibility (WCAG Compliance)
 

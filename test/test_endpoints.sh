@@ -78,7 +78,42 @@ test_play_example() {
     echo ""
 }
 
-# --- Start Tests ---
+# Function to test security-related URL rejections
+# Arguments:
+# 1. Test name (string)
+# 2. URL to test (string)
+# 3. Optional sample URL (string) - for dual-file modules
+test_security_url() {
+    TEST_NAME=$1
+    URL=$2
+    SAMPLE_URL=$3
+
+    echo "--- Testing Security: $TEST_NAME: $URL ---"
+
+    if [ -z "$SAMPLE_URL" ]; then
+        JSON_PAYLOAD=$(jq -n --arg url "$URL" '{url: $url}')
+    else
+        JSON_PAYLOAD=$(jq -n --arg url "$URL" --arg sample_url "$SAMPLE_URL" '{url: $url, sample_url: $sample_url}')
+    fi
+
+    RESPONSE=$(curl -s -w "\n%{http_code}" -X POST \
+        -H "Content-Type: application/json" \
+        -d "$JSON_PAYLOAD" \
+        "$BASE_URL/convert-url")
+
+    HTTP_CODE=$(echo "$RESPONSE" | tail -n1)
+    BODY=$(echo "$RESPONSE" | sed '$d')
+
+    if [ "$HTTP_CODE" -eq 400 ]; then
+        echo "SUCCESS: Received HTTP 400 as expected"
+        echo "Response body: $BODY"
+    else
+        echo "ERROR: Received HTTP $HTTP_CODE (expected 400) for test '$TEST_NAME'"
+        echo "Response body: $BODY"
+        exit 1
+    fi
+    echo ""
+}
 
 # Wait for the service to be up
 echo "Waiting for uade-web-player to be available..."
@@ -99,5 +134,10 @@ test_url "Negative case (non-module)" "https://www.gutenberg.org/files/1342/1342
 test_play_example "Play Example (Romeo Knight)" "romeo-knight-beat"
 test_play_example "Play Example (Turrican 2)" "huelsbeck-turrican2"
 
+# Security tests
+test_security_url "Reject localhost URL" "http://localhost:5000/health"
+test_security_url "Reject private IP URL" "http://192.168.1.1/internal"
+test_security_url "Reject URL with command injection attempt" "https://example.com/file%60%20rm%20-rf%20/%60"
+test_security_url "Reject URL with newlines" "https://example.com/file%0a%0ainjected"
 
 echo "--- All tests passed! ---"

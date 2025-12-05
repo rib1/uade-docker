@@ -1,18 +1,18 @@
 FROM alpine:latest
 
-RUN apk add --no-cache curl jq
+RUN apk add --no-cache curl jq bash
 
 # Create a non-root user and group
 RUN addgroup -S tester && adduser -S tester -G tester
 
 WORKDIR /home/tester/app
 
-# Copy the script and give ownership to the non-root user
-COPY --chown=tester:tester test/test_endpoints.sh .
+# Copy the scripts and give ownership to the non-root user
+COPY --chown=tester:tester test/*.sh .
 
-RUN chmod +x test_endpoints.sh
+RUN chmod +x *.sh
 
 # Switch to the non-root user
 USER tester
 
-CMD ["/bin/sh", "./test_endpoints.sh"]
+CMD ["/bin/bash", "./test_endpoints.sh"]

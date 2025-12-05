@@ -1,8 +1,11 @@
+# Build and run the run web player:
+#   $env:GIT_COMMIT = (git rev-parse HEAD); docker-compose up -d --build
 # To run tests:
 # 1. Build and run the test runner service:
-#    docker-compose up --build uade-test-runner
+#    $env:GIT_COMMIT = (git rev-parse HEAD); docker-compose up --build  uade-test-runner
 # 2. To run tests again:
 #    docker-compose run --rm uade-test-runner
+#
 
 services:
   uade-web:
@@ -23,7 +26,7 @@ services:
       - FLASK_ENV=production
       - MAX_UPLOAD_SIZE=10485760  # 10MB in bytes
       - CLEANUP_INTERVAL=3600      # 1 hour in seconds
-      - RATE_LIMIT=10              # Max conversions per minute per IP
+      - RATE_LIMIT_DISABLED=1  # disable rate limiting for local testing
       - GIT_COMMIT=${GIT_COMMIT:-unknown}
     restart: unless-stopped
     healthcheck:
