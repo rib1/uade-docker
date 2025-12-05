@@ -8,7 +8,16 @@ set -e
 # Define the base URL for the API
 BASE_URL="http://uade-web-player:5000"
 
+# Create test fixtures on the fly
+mkdir -p fixtures/invalid
+head -c 11534336 /dev/urandom > fixtures/invalid/too-large.bin
 
+
+# Helper function to perform a convert-url API call
+# Arguments:
+# 1. URL to convert (string)
+# 2. User-Agent to pass (string)
+# Returns: Prints HTTP_CODE (first line) and BODY (second line) to stdout.
 _perform_convert_url_call_with_agent_header() {
     LOCAL_URL=$1
     LOCAL_USER_AGENT_HEADER=$2
@@ -31,7 +40,6 @@ _perform_convert_url_call_with_agent_header() {
     echo "$HTTP_CODE"
     echo "$RESPONSE_BODY"
 }
-
 
 # Helper function to perform a convert-url API call
 # Arguments:
@@ -61,10 +69,6 @@ _perform_convert_url_call() {
     echo "$HTTP_CODE"
     echo "$RESPONSE_BODY"
 }
-
-# Create test fixtures on the fly
-mkdir -p fixtures/invalid
-head -c 11534336 /dev/urandom > fixtures/invalid/too-large.bin
 
 # Function to test a URL
 # Arguments:
@@ -347,14 +351,12 @@ test_download_functionality() {
     fi
 
     # Now, try to download the file
-    DOWNLOAD_RESPONSE=$(curl -s -w "\n%{http_code}" "$BASE_URL$DOWNLOAD_URL")
-    DOWNLOAD_HTTP_CODE=$(echo "$DOWNLOAD_RESPONSE" | tail -n1)
+    DOWNLOAD_HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" "$BASE_URL$DOWNLOAD_URL")
 
     if [ "$DOWNLOAD_HTTP_CODE" -eq 200 ]; then
         echo "SUCCESS: Download URL returned HTTP 200."
     else
         echo "ERROR: Download URL returned unexpected HTTP $DOWNLOAD_HTTP_CODE (expected 200) for test '$TEST_NAME'"
-        echo "Download response: $DOWNLOAD_RESPONSE"
         exit 1
     fi
     echo ""
