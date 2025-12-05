@@ -5,6 +5,8 @@
 #    $env:GIT_COMMIT = (git rev-parse HEAD); docker-compose up --build  uade-test-runner
 # 2. To run tests again:
 #    docker-compose run --rm uade-test-runner
+# 3. To run ratelimit-tests:
+#    docker-compose -f docker-compose.yml -f test/docker-compose.ratelimit.yml up --build uade-test-ratelimit-runner
 #
 
 services:
