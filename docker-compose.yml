@@ -1,5 +1,5 @@
 # Build and run the run web player:
-#   $env:GIT_COMMIT = (git rev-parse HEAD); docker-compose up -d --build
+#   $env:GIT_COMMIT = (git rev-parse HEAD); docker-compose up -d --build uade-web
 # To run tests:
 # 1. Build and run the test runner service:
 #    $env:GIT_COMMIT = (git rev-parse HEAD); docker-compose up --build  uade-test-runner

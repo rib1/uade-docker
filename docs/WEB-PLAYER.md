@@ -30,7 +30,7 @@ git clone https://github.com/rib1/uade-docker.git
 cd uade-docker
 
 # Start the web player
-docker-compose up -d
+docker-compose up -d uade-web
 
 # Access at: http://localhost:5000
 ```
@@ -48,15 +48,15 @@ docker-compose up -d
 
 ```powershell
 # View logs
-docker-compose logs -f
+docker-compose logs -f uade-web
 
 # Stop the service
-docker-compose down
+docker-compose down uade-web # or docker-compose down for all services
 
-# Rebuild after code changes
-docker-compose up -d --build
+# Rebuild after code changes (for web player only)
+docker-compose up -d --build uade-web
 # To inject the current git commit hash into the container, run:
-$env:GIT_COMMIT = (git rev-parse HEAD); docker-compose up -d --build
+$env:GIT_COMMIT = (git rev-parse HEAD); docker-compose up -d --build uade-web
 
 # View service status
 docker-compose ps
@@ -426,6 +426,27 @@ Interactive input fields have associated accessible names to ensure they are pro
 If issues persist, run with debug logging enabled and check cloud provider logs for more details.
 
 ## Development
+
+### Running Tests
+
+To run the integration tests using `docker-compose`:
+
+1. **Build and run the test runner service (one time setup):**
+
+    ```powershell
+    $env:GIT_COMMIT = (git rev-parse HEAD); docker-compose up --build uade-test-runner
+    ```
+
+    This will build the `uade-test-runner` image and run the tests. The container will exit after the tests are completed.
+
+2. **To run tests again (after initial setup):**
+
+    ```powershell
+    docker-compose run --rm uade-test-runner
+    ```
+
+    This command will run the tests in a new container and remove it upon completion (`--rm`).
+    The `uade-web` service must be running and healthy for the tests to pass.
 
 ### Local Development
 
