@@ -387,6 +387,10 @@ test_cache_hit_url() {
         -d "$JSON_PAYLOAD" \
         "$BASE_URL/convert-url")
 
+    echo "First request."
+    echo "Response body: $RESPONSE1"
+    echo ""
+
     # Second call (should hit cache)
     RESPONSE2=$(curl -s -X POST \
         -H "Content-Type: application/json" \
