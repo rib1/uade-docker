@@ -395,6 +395,27 @@ test_cache_hit_url() {
     echo ""
 }
 
+# Arguments:
+# 1. URL to test (string)
+test_xss_filename() {
+    XSS_URL=$1
+    echo "--- Testing Security: XSS in filename/module name: $XSS_URL ---"
+    HTTP_CODE_BODY=$(_perform_convert_url_call "$XSS_URL")
+    HTTP_CODE=$(echo "$HTTP_CODE_BODY" | head -n1)
+    BODY=$(echo "$HTTP_CODE_BODY" | tail -n1)
+    if [ "$HTTP_CODE" -eq 200 ]; then
+        if echo "$BODY" | grep -q '<script>'; then
+            echo "ERROR: XSS payload found in response body!"
+            exit 1
+        else
+            echo "SUCCESS: XSS payload not reflected in response."
+        fi
+    else
+        echo "SUCCESS: Received HTTP $HTTP_CODE (expected for invalid file)"
+    fi
+    echo ""
+}
+
 # Wait for the service to be up
 echo "Waiting for uade-web-player to be available..."
 while ! curl -s "$BASE_URL/health" > /dev/null; do
@@ -423,6 +444,15 @@ test_security_url "Reject dual-file module with unsafe sample_url" "https://modl
 test_security_url "Reject TFMX modules sample_url with newlines" "https://modland.com/pub/modules/TFMX/Chris%20Huelsbeck/mdat.apidya%20%28level%201%29" "https://example.com/file%0a%0ainjected"
 test_security_url "Reject RJP modules unsafe url when sample_url is safe" "https://example.com/file%60%20rm%20-rf%20/%60" "https://modland.com/pub/modules/Richard%20Joseph/Richard%20Joseph/cannon%20fodder%20(intro).ins"
 test_security_url "Reject convert-url with no URL" "$BASE_URL/convert-url" "{}"
+# Path traversal in filename (should be rejected or sanitized)
+test_security_url "Reject path traversal in URL" "https://example.com/../../etc/passwd"
+# SSRF with encoded localhost IP (should be rejected)
+test_security_url "Reject encoded localhost IP" "http://2130706433:5000/health"
+# SSRF with IPv6 localhost (should be rejected)
+test_security_url "Reject IPv6 localhost" "http://[::1]/admin"
+
+# XSS in filename/module name (should not be reflected unsanitized)
+test_xss_filename "https://example.com/<script>alert('xss')</script>.mod"
 
 # Note: The FLAC test file must be unique in test cases to avoid being cached as WAV
 # and must not be returned by the example modules endpoint (app.route("/examples")) to ensure a fresh conversion.

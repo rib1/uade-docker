@@ -997,6 +997,18 @@ def is_safe_url(u):
                 )
                 return False
 
+        # Path traversal check in path and query
+        # Normalize backslashes to slashes and check for ".." segments
+        normalized_path = unquoted_path.replace("\\", "/")
+        normalized_query = unquoted_query.replace("\\", "/")
+        if any(seg == ".." for seg in normalized_path.split("/")) or any(
+            seg == ".." for seg in normalized_query.split("/")
+        ):
+            logger.warning(
+                f"is_safe_url: rejected URL due to path traversal pattern '..' in path/query for URL: {sanitized_url_for_log}"
+            )
+            return False
+
         # All checks passed
         logger.info(f"is_safe_url: accepted URL: {sanitized_url_for_log}")
         return True
