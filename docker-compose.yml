@@ -1,13 +1,18 @@
 # Build and run the run web player:
-#   $env:GIT_COMMIT = (git rev-parse HEAD); docker-compose up -d --build uade-web
+#    powershell:
+#    $env:GIT_COMMIT = (git rev-parse HEAD); docker-compose up -d --build uade-web
+#    or in bash:
+#    GIT_COMMIT=$(git rev-parse HEAD); docker-compose up --build  uade-web
 # To run tests:
 # 1. Build and run the test runner service:
+#    powershell:
 #    $env:GIT_COMMIT = (git rev-parse HEAD); docker-compose up --build  uade-test-runner
+#    or in bash:
+#    GIT_COMMIT=$(git rev-parse HEAD); docker-compose up --build  uade-test-runner
 # 2. To run tests again:
 #    docker-compose run --rm uade-test-runner
 # 3. To run ratelimit-tests:
 #    docker-compose -f docker-compose.yml -f test/docker-compose.ratelimit.yml up --build uade-test-ratelimit-runner
-#
 
 services:
   uade-web:

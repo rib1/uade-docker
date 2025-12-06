@@ -170,20 +170,10 @@ test_security_malformed_range() {
 
     echo "--- Testing Range Request: $TEST_NAME ---"
 
-    if [ -z "$SAMPLE_URL" ]; then
-        JSON_PAYLOAD=$(jq -n --arg url "$URL" '{url: $url}')
-    else
-        JSON_PAYLOAD=$(jq -n --arg url "$URL" --arg sample_url "$SAMPLE_URL" '{url: $url, sample_url: $sample_url}')
-    fi
-
     # First, convert a module to get a file_id
-    RESPONSE_ALL=$(curl -s -w "\n%{http_code}" -X POST \
-        -H "Content-Type: application/json" \
-        -d "$JSON_PAYLOAD" \
-        "$BASE_URL/convert-url")
-
-    HTTP_CODE=$(echo "$RESPONSE_ALL" | tail -n1)
-    RESPONSE=$(echo "$RESPONSE_ALL" | sed '$d')
+    HTTP_CODE_BODY=$(_perform_convert_url_call "$URL" "$SAMPLE_URL")
+    HTTP_CODE=$(echo "$HTTP_CODE_BODY" | head -n1)
+    RESPONSE=$(echo "$HTTP_CODE_BODY" | tail -n1)
 
     if [ "$HTTP_CODE" -ne 200 ]; then
         echo "ERROR: Initial convert-url call failed with HTTP $HTTP_CODE for malformed range test"
@@ -251,7 +241,7 @@ test_url_with_ua() {
 
     echo "--- Testing User-Agent FLAC: $TEST_NAME ---"
 
-    # Capture HTTP_CODE and RESPONSE from _perform_convert_url_call
+    # Capture HTTP_CODE and RESPONSE from _perform_convert_url_call_with_agent_header
     HTTP_CODE_BODY=$(_perform_convert_url_call_with_agent_header "$URL" "$USER_AGENT")
     HTTP_CODE=$(echo "$HTTP_CODE_BODY" | head -n1)
     BODY=$(echo "$HTTP_CODE_BODY" | tail -n1)
@@ -375,27 +365,22 @@ test_cache_hit_url() {
 
     echo "--- Testing Cache Hit: $TEST_NAME ---"
 
-    if [ -z "$SAMPLE_URL" ]; then
-        JSON_PAYLOAD=$(jq -n --arg url "$URL" '{url: $url}')
-    else
-        JSON_PAYLOAD=$(jq -n --arg url "$URL" --arg sample_url "$SAMPLE_URL" '{url: $url, sample_url: $sample_url}')
-    fi
+    HTTP_CODE_BODY=$(_perform_convert_url_call "$URL" "$SAMPLE_URL")
+    HTTP_CODE=$(echo "$HTTP_CODE_BODY" | head -n1)
+    RESPONSE1=$(echo "$HTTP_CODE_BODY" | tail -n1)
 
     # First call (should convert and cache)
-    RESPONSE1=$(curl -s -X POST \
-        -H "Content-Type: application/json" \
-        -d "$JSON_PAYLOAD" \
-        "$BASE_URL/convert-url")
-
-    echo "First request."
-    echo "Response body: $RESPONSE1"
-    echo ""
+    if [ "$HTTP_CODE" -ne 200 ]; then
+        echo "ERROR: First request convert-url call failed with HTTP $HTTP_CODE for test '$TEST_NAME'"
+        echo "Response body: $RESPONSE1"
+        exit 1
+    fi
+    echo "SUCCESS: First request completed."
 
     # Second call (should hit cache)
-    RESPONSE2=$(curl -s -X POST \
-        -H "Content-Type: application/json" \
-        -d "$JSON_PAYLOAD" \
-        "$BASE_URL/convert-url")
+    HTTP_CODE_BODY=$(_perform_convert_url_call "$URL" "$SAMPLE_URL")
+    HTTP_CODE=$(echo "$HTTP_CODE_BODY" | head -n1)
+    RESPONSE2=$(echo "$HTTP_CODE_BODY" | tail -n1)
 
     CACHED_STATUS=$(echo "$RESPONSE2" | jq -r .cached)
 
