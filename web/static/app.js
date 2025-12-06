@@ -416,9 +416,6 @@ function playFile(
     showStatus("Audio cannot be played. You may have hit the rate limit or the file is invalid.", "error");
   };
 
-  // Update media session for lock screen
-  updateMediaSession(trackDisplay, moduleFormat || playerFormat || "Amiga Module", "UADE Web Player");
-
   audioPlayer.play().catch((err) => {
     // Gracefully handle autoplay rejection on mobile
     if (err.name === "NotAllowedError") {
@@ -433,9 +430,16 @@ function playFile(
       showStatus("An error occurred during playback. Check console for details.", "error");
     }
   });
+
+  // Update media session for lock screen
+  updateMediaSession(trackDisplay, moduleFormat || playerFormat || "Amiga Module", "UADE Web Player");
 }
 
 // Update Media Session
+// NOTE: As of iOS Safari 18, the Media Session API (for lock screen and media widget metadata)
+// appears to be buggy or inconsistent, and may not display song information or artwork
+// even when correctly implemented. This is believed to be a browser-specific issue and
+// is out of the control of this application's developers.
 function updateMediaSession(title, artist, album) {
   if ("mediaSession" in navigator) {
     navigator.mediaSession.metadata = new MediaMetadata({
