@@ -29,6 +29,16 @@ document.addEventListener("DOMContentLoaded", () => {
   loadExamples();
   loadVersionInfo();
   loadSupportedExtensions();
+  createAutoplayOverlay();
+
+  // Hide overlay whenever playback starts for any reason (e.g., user clicks native play)
+  audioPlayer.addEventListener("play", () => {
+    const autoplayOverlay = document.getElementById("autoplay-overlay");
+    if (autoplayOverlay) {
+      autoplayOverlay.style.display = "none";
+      autoplayOverlay.style.pointerEvents = "none"; // Disable interaction
+    }
+  });
 });
 
 async function loadSupportedExtensions() {
@@ -61,6 +71,9 @@ function setupDragAndDrop() {
   });
 
   ["dragleave", "drop"].forEach((eventName) => {
+    dropZone.removeEventListener(eventName, () => {
+      dropZone.classList.remove("drag-over");
+    });
     dropZone.addEventListener(eventName, () => {
       dropZone.classList.remove("drag-over");
     });
@@ -389,6 +402,12 @@ function playFile(
   playerSection.style.display = "block";
   playerSection.scrollIntoView({ behavior: "smooth", block: "nearest" });
 
+  const autoplayOverlay = document.getElementById("autoplay-overlay");
+  if (autoplayOverlay) {
+    autoplayOverlay.style.display = "none";
+    autoplayOverlay.style.pointerEvents = "none"; // Disable interaction
+  }
+
   // Remove previous error handler to avoid stacking
   audioPlayer.onerror = null;
 
@@ -398,8 +417,18 @@ function playFile(
   };
 
   audioPlayer.play().catch((err) => {
-    console.error("Playback error:", err);
-    showStatus("Playback error - check browser console", "error");
+    // Gracefully handle autoplay rejection on mobile
+    if (err.name === "NotAllowedError") {
+      showStatus("Autoplay blocked. Tap the play icon to start.", "info");
+      if (autoplayOverlay) {
+        autoplayOverlay.style.display = "flex";
+        autoplayOverlay.style.pointerEvents = "auto"; // Re-enable interaction
+      }
+      console.warn("Autoplay was prevented by browser policy.");
+    } else {
+      console.error("Playback error:", err);
+      showStatus("An error occurred during playback. Check console for details.", "error");
+    }
   });
 
   // Update media session for lock screen
@@ -462,7 +491,11 @@ function setupDownloadButton() {
         }
       } catch (error) {
         showStatus(`✗ Download failed: ${error.message}`, "error");
-        downloadBtn.disabled = false;
+      } finally {
+        // Ensure button is re-enabled if an error occurs but wasn't caught in the try block (e.g. network error)
+        if (downloadBtn.disabled) {
+            downloadBtn.disabled = false;
+        }
       }
     }
   });
@@ -481,6 +514,31 @@ function showStatus(message, type = "info") {
     status.style.opacity = "0";
     setTimeout(() => status.remove(), 300);
   }, 5000);
+}
+
+// Create and setup the overlay for blocked autoplay
+function createAutoplayOverlay() {
+  const audioPlayerElement = document.getElementById("audio-player");
+  if (!audioPlayerElement) return;
+
+  // Ensure audioPlayerElement can contain a positioned overlay
+  audioPlayerElement.style.position = "relative";
+
+  const overlay = document.createElement("div");
+  overlay.id = "autoplay-overlay";
+  overlay.setAttribute("aria-label", "Play"); // Added aria-label
+  overlay.tabIndex = 0; // Added tabIndex for keyboard accessibility
+  overlay.innerHTML = "<div class=\"play-button-overlay-icon\"></div>";
+
+
+  audioPlayerElement.appendChild(overlay);
+
+  overlay.addEventListener("click", () => {
+    const audioPlayer = document.getElementById("audio-player");
+    audioPlayer.play(); // This is now a direct user interaction
+    overlay.style.display = "none";
+    overlay.style.pointerEvents = "none"; // Disable interaction after click
+  });
 }
 
 // Load Version Info

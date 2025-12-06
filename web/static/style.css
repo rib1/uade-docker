@@ -433,3 +433,45 @@ audio {
     max-width: none;
   }
 }
+
+/* Autoplay Overlay Styles */
+#autoplay-overlay {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background-color: rgba(0, 0, 0, 0.7);
+    display: none; /* Initially hidden */
+    justify-content: center;
+    align-items: center;
+    cursor: pointer;
+    z-index: 10;
+    border-radius: 8px; /* Match player style */
+    -webkit-backdrop-filter: blur(5px);
+    backdrop-filter: blur(5px);
+}
+.play-button-overlay-icon {
+    width: 70px;
+    height: 70px;
+    background-color: rgba(255, 255, 255, 0.95);
+    border-radius: 50%;
+    position: relative;
+    box-shadow: 0 0 20px rgba(0,0,0,0.5);
+    transition: transform 0.2s ease;
+}
+.play-button-overlay-icon::after {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 55%;
+    transform: translate(-50%, -50%);
+    width: 0;
+    height: 0;
+    border-top: 18px solid transparent;
+    border-bottom: 18px solid transparent;
+    border-left: 26px solid #2c3e50;
+}
+#autoplay-overlay:hover .play-button-overlay-icon {
+    transform: scale(1.1);
+}
