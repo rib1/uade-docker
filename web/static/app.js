@@ -405,7 +405,7 @@ function playFile(
   const autoplayOverlay = document.getElementById("autoplay-overlay");
   if (autoplayOverlay) {
     autoplayOverlay.style.display = "none";
-    autoplayOverlay.style.pointerEvents = "none"; // Disable interaction
+    autoplayOverlay.style.pointerEvents = "none";
   }
 
   // Remove previous error handler to avoid stacking
@@ -422,7 +422,7 @@ function playFile(
       showStatus("Autoplay blocked. Tap the play icon to start.", "info");
       if (autoplayOverlay) {
         autoplayOverlay.style.display = "flex";
-        autoplayOverlay.style.pointerEvents = "auto"; // Re-enable interaction
+        autoplayOverlay.style.pointerEvents = "auto";
       }
       console.warn("Autoplay was prevented by browser policy.");
     } else {
@@ -518,11 +518,10 @@ function showStatus(message, type = "info") {
 
 // Create and setup the overlay for blocked autoplay
 function createAutoplayOverlay() {
-  const audioPlayerElement = document.getElementById("audio-player");
-  if (!audioPlayerElement) return;
-
-  // Ensure audioPlayerElement can contain a positioned overlay
-  audioPlayerElement.style.position = "relative";
+  const playerContainer = document.getElementById("player-container");
+  if (!playerContainer) {
+    return;
+  }
 
   const overlay = document.createElement("div");
   overlay.id = "autoplay-overlay";
@@ -530,8 +529,7 @@ function createAutoplayOverlay() {
   overlay.tabIndex = 0; // Added tabIndex for keyboard accessibility
   overlay.innerHTML = "<div class=\"play-button-overlay-icon\"></div>";
 
-
-  audioPlayerElement.appendChild(overlay);
+  playerContainer.appendChild(overlay);
 
   overlay.addEventListener("click", () => {
     const audioPlayer = document.getElementById("audio-player");

@@ -316,9 +316,14 @@ footer a:hover {
   font-size: 0.85rem;
 }
 
+#player-container {
+  position: relative;
+  margin-bottom: 15px;
+}
+
 audio {
   width: 100%;
-  margin-bottom: 15px;
+  display: block;
 }
 
 .player-controls {
