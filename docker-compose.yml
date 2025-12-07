@@ -52,6 +52,8 @@ services:
     depends_on:
       uade-web:
         condition: service_healthy
+    volumes:
+      - uade-tmp:/home/tester/app/fixtures
     networks:
       - uade-net
 
