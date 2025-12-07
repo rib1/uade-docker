@@ -168,7 +168,6 @@ MODULE_FILE_EXTENSIONS: Final = {
     "instr",
     "jd",  # Special FX
     "jt",  # Jeroen Tel
-    "mdat",  # TFMX song data
     "mcmd",
     "med",  # OctaMED
     "mmd0",  # OctaMED MMD0
@@ -182,13 +181,11 @@ MODULE_FILE_EXTENSIONS: Final = {
     "okt",  # Oktalyzer
     "okta",  # Oktalyzer
     "osp",  # Synth Pack
-    "rjp",  # Richard Joseph Player, needs smp files (samples)
     "rk",  # Ron Klaren
     "sa",  # Sonic Arranger
     "sc",  # SoundControl
     "sid",  # SidMon 1
     "sid2",  # SidMon 2
-    "smpl",  # TFMX sample data
     "smod",  # Future Composer 1.0 - 1.3
     "smus",
     "sng",  # Richard Joseph Player /Synder SNG-Player
@@ -206,10 +203,18 @@ MODULE_FILE_EXTENSIONS: Final = {
 }
 
 DUAL_FILE_MODULES: Final = [
-    {"pattern_data": "mdat", "sample_data": "smpl"},
-    {"pattern_data": "rjp", "sample_data": "smp"},
-    {"pattern_data": "sng", "sample_data": "ins"},
+    {"pattern_data": "mdat", "sample_data": "smpl"},  # TFMX
+    {"pattern_data": "rjp", "sample_data": "smp"},  # Richard Joseph Player
+    {"pattern_data": "sng", "sample_data": "ins"}, # Richard Joseph Player / Synder SNG-Player
 ]
+
+# Combined set of extensions and prefixes for finding playable music modules within extracted archives.
+# This excludes archive formats (lha, zip) and explicitly excludes sample data extensions (smpl, smp, ins)
+# to avoid incorrectly identifying them as primary music modules.
+PLAYABLE_MODULE_EXTENSIONS: Final = (
+    MODULE_FILE_EXTENSIONS
+    | {entry["pattern_data"] for entry in DUAL_FILE_MODULES}
+)
 
 # Example modules - keeping it simple with proven working examples
 EXAMPLES: Final = [
@@ -408,7 +413,7 @@ def find_music_file(extract_dir):
             # which can occur in extracted files (e.g., 'Spirit-Creator.mod '), ensuring robust matching.
             ext = file_path.suffix.lower()[1:].strip()
             prefix = file_path.name.lower().split(".")[0].strip()
-            if ext in MODULE_FILE_EXTENSIONS or prefix in MODULE_FILE_EXTENSIONS:
+            if ext in PLAYABLE_MODULE_EXTENSIONS or prefix in PLAYABLE_MODULE_EXTENSIONS:
                 music_files.append(file_path)
     if not music_files:
         return None, 0
@@ -802,7 +807,7 @@ def index():
 @limiter.exempt
 def get_supported_extensions():
     """Return a list of supported file extensions"""
-    extensions = sorted(list(MODULE_FILE_EXTENSIONS)) + ["lha", "zip"]
+    extensions = sorted(list(PLAYABLE_MODULE_EXTENSIONS)) + ["lha", "zip"]
     return json_response([f".{ext}" for ext in extensions])
 
 
