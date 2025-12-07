@@ -13,6 +13,17 @@ mkdir -p fixtures/invalid
 touch fixtures/invalid/empty.bin
 head -c 11534336 /dev/urandom > fixtures/invalid/too-large.bin
 
+# Download test files to fixtures directory
+mkdir -p fixtures/modules
+if [ ! -f "fixtures/modules/space_debris.mod" ]; then
+    echo "Downloading space_debris.mod..."
+    curl -s --insecure -o fixtures/modules/space_debris.mod "https://modland.com/pub/modules/Protracker/Captain/space%20debris.mod"
+fi
+if [ ! -f "fixtures/modules/gutenberg.txt" ]; then
+    echo "Downloading gutenberg.txt..."
+    curl -s --insecure -o fixtures/modules/gutenberg.txt "https://www.gutenberg.org/files/1342/1342-0.txt"
+fi
+
 
 # Helper function to perform a convert-url API call
 # Arguments:
@@ -513,26 +524,17 @@ test_filename_extraction() {
 # Function to test a successful file upload and conversion
 # Arguments:
 # 1. Test name (string)
-# 2. URL to download module from (string)
+# 2. File path to local module (string)
 test_upload_conversion() {
     TEST_NAME=$1
-    DOWNLOAD_URL=$2
+    FILE_PATH=$2
 
     echo "--- Testing Upload Conversion: $TEST_NAME ---"
 
-    TEMP_FILE="downloaded_module.bin"
-    # Download the module, capturing any curl errors to stderr
-    if ! curl -s --insecure -o "$TEMP_FILE" "$DOWNLOAD_URL"; then
-        echo "ERROR: Failed to download module from $DOWNLOAD_URL"
-        exit 1
-    fi
-
-    # Upload the downloaded module and capture the HTTP code and body
-    UPLOAD_RESPONSE_ALL=$(curl -s -w "\n%{http_code}" -X POST -F "file=@$TEMP_FILE" "$BASE_URL/upload")
+    # Upload the local module and capture the HTTP code and body
+    UPLOAD_RESPONSE_ALL=$(curl -s -w "\n%{http_code}" -X POST -F "file=@$FILE_PATH" "$BASE_URL/upload")
     UPLOAD_HTTP_CODE=$(echo "$UPLOAD_RESPONSE_ALL" | tail -n1)
     UPLOAD_BODY=$(echo "$UPLOAD_RESPONSE_ALL" | sed '$d')
-
-    rm "$TEMP_FILE" # Clean up temporary file
 
     if [ "$UPLOAD_HTTP_CODE" -ne 200 ]; then
         echo "ERROR: Received HTTP $UPLOAD_HTTP_CODE for test '$TEST_NAME'"
@@ -548,14 +550,14 @@ test_upload_conversion() {
 # Function to test metadata extraction from an uploaded file
 # Arguments:
 # 1. Test name (string)
-# 2. URL to download module from (string)
+# 2. File path to local module (string)
 # 3. Expected module name (string)
 # 4. Expected module format (string)
 # 5. Expected player format (string)
 # 6. Expected subsongs (integer)
 test_upload_metadata_extraction() {
     TEST_NAME=$1
-    DOWNLOAD_URL=$2
+    FILE_PATH=$2
     EXPECTED_MODULE_NAME=$3
     EXPECTED_MODULE_FORMAT=$4
     EXPECTED_PLAYER_FORMAT=$5
@@ -563,18 +565,9 @@ test_upload_metadata_extraction() {
 
     echo "--- Testing Upload Metadata Extraction: $TEST_NAME ---"
 
-    TEMP_FILE="downloaded_module.bin"
-    # Download the module, capturing any curl errors to stderr
-    if ! curl -s --insecure -o "$TEMP_FILE" "$DOWNLOAD_URL"; then
-        echo "ERROR: Failed to download module from $DOWNLOAD_URL"
-        exit 1
-    fi
-
-    UPLOAD_RESPONSE_ALL=$(curl -s -w "\n%{http_code}" -X POST -F "file=@$TEMP_FILE" "$BASE_URL/upload")
+    UPLOAD_RESPONSE_ALL=$(curl -s -w "\n%{http_code}" -X POST -F "file=@$FILE_PATH" "$BASE_URL/upload")
     UPLOAD_HTTP_CODE=$(echo "$UPLOAD_RESPONSE_ALL" | tail -n1)
     UPLOAD_BODY=$(echo "$UPLOAD_RESPONSE_ALL" | sed '$d')
-
-    rm "$TEMP_FILE" # Clean up temporary file
 
     if [ "$UPLOAD_HTTP_CODE" -ne 200 ]; then
         echo "ERROR: Received HTTP $UPLOAD_HTTP_CODE for test '$TEST_NAME'"
@@ -608,27 +601,18 @@ test_upload_metadata_extraction() {
 # Function to test filename extraction from an uploaded file
 # Arguments:
 # 1. Test name (string)
-# 2. URL to download module from (string)
+# 2. File path to local module (string)
 # 3. Expected filename after upload (string)
 test_upload_filename_extraction() {
     TEST_NAME=$1
-    DOWNLOAD_URL=$2
+    FILE_PATH=$2
     EXPECTED_FILENAME=$3
 
     echo "--- Testing Upload Filename Extraction: $TEST_NAME ---"
 
-    TEMP_FILE="downloaded_module.bin"
-    # Download the module, capturing any curl errors to stderr
-    if ! curl -s --insecure -o "$TEMP_FILE" "$DOWNLOAD_URL"; then
-        echo "ERROR: Failed to download module from $DOWNLOAD_URL"
-        exit 1
-    fi
-
-    UPLOAD_RESPONSE_ALL=$(curl -s -w "\n%{http_code}" -X POST -F "file=@$TEMP_FILE;filename=$EXPECTED_FILENAME" "$BASE_URL/upload")
+    UPLOAD_RESPONSE_ALL=$(curl -s -w "\n%{http_code}" -X POST -F "file=@$FILE_PATH;filename=$EXPECTED_FILENAME" "$BASE_URL/upload")
     UPLOAD_HTTP_CODE=$(echo "$UPLOAD_RESPONSE_ALL" | tail -n1)
     UPLOAD_BODY=$(echo "$UPLOAD_RESPONSE_ALL" | sed '$d')
-
-    rm "$TEMP_FILE" # Clean up temporary file
 
     if [ "$UPLOAD_HTTP_CODE" -ne 200 ]; then
         echo "ERROR: Received HTTP $UPLOAD_HTTP_CODE for test '$TEST_NAME'"
@@ -653,24 +637,16 @@ test_upload_filename_extraction() {
 # Function to test a negative case for file upload (non-module file)
 # Arguments:
 # 1. Test name (string)
-# 2. URL to download non-module file from (string)
+# 2. File path to local non-module file (string)
 test_upload_negative_case() {
     TEST_NAME=$1
-    DOWNLOAD_URL=$2
+    FILE_PATH=$2
 
     echo "--- Testing Upload Negative Case: $TEST_NAME ---"
 
-    TEMP_FILE="downloaded_non_module.bin"
-    if ! curl -s --insecure -o "$TEMP_FILE" "$DOWNLOAD_URL"; then
-        echo "ERROR: Failed to download non-module file from $DOWNLOAD_URL"
-        exit 1
-    fi
-
-    UPLOAD_RESPONSE_ALL=$(curl -s -w "\n%{http_code}" -X POST -F "file=@$TEMP_FILE" "$BASE_URL/upload")
+    UPLOAD_RESPONSE_ALL=$(curl -s -w "\n%{http_code}" -X POST -F "file=@$FILE_PATH" "$BASE_URL/upload")
     UPLOAD_HTTP_CODE=$(echo "$UPLOAD_RESPONSE_ALL" | tail -n1)
     UPLOAD_BODY=$(echo "$UPLOAD_RESPONSE_ALL" | sed '$d')
-
-    rm "$TEMP_FILE" # Clean up temporary file
 
     if [ "$UPLOAD_HTTP_CODE" -eq 500 ]; then
         EXPECTED_ERROR_MESSAGE="Could not detect module metadata. The file may be corrupt or not a supported module."
@@ -755,10 +731,10 @@ test_filename_extraction "Exotica URL" "http://files.exotica.org.uk/?file=exotic
 test_filename_extraction "Scene.org URL" "https://files.scene.org/get:fi-https/music/artists/4-mat/chip_shop.zip" "Chip_Shop.mod"
 
 # Upload tests
-test_upload_conversion "Protracker module upload" "https://modland.com/pub/modules/Protracker/Captain/space%20debris.mod"
-test_upload_metadata_extraction "Protracker module upload" "https://modland.com/pub/modules/Protracker/Captain/space%20debris.mod" "space debris" "Protracker" "Protracker and family" 1
-test_upload_filename_extraction "Protracker module upload" "https://modland.com/pub/modules/Protracker/Captain/space%20debris.mod" "space_debris.mod"
-test_upload_negative_case "Non-module file upload" "https://www.gutenberg.org/files/1342/1342-0.txt"
+test_upload_conversion "Protracker module upload" "fixtures/modules/space_debris.mod"
+test_upload_metadata_extraction "Protracker module upload" "fixtures/modules/space_debris.mod" "space debris" "Protracker" "Protracker and family" 1
+test_upload_filename_extraction "Protracker module upload" "fixtures/modules/space_debris.mod" "space_debris.mod"
+test_upload_negative_case "Non-module file upload" "fixtures/modules/gutenberg.txt"
 test_upload_error "Reject empty file upload" "fixtures/invalid/empty.bin" 400
 test_upload_error "Reject oversized file upload" "fixtures/invalid/too-large.bin" 413
 
