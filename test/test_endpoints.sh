@@ -510,71 +510,6 @@ test_filename_extraction() {
     echo ""
 }
 
-
-# Wait for the service to be up
-echo "Waiting for uade-web-player to be available..."
-while ! curl -s "$BASE_URL/health" > /dev/null; do
-    sleep 1
-done
-echo "Service is up!"
-
-test_url "Protracker module" "https://modland.com/pub/modules/Protracker/Captain/space%20debris.mod"
-test_url "AHX module" "https://modland.com/pub/modules/AHX/Pink/stormlord.ahx"
-test_url "TFMX module" "https://modland.com/pub/modules/TFMX/Chris%20Huelsbeck/mdat.turrican%202%20level%200-intro" "https://modland.com/pub/modules/TFMX/Chris%20Huelsbeck/smpl.turrican%202%20level%200-intro"
-test_url "TFMX module (Apidya)" "https://modland.com/pub/modules/TFMX/Chris%20Huelsbeck/mdat.apidya%20%28level%201%29" "https://modland.com/pub/modules/TFMX/Chris%20Huelsbeck/smpl.apidya%20%28level%201%29"
-test_url "LHA archive" "http://files.exotica.org.uk/?file=exotica/media%2Faudio%2FUnExoticA%2FGame%2FBrimble_Allister%2FProject-X.lha"
-test_url "ZIP archive" "https://files.scene.org/get:fi-https/music/artists/4-mat/chip_shop.zip"
-test_url "RJP module" "https://modland.com/pub/modules/Richard%20Joseph/Richard%20Joseph/cannon%20fodder%20(intro).sng" "https://modland.com/pub/modules/Richard%20Joseph/Richard%20Joseph/cannon%20fodder%20(intro).ins"
-test_url "Negative case (non-module)" "https://www.gutenberg.org/files/1342/1342-0.txt"
-
-test_play_example "Play Example (Romeo Knight)" "romeo-knight-beat"
-test_play_example "Play Example (Turrican 2)" "huelsbeck-turrican2"
-
-# Security tests
-test_security_url "Reject localhost URL" "http://localhost:5000/health"
-test_security_url "Reject private IP URL" "http://192.168.1.1/internal"
-test_security_url "Reject URL with command injection attempt" "https://example.com/file%60%20rm%20-rf%20/%60"
-test_security_url "Reject URL with newlines" "https://example.com/file%0a%0ainjected"
-test_security_url "Reject dual-file module with unsafe sample_url" "https://modland.com/pub/modules/Protracker/Captain/space%20debris.mod" "http://192.168.1.1/internal"
-test_security_url "Reject TFMX modules sample_url with newlines" "https://modland.com/pub/modules/TFMX/Chris%20Huelsbeck/mdat.apidya%20%28level%201%29" "https://example.com/file%0a%0ainjected"
-test_security_url "Reject RJP modules unsafe url when sample_url is safe" "https://example.com/file%60%20rm%20-rf%20/%60" "https://modland.com/pub/modules/Richard%20Joseph/Richard%20Joseph/cannon%20fodder%20(intro).ins"
-test_security_url "Reject convert-url with no URL" "$BASE_URL/convert-url" "{}"
-# Path traversal in filename (should be rejected or sanitized)
-test_security_url "Reject path traversal in URL" "https://example.com/../../etc/passwd"
-# SSRF with encoded localhost IP (should be rejected)
-test_security_url "Reject encoded localhost IP" "http://2130706433:5000/health"
-# SSRF with IPv6 localhost (should be rejected)
-test_security_url "Reject IPv6 localhost" "http://[::1]/admin"
-
-# XSS in filename/module name (should not be reflected unsanitized)
-test_xss_filename "https://example.com/<script>alert('xss')</script>.mod"
-
-# Note: The FLAC test file must be unique in test cases to avoid being cached as WAV
-# and must not be returned by the example modules endpoint (app.route("/examples")) to ensure a fresh conversion.
-test_url_with_ua "FLAC compression with Chrome UA"  "https://modland.com/pub/modules/Protracker/Lizardking/l.k%27s%20doskpop.mod" "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 Chrome/120.0.0.0" "flac"
-
-test_range_request "Range request for large TFMX module" "https://modland.com/pub/modules/TFMX/Chris%20Huelsbeck/mdat.turrican%202%20level%200-intro" "https://modland.com/pub/modules/TFMX/Chris%20Huelsbeck/smpl.turrican%202%20level%200-intro"
-
-test_security_malformed_range "Reject malformed range" "https://modland.com/pub/modules/TFMX/Chris%20Huelsbeck/mdat.turrican%202%20level%200-intro" "https://modland.com/pub/modules/TFMX/Chris%20Huelsbeck/smpl.turrican%202%20level%200-intro"
-
-test_download_functionality "Download Protracker module" "https://modland.com/pub/modules/Protracker/Captain/space%20debris.mod"
-
-test_cache_hit_url "Server-side cache hit for convert-url" "https://modland.com/pub/modules/Protracker/Lizardking/l.k%27s%20doskpop.mod"
-
-test_upload_error "Reject empty file upload" "fixtures/invalid/empty.bin" 400
-test_upload_error "Reject oversized file upload" "fixtures/invalid/too-large.bin" 413
-
-# Metadata extraction tests
-test_metadata_extraction "Full metadata" "https://modland.com/pub/modules/Protracker/Captain/space%20debris.mod" "" "space debris" "Protracker" "Protracker and family" 1
-test_metadata_extraction "Custom module" "https://zakalwe.fi/uade/amiga-music/customs/WingsOfDeath-Levels1-7/cust.WingsOfDeath-Levels1-7" "" "" "Custom" "Custom" 8
-test_metadata_extraction "Partial metadata" "https://modland.com/pub/modules/Richard%20Joseph/Richard%20Joseph/cannon%20fodder%20(intro).sng" "https://modland.com/pub/modules/Richard%20Joseph/Richard%20Joseph/cannon%20fodder%20(intro).ins" "" "" "Richard Joseph Player" 1
-
-# Filename extraction tests
-test_filename_extraction "ModArchive URL" "https://api.modarchive.org/downloads.php?moduleid=188875#way_too_rude.mod" "way_too_rude.mod"
-test_filename_extraction "Modland URL" "https://modland.com/pub/modules/Protracker/Captain/space%20debris.mod" "space_debris.mod"
-test_filename_extraction "Exotica URL" "http://files.exotica.org.uk/?file=exotica/media%2Faudio%2FUnExoticA%2FGame%2FBrimble_Allister%2FProject-X.lha" "bp.PX6"
-test_filename_extraction "Scene.org URL" "https://files.scene.org/get:fi-https/music/artists/4-mat/chip_shop.zip" "Chip_Shop.mod"
-
 # Function to test a successful file upload and conversion
 # Arguments:
 # 1. Test name (string)
@@ -715,8 +650,116 @@ test_upload_filename_extraction() {
     echo ""
 }
 
+# Function to test a negative case for file upload (non-module file)
+# Arguments:
+# 1. Test name (string)
+# 2. URL to download non-module file from (string)
+test_upload_negative_case() {
+    TEST_NAME=$1
+    DOWNLOAD_URL=$2
+
+    echo "--- Testing Upload Negative Case: $TEST_NAME ---"
+
+    TEMP_FILE="downloaded_non_module.bin"
+    if ! curl -s --insecure -o "$TEMP_FILE" "$DOWNLOAD_URL"; then
+        echo "ERROR: Failed to download non-module file from $DOWNLOAD_URL"
+        exit 1
+    fi
+
+    UPLOAD_RESPONSE_ALL=$(curl -s -w "\n%{http_code}" -X POST -F "file=@$TEMP_FILE" "$BASE_URL/upload")
+    UPLOAD_HTTP_CODE=$(echo "$UPLOAD_RESPONSE_ALL" | tail -n1)
+    UPLOAD_BODY=$(echo "$UPLOAD_RESPONSE_ALL" | sed '$d')
+
+    rm "$TEMP_FILE" # Clean up temporary file
+
+    if [ "$UPLOAD_HTTP_CODE" -eq 500 ]; then
+        EXPECTED_ERROR_MESSAGE="Could not detect module metadata. The file may be corrupt or not a supported module."
+        ACTUAL_ERROR_MESSAGE=$(echo "$UPLOAD_BODY" | jq -r .error)
+        if [[ "$ACTUAL_ERROR_MESSAGE" == "$EXPECTED_ERROR_MESSAGE" ]]; then
+            echo "SUCCESS: Received HTTP 500 and expected error message for '$TEST_NAME'"
+            echo "Response body: $UPLOAD_BODY"
+        else
+            echo "ERROR: Received HTTP 500 but unexpected error message for '$TEST_NAME'"
+            echo "Expected: '$EXPECTED_ERROR_MESSAGE'"
+            echo "Got: '$ACTUAL_ERROR_MESSAGE'"
+            echo "Response body: $UPLOAD_BODY"
+            exit 1
+        fi
+    else
+        echo "ERROR: Received unexpected HTTP $UPLOAD_HTTP_CODE (expected 500) for test '$TEST_NAME'"
+        echo "Response body: $UPLOAD_BODY"
+        exit 1
+    fi
+    echo ""
+}
+
+# Wait for the service to be up
+echo "Waiting for uade-web-player to be available..."
+while ! curl -s "$BASE_URL/health" > /dev/null; do
+    sleep 1
+done
+echo "Service is up!"
+
+test_url "Protracker module" "https://modland.com/pub/modules/Protracker/Captain/space%20debris.mod"
+test_url "AHX module" "https://modland.com/pub/modules/AHX/Pink/stormlord.ahx"
+test_url "TFMX module" "https://modland.com/pub/modules/TFMX/Chris%20Huelsbeck/mdat.turrican%202%20level%200-intro" "https://modland.com/pub/modules/TFMX/Chris%20Huelsbeck/smpl.turrican%202%20level%200-intro"
+test_url "TFMX module (Apidya)" "https://modland.com/pub/modules/TFMX/Chris%20Huelsbeck/mdat.apidya%20%28level%201%29" "https://modland.com/pub/modules/TFMX/Chris%20Huelsbeck/smpl.apidya%20%28level%201%29"
+test_url "LHA archive" "http://files.exotica.org.uk/?file=exotica/media%2Faudio%2FUnExoticA%2FGame%2FBrimble_Allister%2FProject-X.lha"
+test_url "ZIP archive" "https://files.scene.org/get:fi-https/music/artists/4-mat/chip_shop.zip"
+test_url "RJP module" "https://modland.com/pub/modules/Richard%20Joseph/Richard%20Joseph/cannon%20fodder%20(intro).sng" "https://modland.com/pub/modules/Richard%20Joseph/Richard%20Joseph/cannon%20fodder%20(intro).ins"
+test_url "Negative case (non-module)" "https://www.gutenberg.org/files/1342/1342-0.txt"
+
+test_play_example "Play Example (Romeo Knight)" "romeo-knight-beat"
+test_play_example "Play Example (Turrican 2)" "huelsbeck-turrican2"
+
+# Security tests
+test_security_url "Reject localhost URL" "http://localhost:5000/health"
+test_security_url "Reject private IP URL" "http://192.168.1.1/internal"
+test_security_url "Reject URL with command injection attempt" "https://example.com/file%60%20rm%20-rf%20/%60"
+test_security_url "Reject URL with newlines" "https://example.com/file%0a%0ainjected"
+test_security_url "Reject dual-file module with unsafe sample_url" "https://modland.com/pub/modules/Protracker/Captain/space%20debris.mod" "http://192.168.1.1/internal"
+test_security_url "Reject TFMX modules sample_url with newlines" "https://modland.com/pub/modules/TFMX/Chris%20Huelsbeck/mdat.apidya%20%28level%201%29" "https://example.com/file%0a%0ainjected"
+test_security_url "Reject RJP modules unsafe url when sample_url is safe" "https://example.com/file%60%20rm%20-rf%20/%60" "https://modland.com/pub/modules/Richard%20Joseph/Richard%20Joseph/cannon%20fodder%20(intro).ins"
+test_security_url "Reject convert-url with no URL" "$BASE_URL/convert-url" "{}"
+# Path traversal in filename (should be rejected or sanitized)
+test_security_url "Reject path traversal in URL" "https://example.com/../../etc/passwd"
+# SSRF with encoded localhost IP (should be rejected)
+test_security_url "Reject encoded localhost IP" "http://2130706433:5000/health"
+# SSRF with IPv6 localhost (should be rejected)
+test_security_url "Reject IPv6 localhost" "http://[::1]/admin"
+
+# XSS in filename/module name (should not be reflected unsanitized)
+test_xss_filename "https://example.com/<script>alert('xss')</script>.mod"
+
+# Note: The FLAC test file must be unique in test cases to avoid being cached as WAV
+# and must not be returned by the example modules endpoint (app.route("/examples")) to ensure a fresh conversion.
+test_url_with_ua "FLAC compression with Chrome UA"  "https://modland.com/pub/modules/Protracker/Lizardking/l.k%27s%20doskpop.mod" "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 Chrome/120.0.0.0" "flac"
+
+test_range_request "Range request for large TFMX module" "https://modland.com/pub/modules/TFMX/Chris%20Huelsbeck/mdat.turrican%202%20level%200-intro" "https://modland.com/pub/modules/TFMX/Chris%20Huelsbeck/smpl.turrican%202%20level%200-intro"
+
+test_security_malformed_range "Reject malformed range" "https://modland.com/pub/modules/TFMX/Chris%20Huelsbeck/mdat.turrican%202%20level%200-intro" "https://modland.com/pub/modules/TFMX/Chris%20Huelsbeck/smpl.turrican%202%20level%200-intro"
+
+test_download_functionality "Download Protracker module" "https://modland.com/pub/modules/Protracker/Captain/space%20debris.mod"
+
+test_cache_hit_url "Server-side cache hit for convert-url" "https://modland.com/pub/modules/Protracker/Lizardking/l.k%27s%20doskpop.mod"
+
+# Metadata extraction tests
+test_metadata_extraction "Full metadata" "https://modland.com/pub/modules/Protracker/Captain/space%20debris.mod" "" "space debris" "Protracker" "Protracker and family" 1
+test_metadata_extraction "Custom module" "https://zakalwe.fi/uade/amiga-music/customs/WingsOfDeath-Levels1-7/cust.WingsOfDeath-Levels1-7" "" "" "Custom" "Custom" 8
+test_metadata_extraction "Partial metadata" "https://modland.com/pub/modules/Richard%20Joseph/Richard%20Joseph/cannon%20fodder%20(intro).sng" "https://modland.com/pub/modules/Richard%20Joseph/Richard%20Joseph/cannon%20fodder%20(intro).ins" "" "" "Richard Joseph Player" 1
+
+# Filename extraction tests
+test_filename_extraction "ModArchive URL" "https://api.modarchive.org/downloads.php?moduleid=188875#way_too_rude.mod" "way_too_rude.mod"
+test_filename_extraction "Modland URL" "https://modland.com/pub/modules/Protracker/Captain/space%20debris.mod" "space_debris.mod"
+test_filename_extraction "Exotica URL" "http://files.exotica.org.uk/?file=exotica/media%2Faudio%2FUnExoticA%2FGame%2FBrimble_Allister%2FProject-X.lha" "bp.PX6"
+test_filename_extraction "Scene.org URL" "https://files.scene.org/get:fi-https/music/artists/4-mat/chip_shop.zip" "Chip_Shop.mod"
+
+# Upload tests
 test_upload_conversion "Protracker module upload" "https://modland.com/pub/modules/Protracker/Captain/space%20debris.mod"
 test_upload_metadata_extraction "Protracker module upload" "https://modland.com/pub/modules/Protracker/Captain/space%20debris.mod" "space debris" "Protracker" "Protracker and family" 1
 test_upload_filename_extraction "Protracker module upload" "https://modland.com/pub/modules/Protracker/Captain/space%20debris.mod" "space_debris.mod"
+test_upload_negative_case "Non-module file upload" "https://www.gutenberg.org/files/1342/1342-0.txt"
+test_upload_error "Reject empty file upload" "fixtures/invalid/empty.bin" 400
+test_upload_error "Reject oversized file upload" "fixtures/invalid/too-large.bin" 413
 
 echo "--- All tests passed! ---"
