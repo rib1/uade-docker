@@ -412,6 +412,9 @@ def find_music_file(extract_dir):
                 music_files.append(file_path)
     if not music_files:
         return None, 0
+    # Sort files in reverse alphabetical order to ensure deterministic selection.
+    # This tends to select later tracks or versions (e.g., 'track2' over 'track1').
+    music_files.sort(reverse=True)
     return music_files[0], len(music_files)
 
 
