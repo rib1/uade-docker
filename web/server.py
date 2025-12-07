@@ -188,7 +188,7 @@ MODULE_FILE_EXTENSIONS: Final = {
     "sid2",  # SidMon 2
     "smod",  # Future Composer 1.0 - 1.3
     "smus",
-    "sng",  # Richard Joseph Player /Synder SNG-Player
+    "sng",  # Synder SNG-Player
     "ss",
     "ssd",
     "sun",  # SunTronic
@@ -205,16 +205,15 @@ MODULE_FILE_EXTENSIONS: Final = {
 DUAL_FILE_MODULES: Final = [
     {"pattern_data": "mdat", "sample_data": "smpl"},  # TFMX
     {"pattern_data": "rjp", "sample_data": "smp"},  # Richard Joseph Player
-    {"pattern_data": "sng", "sample_data": "ins"}, # Richard Joseph Player / Synder SNG-Player
+    {"pattern_data": "sng", "sample_data": "ins"},  # Richard Joseph Player
 ]
 
 # Combined set of extensions and prefixes for finding playable music modules within extracted archives.
 # This excludes archive formats (lha, zip) and explicitly excludes sample data extensions (smpl, smp, ins)
 # to avoid incorrectly identifying them as primary music modules.
-PLAYABLE_MODULE_EXTENSIONS: Final = (
-    MODULE_FILE_EXTENSIONS
-    | {entry["pattern_data"] for entry in DUAL_FILE_MODULES}
-)
+PLAYABLE_MODULE_EXTENSIONS: Final = MODULE_FILE_EXTENSIONS | {
+    entry["pattern_data"] for entry in DUAL_FILE_MODULES
+}
 
 # Example modules - keeping it simple with proven working examples
 EXAMPLES: Final = [
