@@ -575,4 +575,148 @@ test_filename_extraction "Modland URL" "https://modland.com/pub/modules/Protrack
 test_filename_extraction "Exotica URL" "http://files.exotica.org.uk/?file=exotica/media%2Faudio%2FUnExoticA%2FGame%2FBrimble_Allister%2FProject-X.lha" "bp.PX6"
 test_filename_extraction "Scene.org URL" "https://files.scene.org/get:fi-https/music/artists/4-mat/chip_shop.zip" "Chip_Shop.mod"
 
+# Function to test a successful file upload and conversion
+# Arguments:
+# 1. Test name (string)
+# 2. URL to download module from (string)
+test_upload_conversion() {
+    TEST_NAME=$1
+    DOWNLOAD_URL=$2
+
+    echo "--- Testing Upload Conversion: $TEST_NAME ---"
+
+    TEMP_FILE="downloaded_module.bin"
+    # Download the module, capturing any curl errors to stderr
+    if ! curl -s --insecure -o "$TEMP_FILE" "$DOWNLOAD_URL"; then
+        echo "ERROR: Failed to download module from $DOWNLOAD_URL"
+        exit 1
+    fi
+
+    # Upload the downloaded module and capture the HTTP code and body
+    UPLOAD_RESPONSE_ALL=$(curl -s -w "\n%{http_code}" -X POST -F "file=@$TEMP_FILE" "$BASE_URL/upload")
+    UPLOAD_HTTP_CODE=$(echo "$UPLOAD_RESPONSE_ALL" | tail -n1)
+    UPLOAD_BODY=$(echo "$UPLOAD_RESPONSE_ALL" | sed '$d')
+
+    rm "$TEMP_FILE" # Clean up temporary file
+
+    if [ "$UPLOAD_HTTP_CODE" -ne 200 ]; then
+        echo "ERROR: Received HTTP $UPLOAD_HTTP_CODE for test '$TEST_NAME'"
+        echo "Response body: $UPLOAD_BODY"
+        exit 1
+    else
+        echo "SUCCESS: Upload and conversion was successful for '$TEST_NAME'"
+        echo "Response body: $UPLOAD_BODY"
+    fi
+    echo ""
+}
+
+# Function to test metadata extraction from an uploaded file
+# Arguments:
+# 1. Test name (string)
+# 2. URL to download module from (string)
+# 3. Expected module name (string)
+# 4. Expected module format (string)
+# 5. Expected player format (string)
+# 6. Expected subsongs (integer)
+test_upload_metadata_extraction() {
+    TEST_NAME=$1
+    DOWNLOAD_URL=$2
+    EXPECTED_MODULE_NAME=$3
+    EXPECTED_MODULE_FORMAT=$4
+    EXPECTED_PLAYER_FORMAT=$5
+    EXPECTED_SUBSONGS=$6
+
+    echo "--- Testing Upload Metadata Extraction: $TEST_NAME ---"
+
+    TEMP_FILE="downloaded_module.bin"
+    # Download the module, capturing any curl errors to stderr
+    if ! curl -s --insecure -o "$TEMP_FILE" "$DOWNLOAD_URL"; then
+        echo "ERROR: Failed to download module from $DOWNLOAD_URL"
+        exit 1
+    fi
+
+    UPLOAD_RESPONSE_ALL=$(curl -s -w "\n%{http_code}" -X POST -F "file=@$TEMP_FILE" "$BASE_URL/upload")
+    UPLOAD_HTTP_CODE=$(echo "$UPLOAD_RESPONSE_ALL" | tail -n1)
+    UPLOAD_BODY=$(echo "$UPLOAD_RESPONSE_ALL" | sed '$d')
+
+    rm "$TEMP_FILE" # Clean up temporary file
+
+    if [ "$UPLOAD_HTTP_CODE" -ne 200 ]; then
+        echo "ERROR: Received HTTP $UPLOAD_HTTP_CODE for test '$TEST_NAME'"
+        echo "Response body: $UPLOAD_BODY"
+        exit 1
+    fi
+
+    MODULE_NAME=$(echo "$UPLOAD_BODY" | jq -r .module_name)
+    MODULE_FORMAT=$(echo "$UPLOAD_BODY" | jq -r .module_format)
+    PLAYER_FORMAT=$(echo "$UPLOAD_BODY" | jq -r .player_format)
+    SUBSONGS=$(echo "$UPLOAD_BODY" | jq -r .subsongs)
+
+    if [[ "$MODULE_NAME" == "$EXPECTED_MODULE_NAME" && \
+          "$MODULE_FORMAT" == "$EXPECTED_MODULE_FORMAT" && \
+          "$PLAYER_FORMAT" == "$EXPECTED_PLAYER_FORMAT" && \
+          "$SUBSONGS" -eq "$EXPECTED_SUBSONGS" ]]; then
+        echo "SUCCESS: Upload and metadata matches expected values for '$TEST_NAME'"
+        echo "Response body: $UPLOAD_BODY"
+    else
+        echo "ERROR: Upload and metadata mismatch for test '$TEST_NAME'"
+        echo "Expected module_name: '$EXPECTED_MODULE_NAME', Got: '$MODULE_NAME'"
+        echo "Expected module_format: '$EXPECTED_MODULE_FORMAT', Got: '$MODULE_FORMAT'"
+        echo "Expected player_format: '$EXPECTED_PLAYER_FORMAT', Got: '$PLAYER_FORMAT'"
+        echo "Expected subsongs: '$EXPECTED_SUBSONGS', Got: '$SUBSONGS'"
+        echo "Response body: $UPLOAD_BODY"
+        exit 1
+    fi
+    echo ""
+}
+
+# Function to test filename extraction from an uploaded file
+# Arguments:
+# 1. Test name (string)
+# 2. URL to download module from (string)
+# 3. Expected filename after upload (string)
+test_upload_filename_extraction() {
+    TEST_NAME=$1
+    DOWNLOAD_URL=$2
+    EXPECTED_FILENAME=$3
+
+    echo "--- Testing Upload Filename Extraction: $TEST_NAME ---"
+
+    TEMP_FILE="downloaded_module.bin"
+    # Download the module, capturing any curl errors to stderr
+    if ! curl -s --insecure -o "$TEMP_FILE" "$DOWNLOAD_URL"; then
+        echo "ERROR: Failed to download module from $DOWNLOAD_URL"
+        exit 1
+    fi
+
+    UPLOAD_RESPONSE_ALL=$(curl -s -w "\n%{http_code}" -X POST -F "file=@$TEMP_FILE;filename=$EXPECTED_FILENAME" "$BASE_URL/upload")
+    UPLOAD_HTTP_CODE=$(echo "$UPLOAD_RESPONSE_ALL" | tail -n1)
+    UPLOAD_BODY=$(echo "$UPLOAD_RESPONSE_ALL" | sed '$d')
+
+    rm "$TEMP_FILE" # Clean up temporary file
+
+    if [ "$UPLOAD_HTTP_CODE" -ne 200 ]; then
+        echo "ERROR: Received HTTP $UPLOAD_HTTP_CODE for test '$TEST_NAME'"
+        echo "Response body: $UPLOAD_BODY"
+        exit 1
+    fi
+
+    FILENAME=$(echo "$UPLOAD_BODY" | jq -r .filename)
+
+    if [[ "$FILENAME" == "$EXPECTED_FILENAME" ]]; then
+        echo "SUCCESS: Upload and filename matches expected values for '$TEST_NAME'"
+        echo "Response body: $UPLOAD_BODY"
+    else
+        echo "ERROR: Upload and filename mismatch for test '$TEST_NAME'"
+        echo "Expected filename: '$EXPECTED_FILENAME', Got: '$FILENAME'"
+        echo "Response body: $UPLOAD_BODY"
+        exit 1
+    fi
+    echo ""
+}
+
+test_upload_conversion "Protracker module upload" "https://modland.com/pub/modules/Protracker/Captain/space%20debris.mod"
+test_upload_metadata_extraction "Protracker module upload" "https://modland.com/pub/modules/Protracker/Captain/space%20debris.mod" "space debris" "Protracker" "Protracker and family" 1
+test_upload_filename_extraction "Protracker module upload" "https://modland.com/pub/modules/Protracker/Captain/space%20debris.mod" "space_debris.mod"
+
 echo "--- All tests passed! ---"
