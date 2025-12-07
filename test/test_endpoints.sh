@@ -416,6 +416,101 @@ test_xss_filename() {
     echo ""
 }
 
+# Function to test metadata extraction
+# Arguments:
+# 1. Test name (string)
+# 2. URL to test (string)
+# 3. Optional sample URL (string)
+# 4. Expected module name (string)
+# 5. Expected module format (string)
+# 6. Expected player format (string)
+# 7. Expected subsongs (integer)
+test_metadata_extraction() {
+    TEST_NAME=$1
+    URL=$2
+    SAMPLE_URL=$3
+    EXPECTED_MODULE_NAME=$4
+    EXPECTED_MODULE_FORMAT=$5
+    EXPECTED_PLAYER_FORMAT=$6
+    EXPECTED_SUBSONGS=$7
+
+    echo "--- Testing Metadata Extraction: $TEST_NAME ---"
+
+    HTTP_CODE_BODY=$(_perform_convert_url_call "$URL" "$SAMPLE_URL")
+    HTTP_CODE=$(echo "$HTTP_CODE_BODY" | head -n1)
+    BODY=$(echo "$HTTP_CODE_BODY" | tail -n1)
+
+    if [ "$HTTP_CODE" -ne 200 ]; then
+        echo "ERROR: Received HTTP $HTTP_CODE for test '$TEST_NAME'"
+        echo "Response body: $BODY"
+        exit 1
+    fi
+
+    MODULE_NAME=$(echo "$BODY" | jq -r .module_name)
+    MODULE_FORMAT=$(echo "$BODY" | jq -r .module_format)
+    PLAYER_FORMAT=$(echo "$BODY" | jq -r .player_format)
+    SUBSONGS=$(echo "$BODY" | jq -r .subsongs)
+
+    if [[ "$MODULE_NAME" == "$EXPECTED_MODULE_NAME" && \
+          "$MODULE_FORMAT" == "$EXPECTED_MODULE_FORMAT" && \
+          "$PLAYER_FORMAT" == "$EXPECTED_PLAYER_FORMAT" && \
+          "$SUBSONGS" -eq "$EXPECTED_SUBSONGS" ]]; then
+        echo "SUCCESS: Metadata matches expected values for '$TEST_NAME'"
+        echo "Response body: $BODY"
+    else
+        echo "ERROR: Metadata mismatch for test '$TEST_NAME'"
+        echo "Expected module_name: '$EXPECTED_MODULE_NAME', Got: '$MODULE_NAME'"
+        echo "Expected module_format: '$EXPECTED_MODULE_FORMAT', Got: '$MODULE_FORMAT'"
+        echo "Expected player_format: '$EXPECTED_PLAYER_FORMAT', Got: '$PLAYER_FORMAT'"
+        echo "Expected subsongs: '$EXPECTED_SUBSONGS', Got: '$SUBSONGS'"
+        echo "Response body: $BODY"
+        exit 1
+    fi
+    echo ""
+}
+
+# Function to test filename extraction
+# Arguments:
+# 1. Test name (string)
+# 2. URL to test (string)
+# 3. Expected filename (string)
+test_filename_extraction() {
+    TEST_NAME=$1
+    URL=$2
+    EXPECTED_FILENAME=$3
+
+    echo "--- Testing Filename Extraction: $TEST_NAME ---"
+
+    HTTP_CODE_BODY=$(_perform_convert_url_call "$URL")
+    HTTP_CODE=$(echo "$HTTP_CODE_BODY" | head -n1)
+    BODY=$(echo "$HTTP_CODE_BODY" | tail -n1)
+
+    if [ "$HTTP_CODE" -ne 200 ]; then
+        # Allow 500 for the negative test case as it's not a real module
+        if [[ "$URL" == *"nonexistent"* && "$HTTP_CODE" -eq 500 ]]; then
+            echo "SUCCESS: Received HTTP 500 as expected for nonexistent file"
+        else
+            echo "ERROR: Received HTTP $HTTP_CODE for test '$TEST_NAME'"
+            echo "Response body: $BODY"
+            exit 1
+        fi
+    fi
+
+    FILENAME=$(echo "$BODY" | jq -r .filename)
+
+    if [[ "$FILENAME" == "$EXPECTED_FILENAME" ]]; then
+        echo "SUCCESS: Filename extraction matches expected value for '$TEST_NAME'"
+        echo "Response body: $BODY"
+    else
+        echo "ERROR: Filename mismatch for test '$TEST_NAME'"
+        echo "Expected filename: '$EXPECTED_FILENAME', Got: '$FILENAME'"
+        echo "Response body: $BODY"
+        exit 1
+    fi
+    echo ""
+}
+
+
 # Wait for the service to be up
 echo "Waiting for uade-web-player to be available..."
 while ! curl -s "$BASE_URL/health" > /dev/null; do
@@ -468,5 +563,16 @@ test_cache_hit_url "Server-side cache hit for convert-url" "https://modland.com/
 
 test_upload_error "Reject empty file upload" "fixtures/invalid/empty.bin" 400
 test_upload_error "Reject oversized file upload" "fixtures/invalid/too-large.bin" 413
+
+# Metadata extraction tests
+test_metadata_extraction "Full metadata" "https://modland.com/pub/modules/Protracker/Captain/space%20debris.mod" "" "space debris" "Protracker" "Protracker and family" 1
+test_metadata_extraction "Custom module" "https://zakalwe.fi/uade/amiga-music/customs/WingsOfDeath-Levels1-7/cust.WingsOfDeath-Levels1-7" "" "" "Custom" "Custom" 8
+test_metadata_extraction "Partial metadata" "https://modland.com/pub/modules/Richard%20Joseph/Richard%20Joseph/cannon%20fodder%20(intro).sng" "https://modland.com/pub/modules/Richard%20Joseph/Richard%20Joseph/cannon%20fodder%20(intro).ins" "" "" "Richard Joseph Player" 1
+
+# Filename extraction tests
+test_filename_extraction "ModArchive URL" "https://api.modarchive.org/downloads.php?moduleid=188875#way_too_rude.mod" "way_too_rude.mod"
+test_filename_extraction "Modland URL" "https://modland.com/pub/modules/Protracker/Captain/space%20debris.mod" "space_debris.mod"
+test_filename_extraction "Exotica URL" "http://files.exotica.org.uk/?file=exotica/media%2Faudio%2FUnExoticA%2FGame%2FBrimble_Allister%2FProject-X.lha" "bp.PX6"
+test_filename_extraction "Scene.org URL" "https://files.scene.org/get:fi-https/music/artists/4-mat/chip_shop.zip" "Chip_Shop.mod"
 
 echo "--- All tests passed! ---"
