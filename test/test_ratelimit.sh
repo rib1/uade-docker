@@ -24,25 +24,24 @@ echo "Service is healthy."
 
 # 2. Create a dummy file for upload on the fly
 echo "--- Creating dummy file for upload ---"
-touch dummy.mod
+mkdir -p fixtures/invalid
+touch fixtures/invalid/empty.bin
+
 
 # 3. Send requests to exceed the rate limit (10 per minute on /upload)
 echo "--- Sending 11 requests to /upload to trigger rate limit ---"
 for i in {1..10}; do
   echo -n "Request $i: "
   # We don't care about the output of the first 10, just that they are sent
-  curl -s -o /dev/null -w "%{http_code}" -X POST -F "file=@dummy.mod" "$BASE_URL/upload"
+  curl -s -o /dev/null -w "%{http_code}" -X POST -F "file=@fixtures/invalid/empty.bin" "$BASE_URL/upload"
   echo ""
 done
 
 echo -n "Request 11 (expecting 429): "
-status_code=$(curl -s -o /dev/null -w "%{http_code}" -X POST -F "file=@dummy.mod" "$BASE_URL/upload")
+status_code=$(curl -s -o /dev/null -w "%{http_code}" -X POST -F "file=@fixtures/invalid/empty.bin" "$BASE_URL/upload")
 echo "$status_code"
 
-# 4. Clean up the dummy file
-rm dummy.mod
-
-# 5. Check the result
+# 4. Check the result
 if [ "$status_code" -eq 429 ]; then
   echo "--- Rate limit test PASSED! ---"
   exit 0

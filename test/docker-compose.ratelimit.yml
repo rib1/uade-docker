@@ -14,3 +14,5 @@ services:
     networks:
       - uade-net
     command: ./test_ratelimit.sh
+    volumes:
+      - test-tmp:/home/tester/app/fixtures

@@ -53,12 +53,14 @@ services:
       uade-web:
         condition: service_healthy
     volumes:
-      - uade-tmp:/home/tester/app/fixtures
+      - test-tmp:/home/tester/app/fixtures
     networks:
       - uade-net
 
 volumes:
   uade-tmp:
+    driver: local
+  test-tmp:
     driver: local
 
 networks:
