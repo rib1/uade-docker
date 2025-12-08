@@ -19,7 +19,16 @@ const downloadBtn = document.getElementById("download-btn");
 const examplesGrid = document.getElementById("examples-grid");
 const statusContainer = document.getElementById("status-container");
 
-// Initialize
+const elementsToDisable = [
+  fileInput,
+  urlInput,
+  urlSubmit,
+  mainUrlInput,
+  sampleUrlInput,
+  dualFileSubmit,
+ ];
+
+  // Initialize
 document.addEventListener("DOMContentLoaded", () => {
   setupDragAndDrop();
   setupFileInput();
@@ -53,6 +62,28 @@ async function loadSupportedExtensions() {
   }
 }
 
+// --- UI Lock Functions ---
+     
+/**
+ * Disables all interactive elements to prevent simultaneous conversions.
+ */
+function setUiLock() {
+ const dynamicElements = document.querySelectorAll(".play-btn");
+ [...elementsToDisable, ...dynamicElements].forEach((el) => {
+    el.disabled = true;
+  });
+}
+
+/**
+ * Re-enables all interactive elements after a conversion is complete.
+ */
+function releaseUiLock() {
+ const dynamicElements = document.querySelectorAll(".play-btn");
+ [...elementsToDisable, ...dynamicElements].forEach((el) => {
+    el.disabled = false;
+  });
+}
+
 // Drag and Drop
 function setupDragAndDrop() {
   ["dragenter", "dragover", "dragleave", "drop"].forEach((eventName) => {
@@ -80,9 +111,12 @@ function setupDragAndDrop() {
   });
 
   dropZone.addEventListener("drop", handleDrop);
-}
+  }
 
 function handleDrop(e) {
+  if (dropZone.classList.contains("disabled")) {
+    return; // Do nothing if UI is locked
+  }
   const dt = e.dataTransfer;
   const files = dt.files;
 
@@ -102,6 +136,7 @@ function setupFileInput() {
 
 // Upload File
 async function handleFileUpload(file) {
+  setUiLock(); // Lock the UI
   showStatus("Uploading and converting...", "info");
 
   const formData = new FormData();
@@ -135,6 +170,8 @@ async function handleFileUpload(file) {
     }
   } catch (error) {
     showStatus(`✗ Upload failed: ${error.message}`, "error");
+  } finally {
+    releaseUiLock(); // Unlock the UI
   }
 }
 
@@ -155,8 +192,9 @@ async function handleUrlConvert() {
     return;
   }
 
+  setUiLock(); // Lock the UI
   showStatus("Downloading and converting...", "info");
-  urlSubmit.disabled = true;
+  urlSubmit.disabled = true; // Still need this to explicitly disable the button for visual feedback/spinner if any
 
   try {
     const response = await fetch("/convert-url", {
@@ -191,7 +229,7 @@ async function handleUrlConvert() {
   } catch (error) {
     showStatus(`✗ Conversion failed: ${error.message}`, "error");
   } finally {
-    urlSubmit.disabled = false;
+    releaseUiLock(); // Unlock the UI
   }
 }
 
@@ -209,7 +247,9 @@ async function handleDualFileConvert() {
     return;
   }
 
+  setUiLock(); // Lock the UI
   showStatus("Converting dual-file module...", "info");
+  // Still need this to explicitly disable the button for visual feedback/spinner if any
   dualFileSubmit.disabled = true;
 
   try {
@@ -250,7 +290,7 @@ async function handleDualFileConvert() {
   } catch (error) {
     showStatus(`✗ Dual-file module conversion failed: ${error.message}`, "error");
   } finally {
-    dualFileSubmit.disabled = false;
+    releaseUiLock(); // Unlock the UI
   }
 }
 
@@ -304,6 +344,7 @@ async function loadExamples() {
 
 // Play Example
 async function handleExamplePlay(example, button) {
+  setUiLock(); // Lock the UI
   button.disabled = true;
   button.innerHTML = "<span class=\"loading\"></span> Converting...";
   showStatus(`Converting ${example.name}...`, "info");
@@ -335,17 +376,17 @@ async function handleExamplePlay(example, button) {
       // Reset button after 2 seconds
       setTimeout(() => {
         button.innerHTML = "▶ Play Now";
-        button.disabled = false;
+        releaseUiLock(); // Re-enable all UI elements on error
       }, 2000);
     } else {
       showStatus(`✗ Error: ${data.error}`, "error");
       button.innerHTML = "▶ Play Now";
-      button.disabled = false;
+      releaseUiLock(); // Re-enable all UI elements on error
     }
   } catch (error) {
     showStatus(`✗ Failed: ${error.message}`, "error");
     button.innerHTML = "▶ Play Now";
-    button.disabled = false;
+    releaseUiLock(); // Re-enable all UI elements on error
   }
 }
 
