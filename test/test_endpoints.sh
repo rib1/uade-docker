@@ -213,6 +213,64 @@ test_security_malformed_range() {
     echo ""
 }
 
+# Function to test URL download caching logic
+# Arguments:
+# 1. Test name (string)
+# 2. Base URL to convert (string)
+test_url_cache_logic() {
+    TEST_NAME=$1
+    BASE_URL_TO_TEST=$2
+
+    echo "--- Testing URL Cache Logic: $TEST_NAME ---"
+
+    # Generate a unique URL for this test run
+    UNIQUE_ID=$(date +%s%N)
+    UNIQUE_URL="${BASE_URL_TO_TEST}?test_id=${UNIQUE_ID}"
+    echo "Using unique URL: $UNIQUE_URL"
+
+    # 1. First call (should be a URL cache miss)
+    echo "Making first request (expecting url_cached: false)..."
+    HTTP_CODE_BODY_1=$(_perform_convert_url_call "$UNIQUE_URL")
+    HTTP_CODE_1=$(echo "$HTTP_CODE_BODY_1" | head -n1)
+    RESPONSE_1=$(echo "$HTTP_CODE_BODY_1" | tail -n1)
+
+    if [ "$HTTP_CODE_1" -ne 200 ]; then
+        echo "ERROR: First request failed with HTTP $HTTP_CODE_1"
+        exit 1
+    fi
+
+    URL_CACHED_1=$(echo "$RESPONSE_1" | jq -r .url_cached)
+    if [ "$URL_CACHED_1" == "false" ]; then
+        echo "SUCCESS: First request correctly reported url_cached: false."
+    else
+        echo "ERROR: First request reported url_cached: $URL_CACHED_1, expected false."
+        echo "Response: $RESPONSE_1"
+        exit 1
+    fi
+
+    # 2. Second call (should be a URL cache hit)
+    echo "Making second request (expecting url_cached: true)..."
+    HTTP_CODE_BODY_2=$(_perform_convert_url_call "$UNIQUE_URL")
+    HTTP_CODE_2=$(echo "$HTTP_CODE_BODY_2" | head -n1)
+    RESPONSE_2=$(echo "$HTTP_CODE_BODY_2" | tail -n1)
+
+    if [ "$HTTP_CODE_2" -ne 200 ]; then
+        echo "ERROR: Second request failed with HTTP $HTTP_CODE_2"
+        exit 1
+    fi
+
+    URL_CACHED_2=$(echo "$RESPONSE_2" | jq -r .url_cached)
+    if [ "$URL_CACHED_2" == "true" ]; then
+        echo "SUCCESS: Second request correctly reported url_cached: true."
+    else
+        echo "ERROR: Second request reported url_cached: $URL_CACHED_2, expected true."
+        echo "Response: $RESPONSE_2"
+        exit 1
+    fi
+
+    echo ""
+}
+
 test_upload_error() {
     TEST_NAME=$1
     FILE_PATH=$2
@@ -718,6 +776,8 @@ test_security_malformed_range "Reject malformed range" "https://modland.com/pub/
 test_download_functionality "Download Protracker module" "https://modland.com/pub/modules/Protracker/Captain/space%20debris.mod"
 
 test_cache_hit_url "Server-side cache hit for convert-url" "https://modland.com/pub/modules/Protracker/Lizardking/l.k%27s%20doskpop.mod"
+
+test_url_cache_logic "URL download cache" "https://modland.com/pub/modules/Protracker/Lizardking/l.k%27s%20doskpop.mod"
 
 # Metadata extraction tests
 test_metadata_extraction "Full metadata" "https://modland.com/pub/modules/Protracker/Captain/space%20debris.mod" "" "space debris" "Protracker" "Protracker and family" 1

@@ -872,7 +872,7 @@ def upload_file():
         return json_response({"error": str(e)}, 500)
 
 
-def process_module_and_respond(module_path, filename, use_flac):
+def process_module_and_respond(module_path, filename, use_flac, url_cached=False):
     """Shared logic for archive detection, extraction, conversion, metadata, cleanup, and response."""
     try:
         # Check if it's an LHA or ZIP archive
@@ -930,6 +930,7 @@ def process_module_and_respond(module_path, filename, use_flac):
                 "play_url": f"/play/{converted_file_id}",
                 "download_url": f"/download/{converted_file_id}?filename={urllib.parse.quote(module_name or filename)}",
                 "cached": cached,
+                "url_cached": url_cached,
             }
         )
 
@@ -1103,7 +1104,9 @@ def convert_url():
         # The suffix must be placed after the hash for UADE to correctly recognize the file type in dual-file modules
         module_path = MODULES_DIR / f"{filename}_{url_hash}{suffix}"
 
+        url_cache_hit = False
         if module_path.exists():
+            url_cache_hit = True
             logger.info(
                 f"Cache hit for module: {sanitized_url(url)}, using cached file: {module_path}"
             )
@@ -1145,7 +1148,7 @@ def convert_url():
                 os.symlink(cached_sample_path, sample_path)
                 logger.info(f"Cached sample file: {cached_sample_path}, linking to {sample_path}")
 
-        return process_module_and_respond(module_path, filename, use_flac)
+        return process_module_and_respond(module_path, filename, use_flac, url_cache_hit)
 
     except requests.RequestException as e:
         logger.error(f"Download error: {e}")
