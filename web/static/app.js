@@ -11,6 +11,7 @@ const urlSubmit = document.getElementById("url-submit");
 const mainUrlInput = document.getElementById("main-url");
 const sampleUrlInput = document.getElementById("sample-url");
 const dualFileSubmit = document.getElementById("dual-file-submit");
+const uploadBtn = document.getElementById("upload-btn");
 const audioPlayer = document.getElementById("audio-player");
 const playerSection = document.getElementById("player-section");
 const currentTrack = document.getElementById("current-track");
@@ -103,6 +104,13 @@ function setupFileInput() {
 // Upload File
 async function handleFileUpload(file) {
   showStatus("Uploading and converting...", "info");
+  let originalUploadBtnHTML;
+  if (uploadBtn) {
+    originalUploadBtnHTML = uploadBtn.innerHTML;
+    uploadBtn.innerHTML = "<span class=\"loading\"></span> Converting...";
+    uploadBtn.disabled = true;
+    uploadBtn.setAttribute("aria-busy", "true"); // Indicate busy state for accessibility
+  }
 
   const formData = new FormData();
   formData.append("file", file);
@@ -135,6 +143,12 @@ async function handleFileUpload(file) {
     }
   } catch (error) {
     showStatus(`✗ Upload failed: ${error.message}`, "error");
+  } finally {
+    if (uploadBtn) {
+          uploadBtn.innerHTML = originalUploadBtnHTML;
+          uploadBtn.disabled = false;
+          uploadBtn.setAttribute("aria-busy", "false"); // Reset busy state
+    }  
   }
 }
 
@@ -156,7 +170,10 @@ async function handleUrlConvert() {
   }
 
   showStatus("Downloading and converting...", "info");
+  let originalUrlBtnHTML = urlSubmit.innerHTML;
+  urlSubmit.innerHTML = "<span class=\"loading\"></span> Converting...";
   urlSubmit.disabled = true;
+  urlSubmit.setAttribute("aria-busy", "true"); // Indicate busy state for accessibility
 
   try {
     const response = await fetch("/convert-url", {
@@ -191,7 +208,9 @@ async function handleUrlConvert() {
   } catch (error) {
     showStatus(`✗ Conversion failed: ${error.message}`, "error");
   } finally {
+    urlSubmit.innerHTML = originalUrlBtnHTML;
     urlSubmit.disabled = false;
+    urlSubmit.setAttribute("aria-busy", "false"); // Reset busy state
   }
 }
 
@@ -210,7 +229,10 @@ async function handleDualFileConvert() {
   }
 
   showStatus("Converting dual-file module...", "info");
+  const originalBtnHTML = dualFileSubmit.innerHTML;
+  dualFileSubmit.innerHTML = "<span class=\"loading\"></span> Converting...";
   dualFileSubmit.disabled = true;
+  dualFileSubmit.setAttribute("aria-busy", "true"); // Indicate busy state for accessibility
 
   try {
     // Call convert-url with both URLs
@@ -250,7 +272,9 @@ async function handleDualFileConvert() {
   } catch (error) {
     showStatus(`✗ Dual-file module conversion failed: ${error.message}`, "error");
   } finally {
+    dualFileSubmit.innerHTML = originalBtnHTML;
     dualFileSubmit.disabled = false;
+    dualFileSubmit.setAttribute("aria-busy", "false"); // Reset busy state
   }
 }
 

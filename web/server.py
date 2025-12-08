@@ -134,6 +134,7 @@ MODULE_FILE_EXTENSIONS: Final = {
     "adsc",  # Audio Sculpture
     "ahx",  # Abyss' Highest eXperience
     "amc",  # AM Composer
+    "ash",  # Ashley Hogg
     "aon",  # Art Of Noise
     "aon8",  # Art Of Noise 8 voices
     "ast",  # Action Amics
@@ -199,6 +200,7 @@ MODULE_FILE_EXTENSIONS: Final = {
     "tfx",  # TFMX
     "tfm",  # TFMX
     "thx",  # original name for the AHX
+    "vss",  # Voodoo Supreme Synthesizer
     "ym",
 }
 
