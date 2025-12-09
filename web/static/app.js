@@ -151,7 +151,7 @@ async function handleFileUpload(file) {
   showStatus("Uploading and converting...", "info");
 
   // Manage this button's specific state
-  const originalUploadBtnHTML = uploadBtn.innerHTML;
+  const originalUploadBtnText = uploadBtn.textContent;
   uploadBtn.innerHTML = "<span class=\"loading\"></span> Converting...";
 
   const formData = new FormData();
@@ -187,7 +187,7 @@ async function handleFileUpload(file) {
     showStatus(`✗ Upload failed: ${error.message}`, "error");
   } finally {
     releaseUiLock(); // Re-enable all other UI elements
-    uploadBtn.innerHTML = originalUploadBtnHTML; // Restore this button's text
+    uploadBtn.textContent = originalUploadBtnText; // Restore this button's text safely
   }
 }
 
