@@ -20,9 +20,6 @@ const downloadBtn = document.getElementById("download-btn");
 const examplesGrid = document.getElementById("examples-grid");
 const statusContainer = document.getElementById("status-container");
 
-// Global loading spinner HTML
-const LOADING_SPINNER_HTML = '<span class="loading"></span> Converting...';
-
 const elementsToDisable = [
   fileInput,
   urlInput,
@@ -114,7 +111,7 @@ function resetButtonAfterDelay(button, originalText, delay = 2000) {
  */
 function showButtonLoadingAndGetOriginal(button) {
   const originalText = button.textContent;
-  button.innerHTML = LOADING_SPINNER_HTML;
+  button.innerHTML = "<span class=\"loading\"></span> Converting...";
   return originalText;
 }
 
