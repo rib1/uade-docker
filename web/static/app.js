@@ -29,7 +29,7 @@ const elementsToDisable = [
   dualFileSubmit,
  ];
 
-  // Initialize
+// Initialize
 document.addEventListener("DOMContentLoaded", () => {
   setupDragAndDrop();
   setupFileInput();
