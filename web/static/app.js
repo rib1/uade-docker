@@ -11,7 +11,7 @@ const urlSubmit = document.getElementById("url-submit");
 const mainUrlInput = document.getElementById("main-url");
 const sampleUrlInput = document.getElementById("sample-url");
 const dualFileSubmit = document.getElementById("dual-file-submit");
-const uploadBtn = document.getElementById("upload-btn"); // The label acts as the button
+const uploadLabel = document.getElementById("upload-btn"); // The label acts as the button
 const audioPlayer = document.getElementById("audio-player");
 const playerSection = document.getElementById("player-section");
 const currentTrack = document.getElementById("current-track");
@@ -63,8 +63,6 @@ async function loadSupportedExtensions() {
   }
 }
 
-// --- UI Lock Functions ---
-
 /**
  * Disables all interactive elements to prevent simultaneous conversions.
  */
@@ -74,9 +72,9 @@ function setUiLock() {
     el.disabled = true;
     el.setAttribute("aria-busy", "true");
   });
-  if (uploadBtn) {
-    uploadBtn.classList.add("disabled");
-    uploadBtn.setAttribute("aria-busy", "true");
+  if (uploadLabel) {
+    uploadLabel.classList.add("disabled");
+    uploadLabel.setAttribute("aria-busy", "true");
   }
 }
 
@@ -89,9 +87,9 @@ function releaseUiLock() {
     el.disabled = false;
     el.setAttribute("aria-busy", "false");
   });
-  if (uploadBtn) {
-    uploadBtn.classList.remove("disabled");
-    uploadBtn.setAttribute("aria-busy", "false");
+  if (uploadLabel) {
+    uploadLabel.classList.remove("disabled");
+    uploadLabel.setAttribute("aria-busy", "false");
   }
 }
 
@@ -145,8 +143,8 @@ function setupDragAndDrop() {
 }
 
 function handleDrop(e) {
-  // Prevent drop if upload button is disabled (UI locked)
-  if (uploadBtn && uploadBtn.classList.contains("disabled")) {
+  // Prevent drop if upload label is disabled (UI locked)
+  if (uploadLabel && uploadLabel.classList.contains("disabled")) {
     return; // Do nothing if UI is locked
   }
   const dt = e.dataTransfer;
@@ -168,12 +166,12 @@ function setupFileInput() {
 
 // Upload File
 async function handleFileUpload(file) {
-  setUiLock(); // Lock all other UI elements
+  setUiLock();
   showStatus("Uploading and converting...", "info");
   let success = false;
 
-  // Manage this button's specific state
-  const originalUploadBtnText = showButtonLoadingAndGetOriginal(uploadBtn);
+  // Manage this label's specific state
+  const originalUploadLabelText = showButtonLoadingAndGetOriginal(uploadLabel);
 
   const formData = new FormData();
   formData.append("file", file);
@@ -202,7 +200,7 @@ async function handleFileUpload(file) {
         data.module_format,
         data.subsongs
       );
-      resetButtonAfterDelay(uploadBtn, originalUploadBtnText);
+      resetButtonAfterDelay(uploadLabel, originalUploadLabelText);
       return;
     } else {
       showStatus(`✗ Error: ${data.error}`, "error");
@@ -211,7 +209,7 @@ async function handleFileUpload(file) {
     showStatus(`✗ Upload failed: ${error.message}`, "error");
   } finally {
     if (!success) {
-      uploadBtn.textContent = originalUploadBtnText;
+      uploadLabel.textContent = originalUploadLabelText;
       releaseUiLock();
     }
   }
