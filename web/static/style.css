@@ -200,6 +200,15 @@ footer a:hover {
   margin-top: 15px;
 }
 
+/* Visually disabled label for file input */
+#upload-btn.disabled {
+  background-color: var(--secondary);
+  color: white;
+  cursor: not-allowed !important;
+  transform: none;
+  box-shadow: none;
+}
+
 /* URL Section */
 .url-form {
   display: flex;

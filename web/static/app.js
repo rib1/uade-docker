@@ -11,7 +11,7 @@ const urlSubmit = document.getElementById("url-submit");
 const mainUrlInput = document.getElementById("main-url");
 const sampleUrlInput = document.getElementById("sample-url");
 const dualFileSubmit = document.getElementById("dual-file-submit");
-const uploadBtn = document.getElementById("upload-btn");
+const uploadLabel = document.getElementById("upload-btn"); // The label acts as the button
 const audioPlayer = document.getElementById("audio-player");
 const playerSection = document.getElementById("player-section");
 const currentTrack = document.getElementById("current-track");
@@ -19,6 +19,15 @@ const trackFormat = document.getElementById("track-format");
 const downloadBtn = document.getElementById("download-btn");
 const examplesGrid = document.getElementById("examples-grid");
 const statusContainer = document.getElementById("status-container");
+
+const elementsToDisable = [
+  fileInput,
+  urlInput,
+  urlSubmit,
+  mainUrlInput,
+  sampleUrlInput,
+  dualFileSubmit,
+ ];
 
 // Initialize
 document.addEventListener("DOMContentLoaded", () => {
@@ -54,6 +63,56 @@ async function loadSupportedExtensions() {
   }
 }
 
+/**
+ * Disables all interactive elements to prevent simultaneous conversions.
+ */
+function setUiLock() {
+  const dynamicElements = document.querySelectorAll(".play-btn");
+  [...elementsToDisable, ...dynamicElements].forEach((el) => {
+    el.disabled = true;
+    el.setAttribute("aria-busy", "true");
+  });
+  if (uploadLabel) {
+    uploadLabel.classList.add("disabled");
+    uploadLabel.setAttribute("aria-busy", "true");
+  }
+}
+
+/**
+ * Re-enables all interactive elements after a conversion is complete.
+ */
+function releaseUiLock() {
+  const dynamicElements = document.querySelectorAll(".play-btn");
+  [...elementsToDisable, ...dynamicElements].forEach((el) => {
+    el.disabled = false;
+    el.setAttribute("aria-busy", "false");
+  });
+  if (uploadLabel) {
+    uploadLabel.classList.remove("disabled");
+    uploadLabel.setAttribute("aria-busy", "false");
+  }
+}
+
+/**
+ * Shows '✓ Playing' on the button, then resets its HTML after a delay and unlocks the UI.
+ */
+function resetButtonAfterDelay(button, originalText, delay = 2000) {
+  button.textContent = "✓ Playing";
+  setTimeout(() => {
+    button.textContent = originalText;
+    releaseUiLock();
+  }, delay);
+}
+
+/**
+ * Shows loading spinner on a button and returns its original text content.
+ */
+function showButtonLoadingAndGetOriginal(button) {
+  const originalText = button.textContent;
+  button.innerHTML = "<span class=\"loading\"></span> Converting...";
+  return originalText;
+}
+
 // Drag and Drop
 function setupDragAndDrop() {
   ["dragenter", "dragover", "dragleave", "drop"].forEach((eventName) => {
@@ -84,6 +143,10 @@ function setupDragAndDrop() {
 }
 
 function handleDrop(e) {
+  // Prevent drop if upload label is disabled (UI locked)
+  if (uploadLabel && uploadLabel.classList.contains("disabled")) {
+    return; // Do nothing if UI is locked
+  }
   const dt = e.dataTransfer;
   const files = dt.files;
 
@@ -103,14 +166,12 @@ function setupFileInput() {
 
 // Upload File
 async function handleFileUpload(file) {
+  setUiLock();
   showStatus("Uploading and converting...", "info");
-  let originalUploadBtnHTML;
-  if (uploadBtn) {
-    originalUploadBtnHTML = uploadBtn.innerHTML;
-    uploadBtn.innerHTML = "<span class=\"loading\"></span> Converting...";
-    uploadBtn.disabled = true;
-    uploadBtn.setAttribute("aria-busy", "true"); // Indicate busy state for accessibility
-  }
+  let success = false;
+
+  // Manage this label's specific state
+  const originalUploadLabelText = showButtonLoadingAndGetOriginal(uploadLabel);
 
   const formData = new FormData();
   formData.append("file", file);
@@ -124,6 +185,7 @@ async function handleFileUpload(file) {
     const data = await response.json();
 
     if (response.ok) {
+      success = true;
       const statusMessage = data.cached
         ? `✓ From cache: ${data.module_name || data.filename}`
         : `✓ Converted: ${data.module_name || data.filename}`;
@@ -138,17 +200,18 @@ async function handleFileUpload(file) {
         data.module_format,
         data.subsongs
       );
+      resetButtonAfterDelay(uploadLabel, originalUploadLabelText);
+      return;
     } else {
       showStatus(`✗ Error: ${data.error}`, "error");
     }
   } catch (error) {
     showStatus(`✗ Upload failed: ${error.message}`, "error");
   } finally {
-    if (uploadBtn) {
-          uploadBtn.innerHTML = originalUploadBtnHTML;
-          uploadBtn.disabled = false;
-          uploadBtn.setAttribute("aria-busy", "false"); // Reset busy state
-    }  
+    if (!success) {
+      uploadLabel.textContent = originalUploadLabelText;
+      releaseUiLock();
+    }
   }
 }
 
@@ -169,11 +232,10 @@ async function handleUrlConvert() {
     return;
   }
 
+  setUiLock();
   showStatus("Downloading and converting...", "info");
-  let originalUrlBtnHTML = urlSubmit.innerHTML;
-  urlSubmit.innerHTML = "<span class=\"loading\"></span> Converting...";
-  urlSubmit.disabled = true;
-  urlSubmit.setAttribute("aria-busy", "true"); // Indicate busy state for accessibility
+  let success = false;
+  const originalUrlBtnText = showButtonLoadingAndGetOriginal(urlSubmit);
 
   try {
     const response = await fetch("/convert-url", {
@@ -187,6 +249,7 @@ async function handleUrlConvert() {
     const data = await response.json();
 
     if (response.ok) {
+      success = true;
       const statusMessage = data.cached
         ? `✓ From cache: ${data.module_name || data.filename}`
         : `✓ Converted: ${data.module_name || data.filename}`;
@@ -202,15 +265,18 @@ async function handleUrlConvert() {
         data.subsongs
       );
       urlInput.value = "";
+      resetButtonAfterDelay(urlSubmit, originalUrlBtnText);
+      return;
     } else {
       showStatus(`✗ Error: ${data.error}`, "error");
     }
   } catch (error) {
     showStatus(`✗ Conversion failed: ${error.message}`, "error");
   } finally {
-    urlSubmit.innerHTML = originalUrlBtnHTML;
-    urlSubmit.disabled = false;
-    urlSubmit.setAttribute("aria-busy", "false"); // Reset busy state
+    if (!success) {
+      urlSubmit.textContent = originalUrlBtnText;
+      releaseUiLock();
+    }
   }
 }
 
@@ -228,11 +294,10 @@ async function handleDualFileConvert() {
     return;
   }
 
+  setUiLock();
   showStatus("Converting dual-file module...", "info");
-  const originalBtnHTML = dualFileSubmit.innerHTML;
-  dualFileSubmit.innerHTML = "<span class=\"loading\"></span> Converting...";
-  dualFileSubmit.disabled = true;
-  dualFileSubmit.setAttribute("aria-busy", "true"); // Indicate busy state for accessibility
+  let success = false;
+  const originalBtnText = showButtonLoadingAndGetOriginal(dualFileSubmit);
 
   try {
     // Call convert-url with both URLs
@@ -250,6 +315,7 @@ async function handleDualFileConvert() {
     const data = await response.json();
 
     if (response.ok) {
+      success = true;
       const statusMessage = data.cached
         ? `✓ From cache: ${data.module_name || data.filename}`
         : `✓ Dual-file module converted successfully: ${data.module_name || data.filename}`;
@@ -266,15 +332,18 @@ async function handleDualFileConvert() {
       );
       mainUrlInput.value = "";
       sampleUrlInput.value = "";
+      resetButtonAfterDelay(dualFileSubmit, originalBtnText);
+      return;
     } else {
       showStatus(`✗ Error: ${data.error}`, "error");
     }
   } catch (error) {
     showStatus(`✗ Dual-file module conversion failed: ${error.message}`, "error");
   } finally {
-    dualFileSubmit.innerHTML = originalBtnHTML;
-    dualFileSubmit.disabled = false;
-    dualFileSubmit.setAttribute("aria-busy", "false"); // Reset busy state
+    if (!success) {
+      dualFileSubmit.textContent = originalBtnText;
+      releaseUiLock();
+    }
   }
 }
 
@@ -328,8 +397,9 @@ async function loadExamples() {
 
 // Play Example
 async function handleExamplePlay(example, button) {
-  button.disabled = true;
-  button.innerHTML = "<span class=\"loading\"></span> Converting...";
+  setUiLock(); // Lock the UI
+  let success = false;
+  const originalBtnText = showButtonLoadingAndGetOriginal(button);
   showStatus(`Converting ${example.name}...`, "info");
 
   try {
@@ -340,6 +410,7 @@ async function handleExamplePlay(example, button) {
     const data = await response.json();
 
     if (response.ok) {
+      success = true;
       const statusMessage = data.cached
         ? `✓ From cache: ${example.name || data.module_name || data.filename} ready to play`
         : `✓ ${example.name || data.module_name || data.filename} ready to play`;
@@ -354,22 +425,18 @@ async function handleExamplePlay(example, button) {
         data.module_format,
         data.subsongs
       );
-      button.innerHTML = "✓ Playing";
-
-      // Reset button after 2 seconds
-      setTimeout(() => {
-        button.innerHTML = "▶ Play Now";
-        button.disabled = false;
-      }, 2000);
+      resetButtonAfterDelay(button, originalBtnText);
+      return;
     } else {
       showStatus(`✗ Error: ${data.error}`, "error");
-      button.innerHTML = "▶ Play Now";
-      button.disabled = false;
     }
   } catch (error) {
     showStatus(`✗ Failed: ${error.message}`, "error");
-    button.innerHTML = "▶ Play Now";
-    button.disabled = false;
+  } finally {
+    if (!success) {
+      button.textContent = originalBtnText;
+      releaseUiLock();
+    }
   }
 }
 
