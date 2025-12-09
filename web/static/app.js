@@ -19,6 +19,7 @@ const trackFormat = document.getElementById("track-format");
 const downloadBtn = document.getElementById("download-btn");
 const examplesGrid = document.getElementById("examples-grid");
 const statusContainer = document.getElementById("status-container");
+const uploadBtn = document.getElementById("upload-btn"); // The label acts as the button
 
 const elementsToDisable = [
   fileInput,
@@ -64,25 +65,27 @@ async function loadSupportedExtensions() {
 }
 
 // --- UI Lock Functions ---
-     
+
 /**
  * Disables all interactive elements to prevent simultaneous conversions.
  */
 function setUiLock() {
  const dynamicElements = document.querySelectorAll(".play-btn");
- [...elementsToDisable, ...dynamicElements].forEach((el) => {
+  [...elementsToDisable, ...dynamicElements].forEach((el) => {
     el.disabled = true;
   });
+  if (uploadBtn) uploadBtn.classList.add("disabled");
 }
 
 /**
  * Re-enables all interactive elements after a conversion is complete.
  */
 function releaseUiLock() {
- const dynamicElements = document.querySelectorAll(".play-btn");
- [...elementsToDisable, ...dynamicElements].forEach((el) => {
+  const dynamicElements = document.querySelectorAll(".play-btn");
+  [...elementsToDisable, ...dynamicElements].forEach((el) => {
     el.disabled = false;
   });
+  if (uploadBtn) uploadBtn.classList.remove("disabled");
 }
 
 // Drag and Drop

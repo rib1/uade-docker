@@ -200,12 +200,13 @@ footer a:hover {
   margin-top: 15px;
 }
 
-input[type="file"]:disabled {
-  background-color: #e9ecef; /* Light grey background */
-  color: #6c757d;           /* Darker grey text */
-  cursor: not-allowed;      /* "Not allowed" cursor */
-  opacity: 0.7;             /* Slightly reduce opacity */
-  border-color: #ced4da;    /* Light grey border */
+/* Visually disabled label for file input */
+#upload-btn.disabled {
+  background-color: var(--secondary);
+  color: white;
+  cursor: not-allowed !important;
+  transform: none;
+  box-shadow: none;
 }
 
 /* URL Section */
