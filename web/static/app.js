@@ -29,6 +29,15 @@ const elementsToDisable = [
   dualFileSubmit,
  ];
 
+const elementsToDisable = [
+  fileInput,
+  urlInput,
+  urlSubmit,
+  mainUrlInput,
+  sampleUrlInput,
+  dualFileSubmit,
+ ];
+
   // Initialize
 document.addEventListener("DOMContentLoaded", () => {
   setupDragAndDrop();
@@ -123,8 +132,12 @@ function setupDragAndDrop() {
 
   dropZone.addEventListener("drop", handleDrop);
   }
+  }
 
 function handleDrop(e) {
+  if (dropZone.classList.contains("disabled")) {
+    return; // Do nothing if UI is locked
+  }
   if (dropZone.classList.contains("disabled")) {
     return; // Do nothing if UI is locked
   }
