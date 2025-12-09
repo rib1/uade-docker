@@ -145,7 +145,8 @@ function setupDragAndDrop() {
 }
 
 function handleDrop(e) {
-  if (dropZone.classList.contains("disabled")) {
+  // Prevent drop if upload button is disabled (UI locked)
+  if (uploadBtn && uploadBtn.disabled) {
     return; // Do nothing if UI is locked
   }
   const dt = e.dataTransfer;
