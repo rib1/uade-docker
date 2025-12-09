@@ -20,6 +20,9 @@ const downloadBtn = document.getElementById("download-btn");
 const examplesGrid = document.getElementById("examples-grid");
 const statusContainer = document.getElementById("status-container");
 
+// Global loading spinner HTML
+const LOADING_SPINNER_HTML = '<span class="loading"></span> Converting...';
+
 const elementsToDisable = [
   fileInput,
   urlInput,
@@ -95,6 +98,26 @@ function releaseUiLock() {
   }
 }
 
+/**
+ * Shows '✓ Playing' on the button, then resets its HTML after a delay and unlocks the UI.
+ */
+function resetButtonAfterDelay(button, originalText, delay = 2000) {
+  button.textContent = "✓ Playing";
+  setTimeout(() => {
+    button.textContent = originalText;
+    releaseUiLock();
+  }, delay);
+}
+
+/**
+ * Shows loading spinner on a button and returns its original text content.
+ */
+function showButtonLoadingAndGetOriginal(button) {
+  const originalText = button.textContent;
+  button.innerHTML = LOADING_SPINNER_HTML;
+  return originalText;
+}
+
 // Drag and Drop
 function setupDragAndDrop() {
   ["dragenter", "dragover", "dragleave", "drop"].forEach((eventName) => {
@@ -149,10 +172,10 @@ function setupFileInput() {
 async function handleFileUpload(file) {
   setUiLock(); // Lock all other UI elements
   showStatus("Uploading and converting...", "info");
+  let success = false;
 
   // Manage this button's specific state
-  const originalUploadBtnText = uploadBtn.textContent;
-  uploadBtn.innerHTML = "<span class=\"loading\"></span> Converting...";
+  const originalUploadBtnText = showButtonLoadingAndGetOriginal(uploadBtn);
 
   const formData = new FormData();
   formData.append("file", file);
@@ -166,6 +189,7 @@ async function handleFileUpload(file) {
     const data = await response.json();
 
     if (response.ok) {
+      success = true;
       const statusMessage = data.cached
         ? `✓ From cache: ${data.module_name || data.filename}`
         : `✓ Converted: ${data.module_name || data.filename}`;
@@ -180,14 +204,18 @@ async function handleFileUpload(file) {
         data.module_format,
         data.subsongs
       );
+      resetButtonAfterDelay(uploadBtn, originalUploadBtnText);
+      return;
     } else {
       showStatus(`✗ Error: ${data.error}`, "error");
     }
   } catch (error) {
     showStatus(`✗ Upload failed: ${error.message}`, "error");
   } finally {
-    releaseUiLock(); // Re-enable all other UI elements
-    uploadBtn.textContent = originalUploadBtnText; // Restore this button's text safely
+    if (!success) {
+      uploadBtn.textContent = originalUploadBtnText;
+      releaseUiLock();
+    }
   }
 }
 
@@ -209,9 +237,9 @@ async function handleUrlConvert() {
   }
 
   setUiLock();
-  showStatus("Downloading and converting...", "info");  
-  const originalUrlBtnHTML = urlSubmit.innerHTML;
-  urlSubmit.innerHTML = "<span class=\"loading\"></span> Converting...";
+  showStatus("Downloading and converting...", "info");
+  let success = false;
+  const originalUrlBtnText = showButtonLoadingAndGetOriginal(urlSubmit);
 
   try {
     const response = await fetch("/convert-url", {
@@ -225,6 +253,7 @@ async function handleUrlConvert() {
     const data = await response.json();
 
     if (response.ok) {
+      success = true;
       const statusMessage = data.cached
         ? `✓ From cache: ${data.module_name || data.filename}`
         : `✓ Converted: ${data.module_name || data.filename}`;
@@ -240,14 +269,18 @@ async function handleUrlConvert() {
         data.subsongs
       );
       urlInput.value = "";
+      resetButtonAfterDelay(urlSubmit, originalUrlBtnText);
+      return;
     } else {
       showStatus(`✗ Error: ${data.error}`, "error");
     }
   } catch (error) {
     showStatus(`✗ Conversion failed: ${error.message}`, "error");
   } finally {
-    releaseUiLock();
-    urlSubmit.innerHTML = originalUrlBtnHTML;
+    if (!success) {
+      urlSubmit.textContent = originalUrlBtnText;
+      releaseUiLock();
+    }
   }
 }
 
@@ -267,8 +300,8 @@ async function handleDualFileConvert() {
 
   setUiLock();
   showStatus("Converting dual-file module...", "info");
-  const originalBtnHTML = dualFileSubmit.innerHTML;
-  dualFileSubmit.innerHTML = "<span class=\"loading\"></span> Converting...";
+  let success = false;
+  const originalBtnText = showButtonLoadingAndGetOriginal(dualFileSubmit);
 
   try {
     // Call convert-url with both URLs
@@ -286,6 +319,7 @@ async function handleDualFileConvert() {
     const data = await response.json();
 
     if (response.ok) {
+      success = true;
       const statusMessage = data.cached
         ? `✓ From cache: ${data.module_name || data.filename}`
         : `✓ Dual-file module converted successfully: ${data.module_name || data.filename}`;
@@ -302,14 +336,18 @@ async function handleDualFileConvert() {
       );
       mainUrlInput.value = "";
       sampleUrlInput.value = "";
+      resetButtonAfterDelay(dualFileSubmit, originalBtnText);
+      return;
     } else {
       showStatus(`✗ Error: ${data.error}`, "error");
     }
   } catch (error) {
     showStatus(`✗ Dual-file module conversion failed: ${error.message}`, "error");
   } finally {
-    releaseUiLock();
-    dualFileSubmit.innerHTML = originalBtnHTML;
+    if (!success) {
+      dualFileSubmit.textContent = originalBtnText;
+      releaseUiLock();
+    }
   }
 }
 
@@ -364,8 +402,8 @@ async function loadExamples() {
 // Play Example
 async function handleExamplePlay(example, button) {
   setUiLock(); // Lock the UI
-  button.disabled = true;
-  button.innerHTML = "<span class=\"loading\"></span> Converting...";
+  let success = false;
+  const originalBtnText = showButtonLoadingAndGetOriginal(button);
   showStatus(`Converting ${example.name}...`, "info");
 
   try {
@@ -376,6 +414,7 @@ async function handleExamplePlay(example, button) {
     const data = await response.json();
 
     if (response.ok) {
+      success = true;
       const statusMessage = data.cached
         ? `✓ From cache: ${example.name || data.module_name || data.filename} ready to play`
         : `✓ ${example.name || data.module_name || data.filename} ready to play`;
@@ -390,22 +429,18 @@ async function handleExamplePlay(example, button) {
         data.module_format,
         data.subsongs
       );
-      button.innerHTML = "✓ Playing";
-
-      // Reset button after 2 seconds
-      setTimeout(() => {
-        button.innerHTML = "▶ Play Now";
-        releaseUiLock(); // Re-enable all UI elements on error
-      }, 2000);
+      resetButtonAfterDelay(button, originalBtnText);
+      return;
     } else {
       showStatus(`✗ Error: ${data.error}`, "error");
-      button.innerHTML = "▶ Play Now";
-      releaseUiLock(); // Re-enable all UI elements on error
     }
   } catch (error) {
     showStatus(`✗ Failed: ${error.message}`, "error");
-    button.innerHTML = "▶ Play Now";
-    releaseUiLock(); // Re-enable all UI elements on error
+  } finally {
+    if (!success) {
+      button.textContent = originalBtnText;
+      releaseUiLock();
+    }
   }
 }
 
