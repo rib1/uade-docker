@@ -71,7 +71,7 @@ FLASK_ENV: production # Production mode
 MAX_UPLOAD_SIZE: 10485760 # 10MB max upload
 CLEANUP_INTERVAL: 3600 # Local files deleted after 1 hour
 CACHE_CLEANUP_INTERVAL: 86400 # Cache purged after 24 hours
-RATE_LIMIT_DISABLED=1  # disable rate limiting for local testing
+RATE_LIMIT_DISABLED: 1  # disable rate limiting for local testing
 ```
 
 To customize, edit `docker-compose.yml` or create a `docker-compose.override.yml`:
