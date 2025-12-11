@@ -623,7 +623,7 @@ def detect_module_metadata(input_path):
         return False, None, None, None, 0
 
 
-def _wait_for_conversion(
+def wait_for_conversion(
     cache_hash, prefer_flac, player_format, module_name, module_format, subsongs
 ):
     """Wait for a file conversion to complete and return the result."""
@@ -649,7 +649,7 @@ def _wait_for_conversion(
     return None
 
 
-def process_audio_conversion(input_path, use_cache=True, compress_flac=False):
+def process_audio_conversion(input_path, compress_flac=False):
     """
     Convert module to WAV using UADE with optional caching and FLAC compression.
 
@@ -728,7 +728,34 @@ def process_audio_conversion(input_path, use_cache=True, compress_flac=False):
         lock_path = CONVERTED_DIR / f"{cache_hash}.lock"
 
         # Check remote cache first (before acquiring lock)
-        if use_cache:
+        cached_file = fetch_cached_file(cache_hash, prefer_flac=compress_flac)
+        if cached_file and cached_file.exists():
+            return (
+                True,
+                None,
+                cached_file,
+                player_format,
+                module_name,
+                module_format,
+                subsongs,
+                True,
+                cache_hash,
+            )
+
+        # If lock exists, another thread is already converting this file
+        if lock_path.exists():
+            result = wait_for_conversion(
+                cache_hash, compress_flac, player_format, module_name, module_format, subsongs
+            )
+            if result:
+                return result
+            logger.warning(
+                f"Timeout waiting for conversion of {cache_hash} by another thread. Proceeding with conversion ourselves."
+            )
+
+        try:
+            lock_path.touch(exist_ok=False)
+
             cached_file = fetch_cached_file(cache_hash, prefer_flac=compress_flac)
             if cached_file and cached_file.exists():
                 return (
@@ -742,35 +769,6 @@ def process_audio_conversion(input_path, use_cache=True, compress_flac=False):
                     True,
                     cache_hash,
                 )
-
-        # If lock exists, another thread is already converting this file
-        if lock_path.exists():
-            result = _wait_for_conversion(
-                cache_hash, compress_flac, player_format, module_name, module_format, subsongs
-            )
-            if result:
-                return result
-            logger.warning(
-                f"Timeout waiting for conversion of {cache_hash} by another thread. Proceeding with conversion ourselves."
-            )
-
-        try:
-            lock_path.touch(exist_ok=False)
-
-            if use_cache:
-                cached_file = fetch_cached_file(cache_hash, prefer_flac=compress_flac)
-                if cached_file and cached_file.exists():
-                    return (
-                        True,
-                        None,
-                        cached_file,
-                        player_format,
-                        module_name,
-                        module_format,
-                        subsongs,
-                        True,
-                        cache_hash,
-                    )
 
             cmd = [
                 "/usr/local/bin/uade123",
@@ -819,11 +817,10 @@ def process_audio_conversion(input_path, use_cache=True, compress_flac=False):
                 if compress_to_flac(output_path, flac_output):
                     final_output = flac_output
             # Save to remote cache
-            if use_cache:
-                ext, file_to_save = (
-                    (".flac", final_output) if compress_flac else (".wav", output_path)
-                )
-                save_to_cache(cache_hash, file_to_save, ext)
+            ext, file_to_save = (
+                (".flac", final_output) if compress_flac else (".wav", output_path)
+            )
+            save_to_cache(cache_hash, file_to_save, ext)
             logger.info(f"Successfully converted: {input_path} -> {final_output}")
             return (
                 True,
@@ -838,7 +835,7 @@ def process_audio_conversion(input_path, use_cache=True, compress_flac=False):
             )
 
         except FileExistsError:
-            result = _wait_for_conversion(
+            result = wait_for_conversion(
                 cache_hash, compress_flac, player_format, module_name, module_format, subsongs
             )
             if result:
