@@ -166,6 +166,24 @@ architecture-beta
   - **Trivy:** Scans the filesystem and Docker images for known vulnerabilities.
   - **Hadolint:** Lints Dockerfiles to enforce best practices.
 
+## Dynamic Application Security Testing (DAST)
+
+### OWASP ZAP Integration
+
+- **Manual DAST:** DAST scans are not run automatically in CI/CD pipelines. Developers must manually run OWASP ZAP using docker-compose:
+  - Run: `docker-compose up --build zap-scan`
+  - The HTML report will be generated in the `./reports` directory.
+- **Scope:** ZAP scans the running `uade-web` service for common web vulnerabilities (XSS, CSRF, authentication flaws, misconfigurations).
+- **Exclusions:** Health endpoints and static assets are excluded from scans to reduce noise.
+- **Remediation:** All detected vulnerabilities should be triaged and resolved before production deployment. Critical and high findings must block releases.
+
+## Concurrency Testing
+
+- **Manual Stress and Concurrency Testing:** Concurrency tests are not run automatically in CI/CD pipelines. Developers must manually run the race condition test using docker-compose:
+  - Run: `docker-compose up --build uade-test-race-condition-runner`
+  - This executes the custom shell script `test/test_race_condition.sh`, which fires multiple simultaneous requests to the conversion endpoint and checks for race conditions. This is not pytest-based.
+- **Race Condition Defense:** All conversion logic uses atomic file locks and double-checked caching to prevent race conditions and ensure correct results under load.
+
 ## Technology Stack
 
 ### Backend

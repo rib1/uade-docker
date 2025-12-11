@@ -448,6 +448,15 @@ To run the integration tests using `docker-compose`:
     This command will run the tests in a new container and remove it upon completion (`--rm`).
     The `uade-web` service must be running and healthy for the tests to pass.
 
+### Security Testing (DAST)
+
+UADE Web Player supports manual Dynamic Application Security Testing (DAST) using OWASP ZAP. To run a security scan against the running web service:
+
+- Run: `docker-compose up --build zap-scan`
+- The HTML report will be generated in the `./reports` directory.
+
+DAST scans are not automated in CI/CD and must be run manually by developers.
+
 ### Local Development
 
 ```powershell
