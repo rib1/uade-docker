@@ -134,7 +134,9 @@ def add_security_headers(response):
     response.headers["X-Content-Type-Options"] = "nosniff"
     response.headers["X-Frame-Options"] = "SAMEORIGIN"
     # A more complete CSP.
-    response.headers["Content-Security-Policy"] = "default-src 'self'; base-uri 'self'; form-action 'self'; frame-ancestors 'self'"
+    response.headers[
+        "Content-Security-Policy"
+    ] = "default-src 'self'; base-uri 'self'; form-action 'self'; frame-ancestors 'self'"
     return response
 
 
@@ -336,7 +338,9 @@ def cleanup_old_files():
                         removed += 1
                 except FileNotFoundError:
                     # File was deleted by another process/thread after glob and before lstat/unlink
-                    logger.info(f"File not found during cleanup (likely race condition): {filepath}")
+                    logger.info(
+                        f"File not found during cleanup (likely race condition): {filepath}"
+                    )
                     continue
         if removed == 0:
             logger.info("No old files to clean up in local directories.")
@@ -619,8 +623,38 @@ def detect_module_metadata(input_path):
         return False, None, None, None, 0
 
 
+def _wait_for_conversion(
+    cache_hash, prefer_flac, player_format, module_name, module_format, subsongs
+):
+    """Wait for a file conversion to complete and return the result."""
+    logger.info(f"Conversion for {cache_hash} is in progress, waiting...")
+    # Wait for up to 300 seconds (5 minutes), matching the conversion timeout.
+    for _ in range(60):
+        time.sleep(5)
+        cached_file = fetch_cached_file(cache_hash, prefer_flac=prefer_flac)
+        if cached_file and cached_file.exists():
+            logger.info(f"Conversion for {cache_hash} completed by another thread.")
+            return (
+                True,
+                None,
+                cached_file,
+                player_format,
+                module_name,
+                module_format,
+                subsongs,
+                True,  # cached
+                cache_hash,
+            )
+    logger.warning(f"Timeout waiting for conversion of {cache_hash}.")
+    return None
+
+
 def process_audio_conversion(input_path, use_cache=True, compress_flac=False):
-    """Convert module to WAV using UADE with optional caching and FLAC compression.
+    """
+    Convert module to WAV using UADE with optional caching and FLAC compression.
+
+    This function includes a file-based locking mechanism to prevent race conditions
+    when multiple threads try to convert the same file simultaneously.
 
     Returns:
         A tuple containing:
@@ -691,8 +725,9 @@ def process_audio_conversion(input_path, use_cache=True, compress_flac=False):
             )
 
         output_path = CONVERTED_DIR / f"{cache_hash}.wav"
+        lock_path = CONVERTED_DIR / f"{cache_hash}.lock"
 
-        # Check remote cache first
+        # Check remote cache first (before acquiring lock)
         if use_cache:
             cached_file = fetch_cached_file(cache_hash, prefer_flac=compress_flac)
             if cached_file and cached_file.exists():
@@ -708,24 +743,92 @@ def process_audio_conversion(input_path, use_cache=True, compress_flac=False):
                     cache_hash,
                 )
 
-        cmd = [
-            "/usr/local/bin/uade123",
-            "-c",
-            "-f",
-            str(output_path),
-            str(input_path),
-        ]  # Headless mode
+        # If lock exists, another thread is already converting this file
+        if lock_path.exists():
+            result = _wait_for_conversion(
+                cache_hash, compress_flac, player_format, module_name, module_format, subsongs
+            )
+            if result:
+                return result
+            logger.warning(
+                f"Timeout waiting for conversion of {cache_hash} by another thread. Proceeding with conversion ourselves."
+            )
 
-        result = subprocess.run(
-            cmd, capture_output=True, text=True, timeout=300, encoding="latin1"
-        )  # 5 minute timeout
+        try:
+            lock_path.touch(exist_ok=False)
 
-        if result.returncode != 0:
-            logger.error(f"UADE error: {result.stderr}")
+            if use_cache:
+                cached_file = fetch_cached_file(cache_hash, prefer_flac=compress_flac)
+                if cached_file and cached_file.exists():
+                    return (
+                        True,
+                        None,
+                        cached_file,
+                        player_format,
+                        module_name,
+                        module_format,
+                        subsongs,
+                        True,
+                        cache_hash,
+                    )
+
+            cmd = [
+                "/usr/local/bin/uade123",
+                "-c",
+                "-f",
+                str(output_path),
+                str(input_path),
+            ]  # Headless mode
+
+            result = subprocess.run(
+                cmd, capture_output=True, text=True, timeout=300, encoding="latin1"
+            )  # 5 minute timeout
+
+            if result.returncode != 0:
+                logger.error(f"UADE error: {result.stderr}")
+                return (
+                    False,
+                    f"Conversion failed: {result.stderr}",
+                    None,
+                    player_format,
+                    module_name,
+                    module_format,
+                    subsongs,
+                    False,
+                    cache_hash,
+                )
+
+            if not output_path.exists():
+                return (
+                    False,
+                    "Conversion failed: Output file not created",
+                    None,
+                    player_format,
+                    module_name,
+                    module_format,
+                    subsongs,
+                    False,
+                    cache_hash,
+                )
+
+            final_output = output_path
+
+            # Compress to FLAC if requested
+            if compress_flac:
+                flac_output = output_path.with_suffix(".flac")
+                if compress_to_flac(output_path, flac_output):
+                    final_output = flac_output
+            # Save to remote cache
+            if use_cache:
+                ext, file_to_save = (
+                    (".flac", final_output) if compress_flac else (".wav", output_path)
+                )
+                save_to_cache(cache_hash, file_to_save, ext)
+            logger.info(f"Successfully converted: {input_path} -> {final_output}")
             return (
-                False,
-                f"Conversion failed: {result.stderr}",
+                True,
                 None,
+                final_output,
                 player_format,
                 module_name,
                 module_format,
@@ -734,10 +837,15 @@ def process_audio_conversion(input_path, use_cache=True, compress_flac=False):
                 cache_hash,
             )
 
-        if not output_path.exists():
+        except FileExistsError:
+            result = _wait_for_conversion(
+                cache_hash, compress_flac, player_format, module_name, module_format, subsongs
+            )
+            if result:
+                return result
             return (
                 False,
-                "Conversion failed: Output file not created",
+                "Timeout waiting for another conversion process after lock contention.",
                 None,
                 player_format,
                 module_name,
@@ -746,30 +854,8 @@ def process_audio_conversion(input_path, use_cache=True, compress_flac=False):
                 False,
                 cache_hash,
             )
-
-        final_output = output_path
-
-        # Compress to FLAC if requested
-        if compress_flac:
-            flac_output = output_path.with_suffix(".flac")
-            if compress_to_flac(output_path, flac_output):
-                final_output = flac_output
-        # Save to remote cache
-        if use_cache:
-            ext, file_to_save = (".flac", final_output) if compress_flac else (".wav", output_path)
-            save_to_cache(cache_hash, file_to_save, ext)
-        logger.info(f"Successfully converted: {input_path} -> {final_output}")
-        return (
-            True,
-            None,
-            final_output,
-            player_format,
-            module_name,
-            module_format,
-            subsongs,
-            False,
-            cache_hash,
-        )
+        finally:
+            lock_path.unlink(missing_ok=True)
 
     except FileNotFoundError:
         logger.error(f"File not found for processing: {input_path}")
@@ -905,16 +991,17 @@ def upload_file():
 
 def process_module_and_respond(module_path, filename, use_flac, url_cached=False):
     """Shared logic for archive detection, extraction, conversion, metadata, cleanup, and response."""
+    # Generate a unique ID for the extraction directory to prevent race conditions
+    unique_id = str(uuid.uuid4())
+    extract_dir = Path(f"{module_path}_extracted_{unique_id}")
+
     try:
         # Check if it's an LHA or ZIP archive
-        extract_dir = Path(f"{module_path}_extracted")
         if is_lha_file(module_path):
             logger.info(f"Detected LHA archive: {filename}")
             success, error, music_file = extract_lha(module_path, extract_dir)
             if not success:
                 module_path.unlink(missing_ok=True)
-                if extract_dir.exists():
-                    shutil.rmtree(extract_dir, ignore_errors=True)
                 return json_response({"error": error}, 500)
             filename = music_file.name
             module_path = music_file
@@ -923,8 +1010,6 @@ def process_module_and_respond(module_path, filename, use_flac, url_cached=False
             success, error, music_file = extract_zip(module_path, extract_dir)
             if not success:
                 module_path.unlink(missing_ok=True)
-                if extract_dir.exists():
-                    shutil.rmtree(extract_dir, ignore_errors=True)
                 return json_response({"error": error}, 500)
             filename = music_file.name
             module_path = music_file
@@ -942,9 +1027,6 @@ def process_module_and_respond(module_path, filename, use_flac, url_cached=False
             converted_file_id,
         ) = process_audio_conversion(module_path, compress_flac=use_flac)
 
-        # Clean up extracted files only (do not delete cached files)
-        if extract_dir.exists():
-            shutil.rmtree(extract_dir, ignore_errors=True)
         if not success:
             return json_response({"error": error}, 500)
 
@@ -965,9 +1047,10 @@ def process_module_and_respond(module_path, filename, use_flac, url_cached=False
             }
         )
 
-    except Exception as e:
-        logger.error(f"Conversion error: {e}")
-        return json_response({"error": str(e)}, 500)
+    finally:
+        # Clean up extracted files only (do not delete cached files)
+        if extract_dir.exists():
+            shutil.rmtree(extract_dir, ignore_errors=True)
 
 
 def is_safe_url(u):
@@ -1134,6 +1217,7 @@ def convert_url():
         ) = get_dual_file_module_filenames(filename)
         # The suffix must be placed after the hash for UADE to correctly recognize the file type in dual-file modules
         module_path = MODULES_DIR / f"{filename}_{url_hash}{suffix}"
+        lock_path = module_path.with_suffix(f"{module_path.suffix}.lock")
 
         url_cache_hit = False
         if module_path.exists():
@@ -1142,13 +1226,38 @@ def convert_url():
                 f"Cache hit for module: {sanitized_url(url)}, using cached file: {module_path}"
             )
         else:
-            logger.info(f"Downloading: {sanitized_url(url)}")
-            # nosec B501 - Trade-off for HTTP module downloads
-            response = requests.get(url, timeout=30, verify=False, allow_redirects=True)
-            response.raise_for_status()
-            # Save downloaded file to MODULES_DIR
-            module_path.write_bytes(response.content)
-            logger.info(f"Cached module_path: {module_path}")
+            try:
+                # Atomically create lock file. If it exists, FileExistsError is raised.
+                lock_path.touch(exist_ok=False)
+                try:
+                    # Re-check if file exists now that we have the lock
+                    if not module_path.exists():
+                        logger.info(f"Downloading: {sanitized_url(url)}")
+                        # nosec B501 - Trade-off for HTTP module downloads
+                        response = requests.get(url, timeout=30, verify=False, allow_redirects=True)
+                        response.raise_for_status()
+                        # Write to a temporary file first, then move, to ensure atomic write
+                        temp_path = module_path.with_suffix(f"{module_path.suffix}.tmp")
+                        temp_path.write_bytes(response.content)
+                        # Move downloaded file to MODULES_DIR
+                        os.rename(temp_path, module_path)
+                        logger.info(f"Cached module_path: {module_path}")
+                finally:
+                    # Always remove the lock file when the owner is done
+                    lock_path.unlink(missing_ok=True)
+            except FileExistsError:
+                logger.info(f"Download for {sanitized_url(url)} is already in progress, waiting...")
+                for _ in range(20):  # Wait up to 20 seconds
+                    time.sleep(1)
+                    if module_path.exists():
+                        url_cache_hit = True
+                        break
+                else:
+                    logger.warning(f"Timeout waiting for download of {sanitized_url(url)}.")
+                    return json_response({"error": "Timeout waiting for file download."}, 500)
+
+        if not module_path.exists():
+            return json_response({"error": "Failed to retrieve module file."}, 500)
 
         # --- Caching logic for dual-file module sample file ---
         if sample_url and sample_url != url:
@@ -1162,6 +1271,7 @@ def convert_url():
             # The suffix must be placed after the hash for UADE to correctly recognize the file type in dual-file modules
             sample_path = MODULES_DIR / f"{sample_filename}_{url_hash}{sample_suffix}"
             cached_sample_path = MODULES_DIR / f"{sample_filename}_{sample_url_hash}{sample_suffix}"
+            sample_lock_path = module_path.with_suffix(f"{cached_sample_path.suffix}.lock")
             if cached_sample_path.exists():
                 if sample_path.exists() or sample_path.is_symlink():
                     sample_path.unlink(missing_ok=True)
@@ -1170,14 +1280,39 @@ def convert_url():
                     f"Cache hit for sample file: {sanitized_url(sample_url)}, using cached file {cached_sample_path}, linking to {sample_path}"
                 )
             else:
-                logger.info(f"Downloading sample file: {sanitized_url(sample_url)}")
-                sample_response = requests.get(
-                    sample_url, timeout=30, verify=False, allow_redirects=True
-                )
-                sample_response.raise_for_status()
-                cached_sample_path.write_bytes(sample_response.content)
-                os.symlink(cached_sample_path, sample_path)
-                logger.info(f"Cached sample file: {cached_sample_path}, linking to {sample_path}")
+                try:
+                    # Atomically create lock file. If it exists, FileExistsError is raised.
+                    sample_lock_path.touch(exist_ok=False)
+                    logger.info(f"Downloading sample file: {sanitized_url(sample_url)}")
+                    sample_response = requests.get(
+                        sample_url, timeout=30, verify=False, allow_redirects=True
+                    )
+                    sample_response.raise_for_status()
+                    # Write to a temporary file first, then move, to ensure atomic write
+                    temp_path = module_path.with_suffix(f"{cached_sample_path.suffix}.tmp")
+                    temp_path.write_bytes(sample_response.content)
+                    # Move downloaded file to MODULES_DIR
+                    os.rename(temp_path, cached_sample_path)
+                    os.symlink(cached_sample_path, sample_path)
+                    logger.info(
+                        f"Cached sample file: {cached_sample_path}, linking to {sample_path}"
+                    )
+                except FileExistsError:
+                    logger.info(
+                        f"Download for {sanitized_url(cached_sample_path)} is already in progress, waiting..."
+                    )
+                    for _ in range(20):  # Wait up to 20 seconds
+                        time.sleep(1)
+                        if cached_sample_path.exists():
+                            break
+                    else:
+                        logger.warning(
+                            f"Timeout waiting for download of {sanitized_url(cached_sample_path)}."
+                        )
+                        return json_response({"error": "Timeout waiting for file download."}, 500)
+                finally:
+                    # Always remove the lock file when the owner is done
+                    sample_lock_path.unlink(missing_ok=True)
 
         return process_module_and_respond(module_path, filename, use_flac, url_cache_hit)
 
