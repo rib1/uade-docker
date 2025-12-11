@@ -181,7 +181,7 @@ architecture-beta
 
 - **Manual Stress and Concurrency Testing:** Concurrency tests are not run automatically in CI/CD pipelines. Developers must manually run the race condition test using docker-compose:
   - Run: `docker-compose up --build uade-test-race-condition-runner`
-  - This executes the custom shell script `test/test_race_condition.sh`, which fires multiple simultaneous requests to the conversion endpoint and checks for race conditions. This is not pytest-based.
+  - This executes the custom shell script `test/test_race_condition.sh`, which fires multiple simultaneous requests to the conversion endpoint and checks for race conditions.
 - **Race Condition Defense:** All conversion logic uses atomic file locks and double-checked caching to prevent race conditions and ensure correct results under load.
 
 ## Technology Stack
