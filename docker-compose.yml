@@ -16,6 +16,8 @@
 # 4. To run a DAST scan:
 #    docker-compose up --build zap-scan
 #    The HTML report will be in the ./reports directory.
+# 5. To run the race condition test:
+#    docker-compose up --build uade-test-race-condition-runner
 
 services:
   uade-web:
@@ -71,6 +73,17 @@ services:
     volumes:
       # ZAP reports will be saved in the 'reports' directory on the host
       - ./reports:/zap/wrk
+    networks:
+      - uade-net
+
+  uade-test-race-condition-runner:
+    build:
+      context: .
+      dockerfile: test/Dockerfile.test
+    depends_on:
+      uade-web:
+        condition: service_healthy
+    command: ["./test_race_condition.sh"]
     networks:
       - uade-net
 
