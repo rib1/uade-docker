@@ -128,6 +128,16 @@ def ratelimit_handler(e):
     )
 
 
+@app.after_request
+def add_security_headers(response):
+    """Add security headers to all responses."""
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["X-Frame-Options"] = "SAMEORIGIN"
+    # A more complete CSP.
+    response.headers["Content-Security-Policy"] = "default-src 'self'; base-uri 'self'; form-action 'self'; frame-ancestors 'self'"
+    return response
+
+
 # Common Amiga module extensions and prefixes for detection module files in archives
 MODULE_FILE_EXTENSIONS: Final = {
     "aam",  # Art And Magic
@@ -312,22 +322,22 @@ def json_response(data, status=200):
 
 
 def cleanup_old_files():
-    """Remove files older than CLEANUP_INTERVAL from local directories"""
+    """Remove files older than CLEANUP_INTERVAL from local directories. This function is designed to be thread-safe."""
     try:
         cutoff = time.time() - CLEANUP_INTERVAL
         removed = 0
         for directory in [MODULES_DIR, CONVERTED_DIR]:
-            # Remove symlinks first
             for filepath in directory.glob("*"):
-                if filepath.is_symlink() and filepath.stat().st_mtime < cutoff:
-                    filepath.unlink()
-                    logger.info(f"Cleaned up old symlink: {filepath}")
-                    removed += 1
-            for filepath in directory.glob("*"):
-                if filepath.stat().st_mtime < cutoff:
-                    filepath.unlink()
-                    logger.info(f"Cleaned up old file: {filepath}")
-                    removed += 1
+                try:
+                    # Use lstat to avoid following symlinks and get info about the link itself
+                    if filepath.lstat().st_mtime < cutoff:
+                        filepath.unlink(missing_ok=True)
+                        logger.info(f"Cleaned up old file/symlink: {filepath}")
+                        removed += 1
+                except FileNotFoundError:
+                    # File was deleted by another process/thread after glob and before lstat/unlink
+                    logger.info(f"File not found during cleanup (likely race condition): {filepath}")
+                    continue
         if removed == 0:
             logger.info("No old files to clean up in local directories.")
     except Exception as e:
@@ -388,6 +398,11 @@ def supports_flac(user_agent):
 def compress_to_flac(wav_path, flac_path):
     """Compress WAV to FLAC format"""
     try:
+        # Prevent division by zero if wav file is empty
+        if wav_path.stat().st_size == 0:
+            logger.warning(f"FLAC compression skipped: Input WAV file is empty: {wav_path}")
+            return False
+
         cmd = ["flac", "--best", "--silent", "-f", "-o", str(flac_path), str(wav_path)]
         result = subprocess.run(cmd, capture_output=True, text=True, timeout=60)
 
@@ -802,6 +817,20 @@ def process_audio_conversion(input_path, use_cache=True, compress_flac=False):
 def index():
     """Serve main page"""
     return send_from_directory("static", "index.html")
+
+
+@app.route("/robots.txt")
+@limiter.exempt
+def robots_txt():
+    """Serve robots.txt to guide web crawlers"""
+    return send_from_directory(app.static_folder, "robots.txt")
+
+
+@app.route("/sitemap.xml")
+@limiter.exempt
+def sitemap_xml():
+    """Serve sitemap.xml for search engine indexing"""
+    return send_from_directory(app.static_folder, "sitemap.xml")
 
 
 @app.route("/supported-extensions")
