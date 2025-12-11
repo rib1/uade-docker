@@ -341,6 +341,15 @@ audio {
   justify-content: center;
 }
 
+/* Hide player section and custom info by default */
+#player-section {
+  display: none;
+}
+
+#custom-info {
+  display: none;
+}
+
 /* Status Messages */
 #status-container {
   position: fixed;
