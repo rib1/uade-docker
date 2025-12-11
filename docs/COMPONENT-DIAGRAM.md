@@ -117,7 +117,7 @@ The CLI Player Container serves as the base image that contains all core UADE co
 
 ### Web Player Components (Built FROM CLI Base)
 
-The Web Player Container is built using multi-stage Docker build with `FROM uade-cli` as the base, adding Flask web server and Python components on top of the complete UADE CLI installation.
+The Web Player Container is built using multi-stage Docker build with `FROM uade-cli` as the base, adding Flask web server and Python components on top of the complete UADE CLI installation. It features automatic, atomic extraction of LHA and ZIP archives to unique temporary directories, ensuring no race conditions during concurrent extractions.
 
 #### Flask Application
 
@@ -152,7 +152,7 @@ The Web Player Container is built using multi-stage Docker build with `FROM uade
 - **Technology**: Python service layer
 - **Responsibilities**:
   - Manage playback state machine
-  - Handle concurrent playback requests
+  - Handle concurrent playback requests using file locking for atomic operations.
   - Process management and cleanup
   - Error handling and recovery
 
@@ -282,6 +282,15 @@ The Web Player Container is built using multi-stage Docker build with `FROM uade
 - **Network**: Minimal attack surface (HTTP only)
 - **Resource Limits**: Memory and CPU constraints
 
+### Security Testing (DAST)
+
+UADE Web Player supports manual Dynamic Application Security Testing (DAST) using OWASP ZAP. To run a security scan against the running web service:
+
+- Run: `docker-compose up --build zap-scan`
+- The HTML report will be generated in the `./reports` directory.
+
+DAST scans are not automated in CI/CD and must be run manually by developers.
+
 ## Performance Characteristics
 
 ### CLI Player Performance (Base)
@@ -298,6 +307,10 @@ The Web Player Container is built using multi-stage Docker build with `FROM uade
 - **Concurrent Users**: 4 workers support 20-40 users
 - **Memory**: ~150MB per worker (~100MB Flask + ~50MB UADE)
 - **CPU**: Minimal (mostly I/O wait)
+
+### Concurrency Testing
+
+- **Manual Stress and Concurrency Testing:** Concurrency tests are implemented
 
 ## Monitoring and Observability
 
