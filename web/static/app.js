@@ -186,9 +186,8 @@ async function handleFileUpload(file) {
 
     if (response.ok) {
       success = true;
-      const statusMessage = data.cached
-        ? `✓ From cache: ${data.module_name || data.filename}`
-        : `✓ Converted: ${data.module_name || data.filename}`;
+      const moduleName = data.module_name || data.filename;
+      const statusMessage = getCacheStatusMessage(data, moduleName, `✓ ${moduleName} uploaded and converted, ready to play`);
       showStatus(statusMessage, "success");
       playFile(
         data.file_id,
@@ -250,9 +249,8 @@ async function handleUrlConvert() {
 
     if (response.ok) {
       success = true;
-      const statusMessage = data.cached
-        ? `✓ From cache: ${data.module_name || data.filename}`
-        : `✓ Converted: ${data.module_name || data.filename}`;
+      const moduleName = data.module_name || data.filename;
+      const statusMessage = getCacheStatusMessage(data, moduleName, `✓ ${moduleName} downloaded and converted, ready to play`);
       showStatus(statusMessage, "success");
       playFile(
         data.file_id,
@@ -316,9 +314,8 @@ async function handleDualFileConvert() {
 
     if (response.ok) {
       success = true;
-      const statusMessage = data.cached
-        ? `✓ From cache: ${data.module_name || data.filename}`
-        : `✓ Dual-file module converted successfully: ${data.module_name || data.filename}`;
+      const moduleName = data.module_name || data.filename;
+      const statusMessage = getCacheStatusMessage(data, moduleName, `✓ ${moduleName} (dual-file) downloaded and converted, ready to play`);
       showStatus(statusMessage, "success");
       playFile(
         data.file_id,
@@ -411,9 +408,8 @@ async function handleExamplePlay(example, button) {
 
     if (response.ok) {
       success = true;
-      const statusMessage = data.cached
-        ? `✓ From cache: ${example.name || data.module_name || data.filename} ready to play`
-        : `✓ ${example.name || data.module_name || data.filename} ready to play`;
+      const moduleName = example.name || data.module_name || data.filename;
+      const statusMessage = getCacheStatusMessage(data, moduleName, `✓ ${moduleName} converted and ready to play`);
       showStatus(statusMessage, "success");
       playFile(
         data.file_id,
@@ -594,6 +590,19 @@ function setupDownloadButton() {
       }
     }
   });
+}
+
+function getCacheStatusMessage(data, moduleName, nonCacheMessage) {
+  if (data.url_cached && data.cached) {
+    return `✓ ${moduleName} loaded from URL & conversion cache and ready to play`;
+  }
+  if (data.cached) {
+    return `✓ ${moduleName} loaded from conversion cache and ready to play`;
+  }
+  if (data.url_cached) {
+    return `✓ ${moduleName} loaded from URL cache, converted and ready to play`;
+  }
+  return nonCacheMessage;
 }
 
 // Status Messages
