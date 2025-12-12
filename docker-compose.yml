@@ -13,11 +13,16 @@
 #    docker-compose run --rm uade-test-runner
 # 3. To run ratelimit-tests:
 #    docker-compose -f docker-compose.yml -f test/docker-compose.ratelimit.yml up --build uade-test-ratelimit-runner
-# 4. To run a DAST scan:
+# 4. To run the race condition test:
+#    docker-compose up --build uade-test-race-condition-runner
+# 5. To run a DAST scan:
 #    docker-compose up --build zap-scan
 #    The HTML report will be in the ./reports directory.
-# 5. To run the race condition test:
-#    docker-compose up --build uade-test-race-condition-runner
+# 6. To run a full DAST scan:
+#    docker-compose up --build zap-full-scan
+#    The HTML report will be in the ./reports directory.
+# 7. To stop and remove all containers:
+#    docker compose down -v
 
 services:
   uade-web:
@@ -75,6 +80,11 @@ services:
       - ./reports:/zap/wrk
     networks:
       - uade-net
+
+  zap-full-scan:
+    extends:
+      service: zap-scan
+    command: zap-full-scan.py -t http://uade-web:5000 -j -a 15 -r report.html
 
   uade-test-race-condition-runner:
     build:

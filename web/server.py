@@ -401,16 +401,20 @@ def supports_flac(user_agent):
 
 def compress_to_flac(wav_path, flac_path):
     """Compress WAV to FLAC format"""
+    # Use a temporary file for UADE output to ensure atomic write
+    temp_flac_output_path = flac_path.with_name(f"{flac_path.name}.{str(uuid.uuid4())}.tmp")
     try:
         # Prevent division by zero if wav file is empty
         if wav_path.stat().st_size == 0:
             logger.warning(f"FLAC compression skipped: Input WAV file is empty: {wav_path}")
             return False
 
-        cmd = ["flac", "--best", "--silent", "-f", "-o", str(flac_path), str(wav_path)]
+        cmd = ["flac", "--best", "--silent", "-f", "-o", str(temp_flac_output_path), str(wav_path)]
         result = subprocess.run(cmd, capture_output=True, text=True, timeout=60)
 
-        if result.returncode == 0 and flac_path.exists():
+        if result.returncode == 0 and temp_flac_output_path.exists():
+            Path.replace(temp_flac_output_path, flac_path)
+            logger.info(f"Atomically moved {temp_flac_output_path} to {flac_path}")
             logger.info(
                 f"Compressed to FLAC: {wav_path} -> {flac_path} "
                 f"({flac_path.stat().st_size / wav_path.stat().st_size:.1%} of original)"
@@ -422,6 +426,8 @@ def compress_to_flac(wav_path, flac_path):
     except Exception as e:
         logger.error(f"FLAC compression exception: {e}")
         return False
+    finally:
+        temp_flac_output_path.unlink(missing_ok=True) # Clean up temp file
 
 
 def find_music_file(extract_dir):
@@ -529,9 +535,12 @@ def extract_zip(zip_path, extract_dir):
 def save_to_cache(cache_hash, file, ext):
     """Save a converted file to remote cache (WAV or FLAC)."""
     cache_file_remote = f"{root_cache}/{cache_hash}{ext}"
+    temp_file_remote = f"{cache_file_remote}.{uuid.uuid4()}.tmp"
     if not fs_cache.exists(cache_file_remote):
-        with open(file, "rb") as src, fs_cache.open(cache_file_remote, "wb") as dst:
+        with open(file, "rb") as src, fs_cache.open(temp_file_remote, "wb") as dst:
             shutil.copyfileobj(src, dst, length=1024 * 1024)  # 1MB buffer
+        # Atomic move to final name
+        fs_cache.mv(temp_file_remote, cache_file_remote)
         logger.info(f"Cached conversion to remote: {cache_hash}{ext}")
 
 
@@ -541,6 +550,7 @@ def fetch_cached_file(cache_hash, prefer_flac=False):
     for ext in ([".flac"] if prefer_flac else []) + [".wav"]:
         cache_file_remote = f"{root_cache}/{cache_hash}{ext}"
         cache_file_local = CONVERTED_DIR / f"{cache_hash}{ext}"
+        temp_file_local = cache_file_local.with_name(f"{cache_file_local.name}.{uuid.uuid4()}.tmp")
         if fs_cache.exists(cache_file_remote):
             remote_size = fs_cache.size(cache_file_remote)
             if cache_file_local.exists() and cache_file_local.stat().st_size == remote_size:
@@ -549,9 +559,10 @@ def fetch_cached_file(cache_hash, prefer_flac=False):
             # Ensure local cache directory exists
             cache_dir_local = cache_file_local.parent
             cache_dir_local.mkdir(parents=True, exist_ok=True)
-            # Copy from remote cache to local
-            with fs_cache.open(cache_file_remote, "rb") as src, open(cache_file_local, "wb") as dst:
+            # Copy from remote cache to local temp file, then move atomically
+            with fs_cache.open(cache_file_remote, "rb") as src, open(temp_file_local, "wb") as dst:
                 shutil.copyfileobj(src, dst, length=1024 * 1024)  # 1MB buffer
+            Path.replace(temp_file_local, cache_file_local)
             logger.info(f"Cache hit ({ext[1:].upper()}): {cache_hash} from remote cache")
             return cache_file_local
     return None
@@ -726,6 +737,8 @@ def process_audio_conversion(input_path, compress_flac=False):
 
         output_path = CONVERTED_DIR / f"{cache_hash}.wav"
         lock_path = CONVERTED_DIR / f"{cache_hash}.lock"
+        # Use a temporary file for UADE output to ensure atomic write
+        temp_uade_output_path = output_path.with_name(f"{output_path.name}.{str(uuid.uuid4())}.tmp")
 
         # Check remote cache first (before acquiring lock)
         cached_file = fetch_cached_file(cache_hash, prefer_flac=compress_flac)
@@ -774,7 +787,7 @@ def process_audio_conversion(input_path, compress_flac=False):
                 "/usr/local/bin/uade123",
                 "-c",
                 "-f",
-                str(output_path),
+                str(temp_uade_output_path),
                 str(input_path),
             ]  # Headless mode
 
@@ -796,6 +809,9 @@ def process_audio_conversion(input_path, compress_flac=False):
                     cache_hash,
                 )
 
+            Path.replace(temp_uade_output_path, output_path)
+            logger.info(f"Atomically moved {temp_uade_output_path} to {output_path}")
+  
             if not output_path.exists():
                 return (
                     False,
@@ -853,6 +869,7 @@ def process_audio_conversion(input_path, compress_flac=False):
             )
         finally:
             lock_path.unlink(missing_ok=True)
+            temp_uade_output_path.unlink(missing_ok=True) # Clean up temp file
 
     except FileNotFoundError:
         logger.error(f"File not found for processing: {input_path}")
@@ -1237,7 +1254,7 @@ def convert_url():
                         temp_path = module_path.with_suffix(f"{module_path.suffix}.tmp")
                         temp_path.write_bytes(response.content)
                         # Move downloaded file to MODULES_DIR
-                        os.rename(temp_path, module_path)
+                        Path.replace(temp_path, module_path)
                         logger.info(f"Cached module_path: {module_path}")
                 finally:
                     # Always remove the lock file when the owner is done
@@ -1289,7 +1306,7 @@ def convert_url():
                     temp_path = module_path.with_suffix(f"{cached_sample_path.suffix}.tmp")
                     temp_path.write_bytes(sample_response.content)
                     # Move downloaded file to MODULES_DIR
-                    os.rename(temp_path, cached_sample_path)
+                    Path.replace(temp_path, cached_sample_path)
                     os.symlink(cached_sample_path, sample_path)
                     logger.info(
                         f"Cached sample file: {cached_sample_path}, linking to {sample_path}"
