@@ -3,6 +3,8 @@
 #    $env:GIT_COMMIT = (git rev-parse HEAD); docker-compose up -d --build uade-web
 #    or in bash:
 #    GIT_COMMIT=$(git rev-parse HEAD); docker-compose up --build  uade-web
+# To stop and remove all containers:
+#    docker compose down -v
 # To run tests:
 # 1. Build and run the test runner service:
 #    powershell:
@@ -21,8 +23,6 @@
 # 6. To run a full DAST scan:
 #    docker-compose up --build zap-full-scan
 #    The HTML report will be in the ./reports directory.
-# 7. To stop and remove all containers:
-#    docker compose down -v
 
 services:
   uade-web:
@@ -71,7 +71,7 @@ services:
     image: ghcr.io/zaproxy/zaproxy:stable
     # DAST scanner service using OWASP ZAP.
     # It scans the uade-web service.
-    command: zap-baseline.py -t http://uade-web:5000 -j -a 15 -r report.html
+    command: zap-baseline.py -t http://uade-web:5000 -j -a -r report.html -w report.md
     depends_on:
       uade-web:
         condition: service_healthy
@@ -84,7 +84,7 @@ services:
   zap-full-scan:
     extends:
       service: zap-scan
-    command: zap-full-scan.py -t http://uade-web:5000 -j -a 15 -r report.html
+    command: zap-full-scan.py -t http://uade-web:5000 -j -a -r report.html -w report.md
 
   uade-test-race-condition-runner:
     build:

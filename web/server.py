@@ -427,7 +427,7 @@ def compress_to_flac(wav_path, flac_path):
         logger.error(f"FLAC compression exception: {e}")
         return False
     finally:
-        temp_flac_output_path.unlink(missing_ok=True) # Clean up temp file
+        temp_flac_output_path.unlink(missing_ok=True)  # Clean up temp file
 
 
 def find_music_file(extract_dir):
@@ -574,6 +574,12 @@ def detect_module_metadata(input_path):
 
     Returns: (metadata_success, module_name, module_format, player_format, subsongs)
     """
+    if not input_path.exists():
+        logger.warning(
+            f"Module does not exist: {input_path}. Another thread propably could not detect metadata and deleted it."
+        )
+        return False, None, None, None, 0
+
     try:
         cmd = ["/usr/local/bin/uade123", "-g", str(input_path)]
         # Use encoding='latin1' to avoid decode errors with non-UTF-8 bytes in output
@@ -707,22 +713,34 @@ def process_audio_conversion(input_path, compress_flac=False):
             )
 
         # Detect module metadata before conversion
-        (
-            metadata_success,
-            module_name,
-            module_format,
-            player_format,
-            subsongs,
-        ) = detect_module_metadata(input_path)
-
-        # Calculate hash, before potential input file deletion
         cache_hash = get_file_hash(input_path)
+        # Use a unique lock file for metadata detection (per thread/process)
+        unique_metadata_lock = MODULES_DIR / f"{cache_hash}.metadatalock.{str(uuid.uuid4())}"
+        unique_metadata_lock.touch(exist_ok=True)
+        try:
+            (
+                metadata_success,
+                module_name,
+                module_format,
+                player_format,
+                subsongs,
+            ) = detect_module_metadata(input_path)
+        finally:
+            unique_metadata_lock.unlink(missing_ok=True)
 
         # Deletes file if metadata detection fails (prevents disk abuse).
+        # Only delete if no .metadatalock.* files exist for this module.
         # Retains file if metadata is detected but conversion fails (for debug).
         if not metadata_success:
-            logger.warning(f"Could not detect metadata for {input_path}. Deleting file.")
-            input_resolved.unlink(missing_ok=True)
+            # Check for any remaining .metadatalock.* files for this module
+            lock_glob = MODULES_DIR.glob(f"{cache_hash}.metadatalock.*")
+            if not any(lock_glob):
+                logger.warning(f"Could not detect metadata for {input_path}. Deleting file.")
+                input_resolved.unlink(missing_ok=True)
+            else:
+                logger.warning(
+                    f"Could not detect metadata for {input_path}, but other locks exist. Retaining file for ongoing conversion."
+                )
             return (
                 False,
                 "Could not detect module metadata. The file may be corrupt or not a supported module.",
@@ -811,7 +829,7 @@ def process_audio_conversion(input_path, compress_flac=False):
 
             Path.replace(temp_uade_output_path, output_path)
             logger.info(f"Atomically moved {temp_uade_output_path} to {output_path}")
-  
+
             if not output_path.exists():
                 return (
                     False,
@@ -833,9 +851,7 @@ def process_audio_conversion(input_path, compress_flac=False):
                 if compress_to_flac(output_path, flac_output):
                     final_output = flac_output
             # Save to remote cache
-            ext, file_to_save = (
-                (".flac", final_output) if compress_flac else (".wav", output_path)
-            )
+            ext, file_to_save = (".flac", final_output) if compress_flac else (".wav", output_path)
             save_to_cache(cache_hash, file_to_save, ext)
             logger.info(f"Successfully converted: {input_path} -> {final_output}")
             return (
@@ -869,7 +885,7 @@ def process_audio_conversion(input_path, compress_flac=False):
             )
         finally:
             lock_path.unlink(missing_ok=True)
-            temp_uade_output_path.unlink(missing_ok=True) # Clean up temp file
+            temp_uade_output_path.unlink(missing_ok=True)  # Clean up temp file
 
     except FileNotFoundError:
         logger.error(f"File not found for processing: {input_path}")
@@ -1264,6 +1280,9 @@ def convert_url():
                 for _ in range(20):  # Wait up to 20 seconds
                     time.sleep(1)
                     if module_path.exists():
+                        logger.info(
+                            f"Cache hit for module completed by another thread: {sanitized_url(url)}, using cached file: {module_path}"
+                        )
                         url_cache_hit = True
                         break
                 else:
@@ -1287,9 +1306,9 @@ def convert_url():
             cached_sample_path = MODULES_DIR / f"{sample_filename}_{sample_url_hash}{sample_suffix}"
             sample_lock_path = module_path.with_suffix(f"{cached_sample_path.suffix}.lock")
             if cached_sample_path.exists():
-                if sample_path.exists() or sample_path.is_symlink():
-                    sample_path.unlink(missing_ok=True)
-                os.symlink(cached_sample_path, sample_path)
+                if not sample_path.exists():
+                    sample_path.unlink(missing_ok=True)  # Ensure no stale link
+                    os.symlink(cached_sample_path, sample_path)
                 logger.info(
                     f"Cache hit for sample file: {sanitized_url(sample_url)}, using cached file {cached_sample_path}, linking to {sample_path}"
                 )
@@ -1307,6 +1326,8 @@ def convert_url():
                     temp_path.write_bytes(sample_response.content)
                     # Move downloaded file to MODULES_DIR
                     Path.replace(temp_path, cached_sample_path)
+                    if sample_path.exists():
+                        sample_path.unlink(missing_ok=True)
                     os.symlink(cached_sample_path, sample_path)
                     logger.info(
                         f"Cached sample file: {cached_sample_path}, linking to {sample_path}"
@@ -1318,6 +1339,12 @@ def convert_url():
                     for _ in range(20):  # Wait up to 20 seconds
                         time.sleep(1)
                         if cached_sample_path.exists():
+                            if not sample_path.exists():
+                                sample_path.unlink(missing_ok=True)  # Ensure no stale link
+                                os.symlink(cached_sample_path, sample_path)
+                            logger.info(
+                                f"Cache hit for sample file completed by another thread: {sanitized_url(sample_url)}, using cached file {cached_sample_path}, linking to {sample_path}"
+                            )
                             break
                     else:
                         logger.warning(
