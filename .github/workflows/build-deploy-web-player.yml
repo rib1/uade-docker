@@ -131,6 +131,8 @@ jobs:
         docker push gcr.io/${{ env.PROJECT_ID }}/${{ env.SERVICE_NAME }}:latest
 
     - name: Deploy to Cloud Run
+      # Set to 1 CPU to match single-threaded Python (Gunicorn worker)
+      # Set concurrency to 4 to match Gunicorn's 4 threads per worker (see Dockerfile.web)
       run: |
         gcloud run deploy ${{ env.SERVICE_NAME }} \
           --image gcr.io/${{ env.PROJECT_ID }}/${{ env.SERVICE_NAME }}:latest \
@@ -140,11 +142,18 @@ jobs:
           --service-account uade-web-player-sa@${{ env.PROJECT_ID }}.iam.gserviceaccount.com \
           --port 5000 \
           --memory 2Gi \
-          --cpu 2 \
+          --cpu 1 \
+          --concurrency 4 \
           --timeout 300s \
           --max-instances 10 \
           --min-instances 0 \
-          --set-env-vars "FLASK_ENV=production,MAX_UPLOAD_SIZE=10485760,CLEANUP_INTERVAL=3600"
+          --set-env-vars "FLASK_ENV=production" \
+          --set-env-vars "MAX_UPLOAD_SIZE=10485760" \
+          --set-env-vars "CLEANUP_INTERVAL=3600" \
+          --set-env-vars "CACHE_CLEANUP_INTERVAL=86400" \
+          --set-env-vars "RATE_LIMIT=200" \
+          --set-env-vars "CACHE_URI=file:///tmp/cache" \
+          --set-env-vars "RATE_LIMIT_DISABLED=0"
     
     - name: Get Service URL
       id: get-url
@@ -152,7 +161,7 @@ jobs:
         URL=$(gcloud run services describe ${{ env.SERVICE_NAME }} \
           --region ${{ env.REGION }} \
           --format 'value(status.url)')
-        echo "url=$URL" >> $GITHUB_OUTPUT
+        echo "url=$URL" >> "$GITHUB_OUTPUT"
         echo "Service deployed at: $URL"
     
     - name: Test deployment
