@@ -139,7 +139,7 @@ jobs:
         echo "✅ UADE version matches input"
 
     - name: Upload build summary
-      uses: actions/upload-artifact@v5
+      uses: actions/upload-artifact@v6
       with:
         name: build-summary
         path: /tmp/build-summary.txt
