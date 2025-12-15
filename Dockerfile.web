@@ -76,5 +76,7 @@ HEALTHCHECK --interval=30s --timeout=3s --retries=3 \
 
 # Use gunicorn for production (better than Flask dev server for cloud)
 # Single worker to minimize memory usage for large file streaming
-CMD ["gunicorn", "--bind", "0.0.0.0:5000", "--workers", "1", "--threads", "4", "--timeout", "300", "--graceful-timeout", "300", "--keep-alive", "5", "--worker-class", "gthread", "--access-logfile", "-", "--error-logfile", "-", "server:app"]
+# Use 8 threads to handle a mix of CPU-bound (conversion) and I/O-bound (streaming)
+# requests concurrently. Python's GIL is released during I/O, allowing other threads to run.
+CMD ["gunicorn", "--bind", "0.0.0.0:5000", "--workers", "1", "--threads", "8", "--timeout", "300", "--graceful-timeout", "300", "--keep-alive", "5", "--worker-class", "gthread", "--access-logfile", "-", "--error-logfile", "-", "server:app"]
 

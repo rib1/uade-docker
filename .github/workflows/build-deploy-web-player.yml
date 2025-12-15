@@ -132,7 +132,8 @@ jobs:
 
     - name: Deploy to Cloud Run
       # Set to 1 CPU to match single-threaded Python (Gunicorn worker)
-      # Set concurrency to 4 to match Gunicorn's 4 threads per worker (see Dockerfile.web)
+      # Set concurrency to 8 to match Gunicorn's 8 threads, allowing for a mix of
+      # CPU-bound (conversion) and I/O-bound (streaming) requests.
       run: |
         gcloud run deploy ${{ env.SERVICE_NAME }} \
           --image gcr.io/${{ env.PROJECT_ID }}/${{ env.SERVICE_NAME }}:latest \
@@ -143,7 +144,7 @@ jobs:
           --port 5000 \
           --memory 2Gi \
           --cpu 1 \
-          --concurrency 4 \
+          --concurrency 8 \
           --timeout 300s \
           --max-instances 10 \
           --min-instances 0 \
