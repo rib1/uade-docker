@@ -132,8 +132,8 @@ jobs:
 
     - name: Deploy to Cloud Run
       # Set to 1 CPU to match single-threaded Python (Gunicorn worker)
-      # Set concurrency to 8 to match Gunicorn's 8 threads, allowing for a mix of
-      # CPU-bound (conversion) and I/O-bound (streaming) requests.
+      # Use 8 threads to handle a mix of CPU-bound (conversion) and I/O-bound (streaming)
+      # Lot of requests will be for cached files (I/O-bound), so this allows for more concurrent streams.
       run: |
         gcloud run deploy ${{ env.SERVICE_NAME }} \
           --image gcr.io/${{ env.PROJECT_ID }}/${{ env.SERVICE_NAME }}:latest \

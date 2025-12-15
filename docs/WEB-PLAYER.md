@@ -148,7 +148,9 @@ Drag and drop .mod, .ahx, or other module files directly into the browser.
 
 ### 3. Download from URL
 
-Paste a Modland or ModArchive URL to download and convert automatically.
+Paste a Modland, ModArchive or other URL to download and convert automatically. This section also supports dual-file modules.
+
+For dual-file modules (e.g., TFMX, RJP), you can expand the details section to provide an optional second URL for the sample data.
 
 > **Tip:** If the module has been converted before, the player will instantly serve it from cache and display a "From cache" message.
 
@@ -170,13 +172,6 @@ The web player automatically detects and extracts classic Amiga LHA archives. Ma
 - First music file found is played
 - Supports all common Amiga module formats inside archives
 - No manual extraction needed!
-
-### 4. Dual-File Modules
-
-For dual-file modules (e.g., TFMX, RJP, which require two files), expand the Dual-File Modules section and provide both URLs:
-
-- Main module URL (e.g., mdat.\* or rjp.\*)
-- Sample data URL (e.g., smpl.\* or smp.\*)
 
 ## API Reference
 
@@ -206,19 +201,8 @@ POST /convert-url
 Content-Type: application/json
 
 {
-  "url": "https://modland.com/pub/modules/..."
-}
-```
-
-### Convert TFMX or other dual-file format
-
-```http
-POST /convert-url
-Content-Type: application/json
-
-{
-  "url": "https://...",
-  "sample_url": "https://..."
+  "url": "https://modland.com/pub/modules/...",
+  "sample_url": "https://..." // Optional
 }
 ```
 
@@ -234,7 +218,7 @@ POST /play-example/{example_id}
 GET /examples
 ```
 
-### Stream/Download WAV
+### Stream/Download WAV/FLAC
 
 ```http
 GET /play/{file_id}      # Stream in browser
@@ -376,7 +360,7 @@ The HTML structure includes appropriate landmark roles, aiding navigation for us
 
 Interactive input fields have associated accessible names to ensure they are properly identified by assistive technologies:
 
-- **`aria-label` Attributes:** Input fields for URL entry and dual-file module components (`main-url`, `sample-url`) utilize `aria-label` attributes, providing clear programmatic labels for screen reader users.
+- **`aria-label` Attributes:** Input fields for URL entry utilize `aria-label` attributes, providing clear programmatic labels for screen reader users.
 
 ## Troubleshooting
 

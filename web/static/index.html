@@ -45,9 +45,20 @@
         <h2>🌐 Download from URL</h2>
         <div class="url-form">
           <input type="text" id="url-input" placeholder="https://modland.com/pub/modules/..." class="input-url" aria-label="Module URL">
+          <details class="sample-url-details">
+            <summary>Some module formats require two files (e.g. TFMX)</summary>
+            <p>
+              Formats like TFMX (mdat.* and smpl.*) and Richard Joseph Player (rjp.* and smp.*)
+              often need both a main music data file and a separate samples file. If required, paste the sample URL below.
+            </p>
+            <input type="text" id="sample-url-input" placeholder="(Optional) Sample Data URL (e.g., for TFMX)" class="input-url" aria-label="Optional Sample Data URL">
+          </details>
           <button type="button" id="url-submit" class="btn btn-primary">
             Convert &amp; Play
           </button>
+        </div>
+        <div>
+          <p class="file-info">LHA and ZIP archives auto-extracted</p>
         </div>
         <details class="url-help">
           <summary>Where to find modules?</summary>
@@ -77,25 +88,6 @@
               - Demoscene file archive
             </li>
           </ul>
-        </details>
-      </section>
-
-      <!-- Dual-File Modules Section -->
-      <section class="dual-file-section">
-        <h2>🎹 Dual-File Modules</h2>
-        <details>
-          <summary>Some module formats require two files</summary>
-          <p>
-            Formats like TFMX (mdat.* and smpl.*) and Richard Joseph Player (rjp.* and smp.*)
-            often need both a main music data file and a separate samples file.
-          </p>
-          <div class="dual-file-form">
-            <input type="text" id="main-url" placeholder="Main Module URL (e.g., mdat.* or rjp.*)" class="input-url" aria-label="Main Module URL">
-            <input type="text" id="sample-url" placeholder="Sample Data URL (e.g., smpl.* or smp.*)" class="input-url" aria-label="Sample Data URL">
-            <button type="button" id="dual-file-submit" class="btn btn-primary">
-              Convert Dual-File Module
-            </button>
-          </div>
         </details>
       </section>
 

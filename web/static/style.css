@@ -212,11 +212,13 @@ footer a:hover {
 /* URL Section */
 .url-form {
   display: flex;
+  flex-direction: column;
   gap: 10px;
 }
 
 .input-url {
   flex: 1;
+  width: 100%;
   padding: 12px;
   background: var(--surface-light);
   border: 1px solid var(--border);
@@ -240,6 +242,14 @@ footer a:hover {
   margin-bottom: 10px;
 }
 
+.sample-url-details {
+  width: 100%;
+}
+
+.sample-url-details summary {
+  color: var(--text);
+}
+
 .url-help ul {
   margin-left: 20px;
   color: var(--text-dim);
@@ -254,13 +264,6 @@ footer a:hover {
   text-decoration: underline;
 }
 
-/* Dual-File Modules Section */
-.dual-file-form {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  margin-top: 15px;
-}
 
 /* Buttons */
 .btn {

@@ -60,7 +60,9 @@ def get_git_commit():
     return os.getenv("GIT_COMMIT", "unknown")
 
 
+UADE123_BIN: Final = "/usr/local/bin/uade123"
 GIT_COMMIT: Final = get_git_commit()
+
 # Configuration from environment variables (cloud-ready)
 MAX_UPLOAD_SIZE: Final = int(os.getenv("MAX_UPLOAD_SIZE", 10485760))  # 10MB
 app.config["MAX_CONTENT_LENGTH"] = MAX_UPLOAD_SIZE
@@ -575,13 +577,13 @@ def detect_module_metadata(input_path):
     Returns: (metadata_success, module_name, module_format, player_format, subsongs)
     """
     if not input_path.exists():
-        logger.warning(
+        logger.error(
             f"Module does not exist: {input_path}. Another thread propably could not detect metadata and deleted it."
         )
         return False, None, None, None, 0
 
     try:
-        cmd = ["/usr/local/bin/uade123", "-g", str(input_path)]
+        cmd = [UADE123_BIN, "-g", str(input_path)]
         # Use encoding='latin1' to avoid decode errors with non-UTF-8 bytes in output
         result = subprocess.run(cmd, capture_output=True, text=True, timeout=5, encoding="latin1")
         if result.returncode != 0:
@@ -735,11 +737,11 @@ def process_audio_conversion(input_path, compress_flac=False):
             # Check for any remaining .metadatalock.* files for this module
             lock_glob = MODULES_DIR.glob(f"{cache_hash}.metadatalock.*")
             if not any(lock_glob):
-                logger.warning(f"Could not detect metadata for {input_path}. Deleting file.")
+                logger.info(f"Could not detect metadata for {input_path}. Deleting file.")
                 input_resolved.unlink(missing_ok=True)
             else:
-                logger.warning(
-                    f"Could not detect metadata for {input_path}, but other locks exist. Retaining file for ongoing conversion."
+                logger.info(
+                    f"Could not detect metadata for {input_path}, but other locks exist. Retaining file for ongoing metadata detection."
                 )
             return (
                 False,
@@ -802,7 +804,7 @@ def process_audio_conversion(input_path, compress_flac=False):
                 )
 
             cmd = [
-                "/usr/local/bin/uade123",
+                UADE123_BIN,
                 "-c",
                 "-f",
                 str(temp_uade_output_path),
@@ -966,7 +968,7 @@ def health():
             "status": "healthy",
             "version": GIT_COMMIT,
             "timestamp": datetime.now(timezone.utc).isoformat(),
-            "uade_available": Path("/usr/local/bin/uade123").exists(),
+            "uade_available": Path(UADE123_BIN).exists(),
         }
     )
 

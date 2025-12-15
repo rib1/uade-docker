@@ -8,9 +8,7 @@ const dropZone = document.getElementById("drop-zone");
 const fileInput = document.getElementById("module-file-input");
 const urlInput = document.getElementById("url-input");
 const urlSubmit = document.getElementById("url-submit");
-const mainUrlInput = document.getElementById("main-url");
-const sampleUrlInput = document.getElementById("sample-url");
-const dualFileSubmit = document.getElementById("dual-file-submit");
+const sampleUrlInput = document.getElementById("sample-url-input");
 const uploadLabel = document.getElementById("upload-btn"); // The label acts as the button
 const audioPlayer = document.getElementById("audio-player");
 const playerSection = document.getElementById("player-section");
@@ -24,9 +22,7 @@ const elementsToDisable = [
   fileInput,
   urlInput,
   urlSubmit,
-  mainUrlInput,
   sampleUrlInput,
-  dualFileSubmit,
  ];
 
 // Initialize
@@ -34,7 +30,6 @@ document.addEventListener("DOMContentLoaded", () => {
   setupDragAndDrop();
   setupFileInput();
   setupUrlForm();
-  setupDualFileForm();
   setupDownloadButton();
   loadExamples();
   loadVersionInfo();
@@ -166,32 +161,35 @@ function setupFileInput() {
 
 // Upload File
 async function handleFileUpload(file) {
-  setUiLock();
-  showStatus("Uploading and converting...", "info");
-  let success = false;
-
-  // Manage this label's specific state
-  const originalUploadLabelText = showButtonLoadingAndGetOriginal(uploadLabel);
-
   const formData = new FormData();
   formData.append("file", file);
 
-  try {
-    const response = await fetch("/upload", {
-      method: "POST",
-      body: formData,
-    });
+  await performConversion(
+    "/upload",
+    { method: "POST", body: formData },
+    uploadLabel, // The button/label element
+    "Uploading and converting...",
+    "✓ {moduleName} uploaded and converted, ready to play"
+  );
+}
 
+// Perform a conversion (upload, URL, or example)
+async function performConversion(endpoint, options, button, initialStatusMessage, successMessageTemplate, moduleNameOverride, onSuccessCallback = () => {}) {
+  setUiLock();
+  const originalBtnText = showButtonLoadingAndGetOriginal(button);
+  showStatus(initialStatusMessage, "info");
+
+  try {
+    const response = await fetch(endpoint, options);
     const data = await response.json();
 
     if (response.ok) {
-      success = true;
-      const moduleName = data.module_name || data.filename;
-      const statusMessage = getCacheStatusMessage(data, moduleName, `✓ ${moduleName} uploaded and converted, ready to play`);
+      const moduleName = moduleNameOverride || data.module_name || data.filename;
+      const statusMessage = getCacheStatusMessage(data, moduleName, successMessageTemplate.replace("{moduleName}", moduleName));
       showStatus(statusMessage, "success");
       playFile(
         data.file_id,
-        data.module_name || data.filename,
+        moduleName,
         data.play_url,
         data.download_url,
         data.player_format || "Module",
@@ -199,19 +197,21 @@ async function handleFileUpload(file) {
         data.module_format,
         data.subsongs
       );
-      resetButtonAfterDelay(uploadLabel, originalUploadLabelText);
-      return;
+      if (onSuccessCallback) {
+        onSuccessCallback();
+      }
+      resetButtonAfterDelay(button, originalBtnText);
+      return; // on success, the function ends here.
     } else {
       showStatus(`✗ Error: ${data.error}`, "error");
     }
   } catch (error) {
-    showStatus(`✗ Upload failed: ${error.message}`, "error");
-  } finally {
-    if (!success) {
-      uploadLabel.textContent = originalUploadLabelText;
-      releaseUiLock();
-    }
+    showStatus(`✗ Conversion failed: ${error.message}`, "error");
   }
+  // This part is only reached if the conversion failed
+  // (i.e., if `response.ok` was false or an error was thrown).
+  button.textContent = originalBtnText;
+  releaseUiLock();
 }
 
 // URL Form
@@ -222,126 +222,49 @@ function setupUrlForm() {
       handleUrlConvert();
     }
   });
+  sampleUrlInput.addEventListener("keypress", (e) => {
+    if (e.key === "Enter") {
+      handleUrlConvert();
+    }
+  });
 }
 
 async function handleUrlConvert() {
   const url = urlInput.value.trim();
+  const sampleUrl = sampleUrlInput.value.trim();
+
   if (!url) {
     showStatus("Please enter a URL", "warning");
     return;
   }
 
-  setUiLock();
-  showStatus("Downloading and converting...", "info");
-  let success = false;
-  const originalUrlBtnText = showButtonLoadingAndGetOriginal(urlSubmit);
+  const body = { url };
+  let initialStatusMessage = "Downloading and converting...";
+  let successMessageTemplate = "✓ {moduleName} downloaded and converted, ready to play";
 
-  try {
-    const response = await fetch("/convert-url", {
+  if (sampleUrl) {
+    // Specific for dual-file
+    body.sample_url = sampleUrl;
+    initialStatusMessage = "Downloading and converting dual-file module...";
+    successMessageTemplate = "✓ {moduleName} (dual-file) downloaded and converted, ready to play";
+  }
+
+  await performConversion(
+    "/convert-url",
+    {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({ url }),
-    });
-
-    const data = await response.json();
-
-    if (response.ok) {
-      success = true;
-      const moduleName = data.module_name || data.filename;
-      const statusMessage = getCacheStatusMessage(data, moduleName, `✓ ${moduleName} downloaded and converted, ready to play`);
-      showStatus(statusMessage, "success");
-      playFile(
-        data.file_id,
-        data.module_name || data.filename,
-        data.play_url,
-        data.download_url,
-        data.player_format || "Module",
-        data.audio_format || "wav",
-        data.module_format,
-        data.subsongs
-      );
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    },
+    urlSubmit,
+    initialStatusMessage,
+    successMessageTemplate,
+    null, // moduleNameOverride
+    () => { 
       urlInput.value = "";
-      resetButtonAfterDelay(urlSubmit, originalUrlBtnText);
-      return;
-    } else {
-      showStatus(`✗ Error: ${data.error}`, "error");
-    }
-  } catch (error) {
-    showStatus(`✗ Conversion failed: ${error.message}`, "error");
-  } finally {
-    if (!success) {
-      urlSubmit.textContent = originalUrlBtnText;
-      releaseUiLock();
-    }
-  }
-}
-
-// Dual-File Form
-function setupDualFileForm() {
-  dualFileSubmit.addEventListener("click", handleDualFileConvert);
-}
-
-async function handleDualFileConvert() {
-  const mainUrl = mainUrlInput.value.trim();
-  const sampleUrl = sampleUrlInput.value.trim();
-
-  if (!mainUrl || !sampleUrl) {
-    showStatus("Please enter both URLs for the dual-file module", "warning");
-    return;
-  }
-
-  setUiLock();
-  showStatus("Converting dual-file module...", "info");
-  let success = false;
-  const originalBtnText = showButtonLoadingAndGetOriginal(dualFileSubmit);
-
-  try {
-    // Call convert-url with both URLs
-    const response = await fetch("/convert-url", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        url: mainUrl,
-        sample_url: sampleUrl,
-      }),
-    });
-
-    const data = await response.json();
-
-    if (response.ok) {
-      success = true;
-      const moduleName = data.module_name || data.filename;
-      const statusMessage = getCacheStatusMessage(data, moduleName, `✓ ${moduleName} (dual-file) downloaded and converted, ready to play`);
-      showStatus(statusMessage, "success");
-      playFile(
-        data.file_id,
-        data.module_name || data.filename,
-        data.play_url,
-        data.download_url,
-        data.player_format || "Dual-File Module", // Generic description for player format
-        data.audio_format || "wav",
-        data.module_format,
-        data.subsongs
-      );
-      mainUrlInput.value = "";
       sampleUrlInput.value = "";
-      resetButtonAfterDelay(dualFileSubmit, originalBtnText);
-      return;
-    } else {
-      showStatus(`✗ Error: ${data.error}`, "error");
     }
-  } catch (error) {
-    showStatus(`✗ Dual-file module conversion failed: ${error.message}`, "error");
-  } finally {
-    if (!success) {
-      dualFileSubmit.textContent = originalBtnText;
-      releaseUiLock();
-    }
-  }
+  );
 }
 
 // Load Examples
@@ -394,46 +317,14 @@ async function loadExamples() {
 
 // Play Example
 async function handleExamplePlay(example, button) {
-  setUiLock(); // Lock the UI
-  let success = false;
-  const originalBtnText = showButtonLoadingAndGetOriginal(button);
-  showStatus(`Converting ${example.name}...`, "info");
-
-  try {
-    const response = await fetch(`/play-example/${example.id}`, {
-      method: "POST",
-    });
-
-    const data = await response.json();
-
-    if (response.ok) {
-      success = true;
-      const moduleName = example.name || data.module_name || data.filename;
-      const statusMessage = getCacheStatusMessage(data, moduleName, `✓ ${moduleName} converted and ready to play`);
-      showStatus(statusMessage, "success");
-      playFile(
-        data.file_id,
-        example.name || data.module_name || data.filename,
-        data.play_url,
-        data.download_url,
-        data.player_format || example.format,
-        data.audio_format || "wav",
-        data.module_format,
-        data.subsongs
-      );
-      resetButtonAfterDelay(button, originalBtnText);
-      return;
-    } else {
-      showStatus(`✗ Error: ${data.error}`, "error");
-    }
-  } catch (error) {
-    showStatus(`✗ Failed: ${error.message}`, "error");
-  } finally {
-    if (!success) {
-      button.textContent = originalBtnText;
-      releaseUiLock();
-    }
-  }
+  await performConversion(
+    `/play-example/${example.id}`,
+    { method: "POST" },
+    button,
+    `Converting ${example.name}...`,
+    "✓ {moduleName} converted and ready to play",
+    example.name // Override module name to ensure it's displayed correctly
+  );
 }
 
 // Play File
