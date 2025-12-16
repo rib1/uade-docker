@@ -1,0 +1,8 @@
+# docker-compose.test.yml
+# This file is used to set test-specific environment variables for the uade-web service
+# when running integration tests with uade-test-runner.
+
+services:
+  uade-web:
+    environment:
+      - UADE_TEST_MODE=1

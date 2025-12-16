@@ -66,6 +66,8 @@ GIT_COMMIT: Final = get_git_commit()
 # Configuration from environment variables (cloud-ready)
 MAX_UPLOAD_SIZE: Final = int(os.getenv("MAX_UPLOAD_SIZE", 10485760))  # 10MB
 app.config["MAX_CONTENT_LENGTH"] = MAX_UPLOAD_SIZE
+MAX_DOWNLOAD_SIZE: Final = int(os.getenv("MAX_DOWNLOAD_SIZE", 10485760)) # 10MB
+app.config["MAX_DOWNLOAD_SIZE"] = MAX_DOWNLOAD_SIZE
 CLEANUP_INTERVAL: Final = int(os.getenv("CLEANUP_INTERVAL", 3600))  # 1 hour
 CACHE_CLEANUP_INTERVAL: Final = int(os.getenv("CACHE_CLEANUP_INTERVAL", 86400))  # 24 hours
 RATE_LIMIT: Final = int(os.getenv("RATE_LIMIT", 200))  # requests per hour
@@ -128,7 +130,6 @@ def ratelimit_handler(e):
     return json_response(
         {"error": "Rate limit exceeded. Please wait and try again.", "code": 429}, 429
     )
-
 
 @app.after_request
 def add_security_headers(response):
@@ -576,12 +577,6 @@ def detect_module_metadata(input_path):
 
     Returns: (metadata_success, module_name, module_format, player_format, subsongs)
     """
-    if not input_path.exists():
-        logger.error(
-            f"Module does not exist: {input_path}. Another thread propably could not detect metadata and deleted it."
-        )
-        return False, None, None, None, 0
-
     try:
         cmd = [UADE123_BIN, "-g", str(input_path)]
         # Use encoding='latin1' to avoid decode errors with non-UTF-8 bytes in output
@@ -730,15 +725,17 @@ def process_audio_conversion(input_path, compress_flac=False):
         finally:
             unique_metadata_lock.unlink(missing_ok=True)
 
-        # Deletes file if metadata detection fails (prevents disk abuse).
-        # Only delete if no .metadatalock.* files exist for this module.
-        # Retains file if metadata is detected but conversion fails (for debug).
+        # Truncates file to 0 bytes if metadata detection fails.
+        # This prevents disk abuse and caches the fact that this URL provides an invalid module.
+        # Only truncates if no other .metadatalock.* files exist for this module.
+        # Retains original content if metadata is detected but conversion fails (for debug).
         if not metadata_success:
             # Check for any remaining .metadatalock.* files for this module
             lock_glob = MODULES_DIR.glob(f"{cache_hash}.metadatalock.*")
             if not any(lock_glob):
-                logger.info(f"Could not detect metadata for {input_path}. Deleting file.")
-                input_resolved.unlink(missing_ok=True)
+                logger.info(f"Could not detect metadata for {input_path}. Truncating file to 0 bytes to cache as invalid module.")
+                with open(input_resolved, 'w') as f: # Truncate to 0 bytes
+                    pass
             else:
                 logger.info(
                     f"Could not detect metadata for {input_path}, but other locks exist. Retaining file for ongoing metadata detection."
@@ -1027,6 +1024,14 @@ def process_module_and_respond(module_path, filename, use_flac, url_cached=False
     unique_id = str(uuid.uuid4())
     extract_dir = Path(f"{module_path}_extracted_{unique_id}")
 
+    # Check for a zero-byte file, which indicates a previously processed invalid module
+    if module_path.exists() and module_path.stat().st_size == 0:
+        logger.info(f"Skipping processing for known invalid zero-byte module: {module_path}")
+        return json_response(
+            {"error": "Could not detect module metadata. The file may be corrupt or not a supported module."},
+            500
+        )
+
     try:
         # Check if it's an LHA or ZIP archive
         if is_lha_file(module_path):
@@ -1108,6 +1113,11 @@ def is_safe_url(u):
                 f"is_safe_url: failed to normalize hostname '{parsed.hostname}' in URL: {sanitized_url_for_log}"
             )
             normalized_hostname = parsed.hostname
+
+        if os.getenv("UADE_TEST_MODE") == "1" and normalized_hostname == "uade-test-http-server":
+            logger.info(f"is_safe_url: allowed internal test host '{normalized_hostname}' in test mode for URL: {sanitized_url_for_log}")
+            return True # Allow immediately, skipping IP and other checks
+
         # IP resolution (avoid DNS rebinding, etc)
         # Attempt to resolve; fallback to hostname if not an IP
         try:
@@ -1266,14 +1276,17 @@ def convert_url():
                     if not module_path.exists():
                         logger.info(f"Downloading: {sanitized_url(url)}")
                         # nosec B501 - Trade-off for HTTP module downloads
-                        response = requests.get(url, timeout=30, verify=False, allow_redirects=True)
-                        response.raise_for_status()
                         # Write to a temporary file first, then move, to ensure atomic write
                         temp_path = module_path.with_suffix(f"{module_path.suffix}.tmp")
-                        temp_path.write_bytes(response.content)
-                        # Move downloaded file to MODULES_DIR
-                        Path.replace(temp_path, module_path)
-                        logger.info(f"Cached module_path: {module_path}")
+                        success, error_response = download_and_limit_size(url, temp_path, "External module")
+                        
+                        # Always attempt to move the partial/complete file to its final destination (cache it)
+                        if temp_path.exists():
+                            Path.replace(temp_path, module_path)
+                            logger.info(f"Moved partial/complete download to: {module_path}")
+
+                        if not success:
+                            return error_response
                 finally:
                     # Always remove the lock file when the owner is done
                     lock_path.unlink(missing_ok=True)
@@ -1318,16 +1331,17 @@ def convert_url():
                 try:
                     # Atomically create lock file. If it exists, FileExistsError is raised.
                     sample_lock_path.touch(exist_ok=False)
-                    logger.info(f"Downloading sample file: {sanitized_url(sample_url)}")
-                    sample_response = requests.get(
-                        sample_url, timeout=30, verify=False, allow_redirects=True
-                    )
-                    sample_response.raise_for_status()
-                    # Write to a temporary file first, then move, to ensure atomic write
                     temp_path = module_path.with_suffix(f"{cached_sample_path.suffix}.tmp")
-                    temp_path.write_bytes(sample_response.content)
-                    # Move downloaded file to MODULES_DIR
-                    Path.replace(temp_path, cached_sample_path)
+                    success, error_response = download_and_limit_size(sample_url, temp_path, "External sample")
+                    
+                    # Always attempt to move the partial/complete file to its final destination (cache it)
+                    if temp_path.exists():
+                        Path.replace(temp_path, cached_sample_path)
+                        logger.info(f"Moved partial/complete sample download to: {cached_sample_path}")
+
+                    if not success:
+                        return error_response
+
                     if sample_path.exists():
                         sample_path.unlink(missing_ok=True)
                     os.symlink(cached_sample_path, sample_path)
@@ -1399,6 +1413,43 @@ def sanitized_url(url, log=True):
         out = out[:200] + "..."
     return out
 
+
+def download_and_limit_size(url, temp_file_path, error_context=""):
+    """
+    Downloads a file from a given URL in chunks, enforcing the maximum allowed download size (MAX_DOWNLOAD_SIZE).
+
+    This limit applies to all downloads, including LHA and ZIP archives fetched via URL. If the file exceeds the configured limit, the download is aborted and an error is returned.
+
+    Args:
+        url (str): The URL to download.
+        temp_file_path (Path): The path to save the downloaded file temporarily.
+        error_context (str): Additional context for error messages (e.g., 'External sample', 'LHA archive').
+
+    Returns:
+        tuple: (True, None) on success, or (False, json_response) on failure.
+    """
+    downloaded_size = 0
+    try:
+        with requests.get(url, timeout=30, verify=False, allow_redirects=True, stream=True) as response:
+            response.raise_for_status()
+            with open(temp_file_path, 'wb') as fd:
+                for chunk in response.iter_content(chunk_size=8192):
+                    fd.write(chunk)
+                    downloaded_size += len(chunk)
+                    if downloaded_size > app.config['MAX_DOWNLOAD_SIZE']:
+                        response.close()
+                        logger.error(f"External download exceeded limit ({error_context}): {sanitized_url(url)}")
+                        return False, json_response(
+                            {"error": f"{error_context} file size exceeds the maximum allowed limit of {app.config['MAX_DOWNLOAD_SIZE'] / (1024 * 1024):.0f}MB"},
+                            413
+                        )
+        return True, None
+    except requests.RequestException as e:
+        logger.error(f"Download failed for {sanitized_url(url)} ({error_context}): {e}")
+        return False, json_response({"error": f"Download failed for {error_context}: {str(e)}"}, 500)
+    except Exception as e:
+        logger.error(f"Unexpected error during download for {sanitized_url(url)} ({error_context}): {e}")
+        return False, json_response({"error": f"Unexpected error during {error_context} download: {str(e)}"}, 500)
 
 def extract_filename_from_url(url):
     """
@@ -1501,6 +1552,7 @@ def serve_audio_file(file_id, as_attachment=False, custom_filename=None):
                 break
         if not file_path:
             return json_response({"error": "File not found or forbidden"}, 404)
+
     except ValueError:
         # Path not contained within converted_dir_base
         return json_response({"error": "File not found or forbidden"}, 404)

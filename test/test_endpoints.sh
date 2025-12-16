@@ -7,6 +7,8 @@ set -e
 
 # Define the base URL for the API
 BASE_URL="http://uade-web-player:5000"
+LOCAL_TEST_SERVER_PORT=8000
+LOCAL_TEST_SERVER_URL="http://uade-test-http-server:$LOCAL_TEST_SERVER_PORT"
 
 # Create test fixtures on the fly
 mkdir -p fixtures/invalid
@@ -297,6 +299,66 @@ test_upload_error() {
         echo "ERROR: Received unexpected HTTP $HTTP_CODE (expected $EXPECTED_STATUS) for test '$TEST_NAME'"
         echo "CURL STDERR: $CURL_STDERR"
         echo "Response body: $BODY"
+        exit 1
+    fi
+    echo ""
+}
+
+test_external_download_flow_with_oversized_file() {
+    TEST_NAME=$1
+    URL_BASE=$2
+    # Generate a unique URL for this test run to ensure it's a fresh download attempt
+    UNIQUE_ID=$(date +%s%N)
+    URL="${URL_BASE}?test_id=${UNIQUE_ID}"
+
+    EXPECTED_STATUS_FIRST_CALL=413
+    EXPECTED_ERROR_MESSAGE_FIRST_CALL="External module file size exceeds the maximum allowed limit of 10MB"
+
+    EXPECTED_STATUS_SECOND_CALL=500
+    EXPECTED_ERROR_MESSAGE_SECOND_CALL="Could not detect module metadata. The file may be corrupt or not a supported module."
+
+    echo "--- Testing External Download Flow (Oversized File): $TEST_NAME ---"
+    echo "Using URL: $URL"
+
+    # --- First Call: Should hit size limit and return 413 ---
+    echo "Making first request (expecting HTTP $EXPECTED_STATUS_FIRST_CALL)..."
+    HTTP_CODE_BODY_1=$(_perform_convert_url_call "$URL")
+    HTTP_CODE_1=$(echo "$HTTP_CODE_BODY_1" | head -n1)
+    BODY_1=$(echo "$HTTP_CODE_BODY_1" | tail -n1)
+
+    if [ "$HTTP_CODE_1" -eq "$EXPECTED_STATUS_FIRST_CALL" ]; then
+        if echo "$BODY_1" | grep -q "$EXPECTED_ERROR_MESSAGE_FIRST_CALL"; then
+            echo "SUCCESS: First request correctly returned HTTP $EXPECTED_STATUS_FIRST_CALL and expected error message."
+        else
+            echo "ERROR: First request returned HTTP $EXPECTED_STATUS_FIRST_CALL but unexpected error message for test '$TEST_NAME'"
+            echo "Expected substring: '$EXPECTED_ERROR_MESSAGE_FIRST_CALL'"
+            echo "Response body: $BODY_1"
+            exit 1
+        fi
+    else
+        echo "ERROR: First request returned unexpected HTTP $HTTP_CODE_1 (expected $EXPECTED_STATUS_FIRST_CALL) for test '$TEST_NAME'"
+        echo "Response body: $BODY_1"
+        exit 1
+    fi
+
+    # --- Second Call: Should hit cached partial file and return 500 (metadata error) ---
+    echo "Making second request to the same URL (expecting HTTP $EXPECTED_STATUS_SECOND_CALL)..."
+    HTTP_CODE_BODY_2=$(_perform_convert_url_call "$URL")
+    HTTP_CODE_2=$(echo "$HTTP_CODE_BODY_2" | head -n1)
+    BODY_2=$(echo "$HTTP_CODE_BODY_2" | tail -n1)
+
+    if [ "$HTTP_CODE_2" -eq "$EXPECTED_STATUS_SECOND_CALL" ]; then
+        if echo "$BODY_2" | grep -q "$EXPECTED_ERROR_MESSAGE_SECOND_CALL"; then
+            echo "SUCCESS: Second request correctly returned HTTP $EXPECTED_STATUS_SECOND_CALL and expected error message."
+        else
+            echo "ERROR: Second request returned HTTP $EXPECTED_STATUS_SECOND_CALL but unexpected error message for test '$TEST_NAME'"
+            echo "Expected substring: '$EXPECTED_ERROR_MESSAGE_SECOND_CALL'"
+            echo "Response body: $BODY_2"
+            exit 1
+        fi
+    else
+        echo "ERROR: Second request returned unexpected HTTP $HTTP_CODE_2 (expected $EXPECTED_STATUS_SECOND_CALL) for test '$TEST_NAME'"
+        echo "Response body: $BODY_2"
         exit 1
     fi
     echo ""
@@ -797,5 +859,7 @@ test_upload_filename_extraction "Protracker module upload" "fixtures/modules/spa
 test_upload_negative_case "Non-module file upload" "fixtures/modules/gutenberg.txt"
 test_upload_error "Reject empty file upload" "fixtures/invalid/empty.bin" 400
 test_upload_error "Reject oversized file upload" "fixtures/invalid/too-large.bin" 413
+
+test_external_download_flow_with_oversized_file "Download file exceeding 10MB limit" "$LOCAL_TEST_SERVER_URL/fixtures/invalid/too-large.bin"
 
 echo "--- All tests passed! ---"
