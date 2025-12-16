@@ -69,6 +69,7 @@ The `docker-compose.yml` includes these environment variables:
 ```yaml
 FLASK_ENV: production # Production mode
 MAX_UPLOAD_SIZE: 10485760 # 10MB max upload
+MAX_DOWNLOAD_SIZE: 10485760 # 10MB max download from URLs
 CLEANUP_INTERVAL: 3600 # Local files deleted after 1 hour
 CACHE_CLEANUP_INTERVAL: 86400 # Cache purged after 24 hours
 RATE_LIMIT_DISABLED: 1  # disable rate limiting for local testing
@@ -233,11 +234,14 @@ Environment variables for customization:
 FLASK_ENV: production # Flask environment
 PORT: 5000 # Server port
 MAX_UPLOAD_SIZE: 10485760 # Max upload (10MB)
+MAX_DOWNLOAD_SIZE: 10485760 # Max download from URLs (10MB)
 CLEANUP_INTERVAL: 3600 # File cleanup (1 hour)
-CACHE_CLEANUP_INTERVAL: # Cache cleanup interval (24 hours)
-CACHE_URI: # Remote cache URI (default: file:///tmp/cache)
+CACHE_CLEANUP_INTERVAL: 86400 # Cache cleanup interval (24 hours)
+CACHE_URI: file:///tmp/cache # Remote cache URI (default: file:///tmp/cache)
 RATE_LIMIT: 200 # Max Requests/hour per IP (all endpoints combined)
 RATE_LIMIT_DISABLED: 0 # Set to 1 to disable rate limiting for local development/testing
+GIT_COMMIT: unknown # Git commit hash (set automatically at build time)
+UADE_TEST_MODE: 0 # Set to 1 to enable test mode (allows internal test server access)
 ```
 
 ## Caching

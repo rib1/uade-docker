@@ -66,7 +66,7 @@ GIT_COMMIT: Final = get_git_commit()
 # Configuration from environment variables (cloud-ready)
 MAX_UPLOAD_SIZE: Final = int(os.getenv("MAX_UPLOAD_SIZE", 10485760))  # 10MB
 app.config["MAX_CONTENT_LENGTH"] = MAX_UPLOAD_SIZE
-MAX_DOWNLOAD_SIZE: Final = int(os.getenv("MAX_DOWNLOAD_SIZE", 10485760)) # 10MB
+MAX_DOWNLOAD_SIZE: Final = int(os.getenv("MAX_DOWNLOAD_SIZE", 10485760))  # 10MB
 app.config["MAX_DOWNLOAD_SIZE"] = MAX_DOWNLOAD_SIZE
 CLEANUP_INTERVAL: Final = int(os.getenv("CLEANUP_INTERVAL", 3600))  # 1 hour
 CACHE_CLEANUP_INTERVAL: Final = int(os.getenv("CACHE_CLEANUP_INTERVAL", 86400))  # 24 hours
@@ -130,6 +130,7 @@ def ratelimit_handler(e):
     return json_response(
         {"error": "Rate limit exceeded. Please wait and try again.", "code": 429}, 429
     )
+
 
 @app.after_request
 def add_security_headers(response):
@@ -663,12 +664,17 @@ def wait_for_conversion(
     return None
 
 
-def process_audio_conversion(input_path, compress_flac=False):
+def process_audio_conversion(input_path, compress_flac=False, sample_files=None):
     """
     Convert module to WAV using UADE with optional caching and FLAC compression.
 
     This function includes a file-based locking mechanism to prevent race conditions
     when multiple threads try to convert the same file simultaneously.
+
+    Args:
+        input_path (Path): Path to the module file to convert.
+        compress_flac (bool): Whether to compress output to FLAC format.
+        sample_files (list): Optional list of associated sample file paths to clean up if metadata detection fails.
 
     Returns:
         A tuple containing:
@@ -733,9 +739,24 @@ def process_audio_conversion(input_path, compress_flac=False):
             # Check for any remaining .metadatalock.* files for this module
             lock_glob = MODULES_DIR.glob(f"{cache_hash}.metadatalock.*")
             if not any(lock_glob):
-                logger.info(f"Could not detect metadata for {input_path}. Truncating file to 0 bytes to cache as invalid module.")
-                with open(input_resolved, 'w') as f: # Truncate to 0 bytes
+                logger.info(
+                    f"Could not detect metadata for {input_path}. Truncating file to 0 bytes to cache as invalid module."
+                )
+                with open(input_resolved, "w") as f:  # Truncate to 0 bytes
                     pass
+
+                # Also truncate any associated sample files to prevent disk abuse
+                if sample_files:
+                    for sample_file_path in sample_files:
+                        if sample_file_path and sample_file_path.exists():
+                            # Remove symlinks, truncate regular files
+                            if sample_file_path.is_symlink():
+                                sample_file_path.unlink(missing_ok=True)
+                                logger.info(f"Removed sample symlink: {sample_file_path}")
+                            else:
+                                with open(sample_file_path, "w") as f:
+                                    pass
+                                logger.info(f"Truncated sample file to 0 bytes: {sample_file_path}")
             else:
                 logger.info(
                     f"Could not detect metadata for {input_path}, but other locks exist. Retaining file for ongoing metadata detection."
@@ -1011,14 +1032,18 @@ def upload_file():
         # Save uploaded file
         module_path = MODULES_DIR / f"{filename}_{file_id}"
         file.save(module_path)
-        return process_module_and_respond(module_path, filename, use_flac)
+        return process_module_and_respond(
+            module_path, filename, use_flac, url_cached=False, sample_files=None
+        )
 
     except Exception as e:
         logger.error(f"Upload error: {e}")
         return json_response({"error": str(e)}, 500)
 
 
-def process_module_and_respond(module_path, filename, use_flac, url_cached=False):
+def process_module_and_respond(
+    module_path, filename, use_flac, url_cached=False, sample_files=None
+):
     """Shared logic for archive detection, extraction, conversion, metadata, cleanup, and response."""
     # Generate a unique ID for the extraction directory to prevent race conditions
     unique_id = str(uuid.uuid4())
@@ -1028,8 +1053,10 @@ def process_module_and_respond(module_path, filename, use_flac, url_cached=False
     if module_path.exists() and module_path.stat().st_size == 0:
         logger.info(f"Skipping processing for known invalid zero-byte module: {module_path}")
         return json_response(
-            {"error": "Could not detect module metadata. The file may be corrupt or not a supported module."},
-            500
+            {
+                "error": "Could not detect module metadata. The file may be corrupt or not a supported module."
+            },
+            500,
         )
 
     try:
@@ -1062,7 +1089,7 @@ def process_module_and_respond(module_path, filename, use_flac, url_cached=False
             subsongs,
             cached,
             converted_file_id,
-        ) = process_audio_conversion(module_path, compress_flac=use_flac)
+        ) = process_audio_conversion(module_path, compress_flac=use_flac, sample_files=sample_files)
 
         if not success:
             return json_response({"error": error}, 500)
@@ -1115,8 +1142,10 @@ def is_safe_url(u):
             normalized_hostname = parsed.hostname
 
         if os.getenv("UADE_TEST_MODE") == "1" and normalized_hostname == "uade-test-http-server":
-            logger.info(f"is_safe_url: allowed internal test host '{normalized_hostname}' in test mode for URL: {sanitized_url_for_log}")
-            return True # Allow immediately, skipping IP and other checks
+            logger.info(
+                f"is_safe_url: allowed internal test host '{normalized_hostname}' in test mode for URL: {sanitized_url_for_log}"
+            )
+            return True  # Allow immediately, skipping IP and other checks
 
         # IP resolution (avoid DNS rebinding, etc)
         # Attempt to resolve; fallback to hostname if not an IP
@@ -1278,8 +1307,10 @@ def convert_url():
                         # nosec B501 - Trade-off for HTTP module downloads
                         # Write to a temporary file first, then move, to ensure atomic write
                         temp_path = module_path.with_suffix(f"{module_path.suffix}.tmp")
-                        success, error_response = download_and_limit_size(url, temp_path, "External module")
-                        
+                        success, error_response = download_and_limit_size(
+                            url, temp_path, "External module"
+                        )
+
                         # Always attempt to move the partial/complete file to its final destination (cache it)
                         if temp_path.exists():
                             Path.replace(temp_path, module_path)
@@ -1308,6 +1339,7 @@ def convert_url():
             return json_response({"error": "Failed to retrieve module file."}, 500)
 
         # --- Caching logic for dual-file module sample file ---
+        sample_files = []
         if sample_url and sample_url != url:
             if not sample_filename:
                 sample_filename = extract_filename_from_url(sample_url)
@@ -1320,6 +1352,10 @@ def convert_url():
             sample_path = MODULES_DIR / f"{sample_filename}_{url_hash}{sample_suffix}"
             cached_sample_path = MODULES_DIR / f"{sample_filename}_{sample_url_hash}{sample_suffix}"
             sample_lock_path = module_path.with_suffix(f"{cached_sample_path.suffix}.lock")
+
+            # Collect sample file paths for cleanup if needed
+            sample_files = [sample_path, cached_sample_path]
+
             if cached_sample_path.exists():
                 if not sample_path.exists():
                     sample_path.unlink(missing_ok=True)  # Ensure no stale link
@@ -1332,12 +1368,16 @@ def convert_url():
                     # Atomically create lock file. If it exists, FileExistsError is raised.
                     sample_lock_path.touch(exist_ok=False)
                     temp_path = module_path.with_suffix(f"{cached_sample_path.suffix}.tmp")
-                    success, error_response = download_and_limit_size(sample_url, temp_path, "External sample")
-                    
+                    success, error_response = download_and_limit_size(
+                        sample_url, temp_path, "External sample"
+                    )
+
                     # Always attempt to move the partial/complete file to its final destination (cache it)
                     if temp_path.exists():
                         Path.replace(temp_path, cached_sample_path)
-                        logger.info(f"Moved partial/complete sample download to: {cached_sample_path}")
+                        logger.info(
+                            f"Moved partial/complete sample download to: {cached_sample_path}"
+                        )
 
                     if not success:
                         return error_response
@@ -1371,7 +1411,9 @@ def convert_url():
                     # Always remove the lock file when the owner is done
                     sample_lock_path.unlink(missing_ok=True)
 
-        return process_module_and_respond(module_path, filename, use_flac, url_cache_hit)
+        return process_module_and_respond(
+            module_path, filename, use_flac, url_cache_hit, sample_files
+        )
 
     except requests.RequestException as e:
         logger.error(f"Download error: {e}")
@@ -1418,7 +1460,13 @@ def download_and_limit_size(url, temp_file_path, error_context=""):
     """
     Downloads a file from a given URL in chunks, enforcing the maximum allowed download size (MAX_DOWNLOAD_SIZE).
 
-    This limit applies to all downloads, including LHA and ZIP archives fetched via URL. If the file exceeds the configured limit, the download is aborted and an error is returned.
+    This limit applies to all downloads, including LHA and ZIP archives fetched via URL. If the file exceeds the configured limit, 
+    the download is aborted and an error is returned.
+
+    Important: When a download exceeds the size limit, the partial file is intentionally left on disk
+    and moved to its final cache location. This enables URL caching - subsequent requests for the same URL
+    will find the cached file and immediately return an error without re-downloading. This prevents
+    repeated downloads of oversized files and protects against bandwidth abuse.
 
     Args:
         url (str): The URL to download.
@@ -1429,27 +1477,88 @@ def download_and_limit_size(url, temp_file_path, error_context=""):
         tuple: (True, None) on success, or (False, json_response) on failure.
     """
     downloaded_size = 0
+    max_size = app.config["MAX_DOWNLOAD_SIZE"]
+
     try:
-        with requests.get(url, timeout=30, verify=False, allow_redirects=True, stream=True) as response:
+        # Set a proper User-Agent header
+        headers = {
+            "User-Agent": f"UADE-Web-Player/{GIT_COMMIT} (https://github.com/rib1/uade-docker)"
+        }
+
+        with requests.get(
+            url,
+            timeout=30,
+            verify=False,  # Disable SSL verification
+            allow_redirects=True,
+            stream=True,
+            headers=headers,
+        ) as response:
             response.raise_for_status()
-            with open(temp_file_path, 'wb') as fd:
-                for chunk in response.iter_content(chunk_size=8192):
-                    fd.write(chunk)
-                    downloaded_size += len(chunk)
-                    if downloaded_size > app.config['MAX_DOWNLOAD_SIZE']:
-                        response.close()
-                        logger.error(f"External download exceeded limit ({error_context}): {sanitized_url(url)}")
-                        return False, json_response(
-                            {"error": f"{error_context} file size exceeds the maximum allowed limit of {app.config['MAX_DOWNLOAD_SIZE'] / (1024 * 1024):.0f}MB"},
-                            413
+
+            # Check Content-Length header first to avoid unnecessary downloads
+            content_length = response.headers.get("content-length")
+            if content_length:
+                try:
+                    content_length = int(content_length)
+                    if content_length > max_size:
+                        logger.error(
+                            f"External download size ({content_length} bytes) exceeds limit before download ({error_context}): {sanitized_url(url)}"
                         )
+                        # Create zero-byte file to cache that this URL is oversized
+                        temp_file_path.touch()
+                        return False, json_response(
+                            {
+                                "error": f"{error_context} file size exceeds the maximum allowed limit of {max_size / (1024 * 1024):.0f}MB"
+                            },
+                            413,
+                        )
+                except ValueError:
+                    # Invalid Content-Length header, continue with chunked download
+                    pass
+
+            try:
+                with open(temp_file_path, "wb") as fd:
+                    for chunk in response.iter_content(chunk_size=8192):
+                        fd.write(chunk)
+                        downloaded_size += len(chunk)
+                        if downloaded_size > max_size:
+                            response.close()
+                            logger.error(
+                                f"External download exceeded limit during download ({error_context}): {sanitized_url(url)}"
+                            )
+                            return False, json_response(
+                                {
+                                    "error": f"{error_context} file size exceeds the maximum allowed limit of {max_size / (1024 * 1024):.0f}MB"
+                                },
+                                413,
+                            )
+            except Exception as e:
+                # Clean up partial file on any write error
+                if temp_file_path.exists():
+                    temp_file_path.unlink(missing_ok=True)
+                raise
+
         return True, None
+
     except requests.RequestException as e:
         logger.error(f"Download failed for {sanitized_url(url)} ({error_context}): {e}")
-        return False, json_response({"error": f"Download failed for {error_context}: {str(e)}"}, 500)
+        # Clean up partial file
+        if temp_file_path.exists():
+            temp_file_path.unlink(missing_ok=True)
+        return False, json_response(
+            {"error": f"Download failed for {error_context}: {str(e)}"}, 500
+        )
     except Exception as e:
-        logger.error(f"Unexpected error during download for {sanitized_url(url)} ({error_context}): {e}")
-        return False, json_response({"error": f"Unexpected error during {error_context} download: {str(e)}"}, 500)
+        logger.error(
+            f"Unexpected error during download for {sanitized_url(url)} ({error_context}): {e}"
+        )
+        # Clean up partial file
+        if temp_file_path.exists():
+            temp_file_path.unlink(missing_ok=True)
+        return False, json_response(
+            {"error": f"Unexpected error during {error_context} download: {str(e)}"}, 500
+        )
+
 
 def extract_filename_from_url(url):
     """
@@ -1663,6 +1772,9 @@ def parse_range_header(range_header, file_size):
 
 logger.info(f"Starting UADE Web Player (commit: {GIT_COMMIT}) on port {PORT}")
 logger.info(f"Max upload size: {MAX_UPLOAD_SIZE / 1024 / 1024}MB")
+logger.info(f"Max download size: {MAX_DOWNLOAD_SIZE / 1024 / 1024}MB")
+logger.info(f"Rate limit: {RATE_LIMIT}/hour (enabled: {rate_limit_enabled})")
+logger.info(f"Cache URI: {CACHE_URI}")
 logger.info(f"Cleanup interval: {CLEANUP_INTERVAL}s")
 logger.info(f"Cache cleanup interval: {CACHE_CLEANUP_INTERVAL}s")
 
