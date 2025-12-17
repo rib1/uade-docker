@@ -157,6 +157,14 @@ function setupFileInput() {
       handleFileUpload(e.target.files[0]);
     }
   });
+
+  // Make label keyboard accessible
+  uploadLabel.addEventListener("keydown", (e) => {
+    if (e.key === "Enter" || e.key === " ") {
+      e.preventDefault();
+      fileInput.click();
+    }
+  });
 }
 
 // Upload File
@@ -394,7 +402,10 @@ function playFile(
     showStatus("Audio cannot be played. You may have hit the rate limit or the file is invalid.", "error");
   };
 
-  audioPlayer.play().catch((err) => {
+  audioPlayer.play().then(() => {
+    // On successful autoplay, set focus to audio player for keyboard control
+    audioPlayer.focus();
+  }).catch((err) => {
     // Gracefully handle autoplay rejection on mobile
     if (err.name === "NotAllowedError") {
       showStatus("Autoplay blocked. Tap the play icon to start.", "info");
@@ -531,6 +542,7 @@ function createAutoplayOverlay() {
     audioPlayer.play(); // This is now a direct user interaction
     overlay.style.display = "none";
     overlay.style.pointerEvents = "none"; // Disable interaction after click
+    audioPlayer.focus(); // Set focus after user-initiated play
   });
 }
 

@@ -162,6 +162,11 @@ footer a:hover {
   background: var(--primary);
 }
 
+.example-card .play-btn:focus {
+  outline: none;
+  box-shadow: 0 0 0 3px rgba(74, 158, 255, 0.4);
+}
+
 .example-card .play-btn:disabled {
   background: var(--secondary);
   cursor: not-allowed;
@@ -258,7 +263,7 @@ footer a:hover {
 .input-url:focus {
   outline: none;
   border-color: var(--primary);
-  box-shadow: 0 0 0 3px rgba(74, 158, 255, 0.2);
+  box-shadow: 0 0 0 3px rgba(74, 158, 255, 0.4);
 }
 
 .url-help {
@@ -271,12 +276,22 @@ footer a:hover {
   margin-bottom: 10px;
 }
 
+.url-help summary:focus {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+}
+
 .sample-url-details {
   width: 100%;
 }
 
 .sample-url-details summary {
   color: var(--text);
+}
+
+.sample-url-details summary:focus {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
 }
 
 .url-help ul {
@@ -316,6 +331,11 @@ footer a:hover {
   box-shadow: 0 4px 8px rgba(74, 158, 255, 0.3);
 }
 
+.btn-primary:focus {
+  outline: none;
+  box-shadow: 0 0 0 3px rgba(74, 158, 255, 0.4);
+}
+
 .btn-primary:disabled {
   background: var(--secondary);
   cursor: not-allowed;
@@ -331,6 +351,11 @@ footer a:hover {
   background: #5a6268;
   transform: translateY(-2px);
   box-shadow: 0 4px 8px rgba(108, 117, 125, 0.3);
+}
+
+.btn-secondary:focus {
+  outline: none;
+  box-shadow: 0 0 0 3px rgba(108, 117, 125, 0.4);
 }
 
 /* Player Section */
@@ -370,11 +395,37 @@ footer a:hover {
 #player-container {
   position: relative;
   margin-bottom: 15px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 10px;
+  background-color: var(--surface);
+  transition: transform 0.2s, box-shadow 0.2s;
+}
+
+#player-container:hover {
+  box-shadow: 0 4px 8px rgba(74, 158, 255, 0.3);
+  border-color: var(--primary);
 }
 
 audio {
   width: 100%;
   display: block;
+}
+
+audio:focus {
+  outline: none;
+  box-shadow: 0 0 0 3px rgba(74, 158, 255, 0.4);
+}
+
+/* Webkit-specific audio controls styling (Chrome, Edge, Safari) */
+audio::-webkit-media-controls-panel {
+  background-color: var(--text);
+  border-radius: 8px;
+}
+
+audio::-webkit-media-controls-enclosure {
+  background-color: var(--text);
+  border-radius: 8px;
 }
 
 .player-controls {
