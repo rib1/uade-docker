@@ -473,6 +473,14 @@ def get_file_hash(file_path):
     return md5.hexdigest()
 
 
+def touch_for_lru(file_path):
+    """Touch a file to update its mtime for LRU cache eviction. Silently ignores errors."""
+    try:
+        Path(file_path).touch()
+    except Exception as e:
+        logger.warning(f"Could not touch file for LRU update {file_path}: {e}")
+
+
 def supports_flac(user_agent):
     """Check if browser supports FLAC playback"""
     # Modern browsers that support FLAC natively
@@ -637,6 +645,8 @@ def fetch_cached_file(cache_hash, prefer_flac=False):
             remote_size = fs_cache.size(cache_file_remote)
             if cache_file_local.exists() and cache_file_local.stat().st_size == remote_size:
                 logger.info(f"Cache hit ({ext[1:].upper()}): {cache_hash} already exists locally")
+                # Touch file to extend its cleanup interval (LRU-aware caching)
+                touch_for_lru(cache_file_local)
                 return cache_file_local
             # Ensure local cache directory exists
             cache_dir_local = cache_file_local.parent
@@ -646,6 +656,8 @@ def fetch_cached_file(cache_hash, prefer_flac=False):
                 shutil.copyfileobj(src, dst, length=1024 * 1024)  # 1MB buffer
             Path.replace(temp_file_local, cache_file_local)
             logger.info(f"Cache hit ({ext[1:].upper()}): {cache_hash} from remote cache")
+            # Touch file to extend its cleanup interval (LRU-aware caching)
+            touch_for_lru(cache_file_local)
             return cache_file_local
     return None
 
@@ -1374,6 +1386,8 @@ def convert_url():
             logger.info(
                 f"Cache hit for module: {sanitized_url(url)}, using cached file: {module_path}"
             )
+            # Touch file to extend its cleanup interval (LRU-aware caching)
+            touch_for_lru(module_path)
         else:
             try:
                 # Atomically create lock file. If it exists, FileExistsError is raised.
@@ -1407,6 +1421,8 @@ def convert_url():
                         logger.info(
                             f"Cache hit for module completed by another thread: {sanitized_url(url)}, using cached file: {module_path}"
                         )
+                        # Touch file to extend its cleanup interval (LRU-aware caching)
+                        touch_for_lru(module_path)
                         url_cache_hit = True
                         break
                 else:
@@ -1441,6 +1457,8 @@ def convert_url():
                 logger.info(
                     f"Cache hit for sample file: {sanitized_url(sample_url)}, using cached file {cached_sample_path}, linking to {sample_path}"
                 )
+                # Touch file to extend its cleanup interval (LRU-aware caching)
+                touch_for_lru(cached_sample_path)
             else:
                 try:
                     # Atomically create lock file. If it exists, FileExistsError is raised.
@@ -1479,6 +1497,8 @@ def convert_url():
                             logger.info(
                                 f"Cache hit for sample file completed by another thread: {sanitized_url(sample_url)}, using cached file {cached_sample_path}, linking to {sample_path}"
                             )
+                            # Touch file to extend its cleanup interval (LRU-aware caching)
+                            touch_for_lru(cached_sample_path)
                             break
                     else:
                         logger.warning(
