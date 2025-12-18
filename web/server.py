@@ -147,83 +147,161 @@ def add_security_headers(response):
 # Common Amiga module extensions and prefixes for detection module files in archives
 MODULE_FILE_EXTENSIONS: Final = {
     "aam",  # Art And Magic
+    "abk",  # AMOS Music Bank
+    "ac1d",  # AC1D-DC1A Packer
     "adsc",  # Audio Sculpture
+    "agi",  # Sierra AGI
     "ahx",  # Abyss' Highest eXperience
-    "amc",  # AM Composer
-    "ash",  # Ashley Hogg
+    "alp",  # Alcatraz Packer
+    "amc",  # A.M.Composer 1.2
     "aon",  # Art Of Noise
     "aon8",  # Art Of Noise 8 voices
-    "ast",  # Action Amics
-    "bd",  # Ben Daglish
-    "bds",  # Ben Daglish SID
-    "bp",  # BP SoundMon 2
+    "ash",  # Ashley Hogg
+    "ast",  # Actionamics Sound Tool
+    "bd",  # Benn Daglish
+    "bds",  # Benn Daglish SID
+    "bp",  # BP SoundMon 2.x
     "bp3",  # BP SoundMon 3
     "bsi",  # Future Composer BSI
     "bss",  # Beathoven Synthesizer
+    "bye",  # Andrew Parton
+    "chan",  # Channel Players
+    "cin",  # Cinemaware
     "cm",  # CustomMade
+    "core",  # Core Design
     "cust",  # Custom module, including player routines
-    "dbm",  # DigiBooster 2.x and 3.x
+    "dbm",  # DIGI Booster 2.x and 3.x
+    "dh",  # David Hanney
     "di",  # Digital Illusions aka GrapeTracker
-    "digi",  # DigiBooster 1.x
+    "digi",  # DIGI Booster 1.x
     "dl",  # Dave Lowe
-    "dln",  # Dave Lowe New
     "dll",  # Digital Mugician successor of SidMon
+    "dln",  # Dave Lowe New
     "dm",  # Delta Music
     "dm2",  # Delta Music 2
     "dmu",  # Digital Mugician
     "dp",  # Delta Packer
+    "dsc",  # Digital Sonix & Chrome
+    "dsr",  # Desire
     "dw",  # David Whittaker
+    "dz",  # Darius Zendeh Mod
+    "ems",  # Editeur Musical Sequentiel
+    "ex",  # Fashion Tracker
     "fc",  # Future Composer 1.0 - 1.3
     "fc13",  # Future Composer 1.3
     "fc14",  # Future Composer 1.4
-    "fred",  # Fred Gray
+    "fp",  # Future Player
+    "fred",  # Fred Gray (Editor)
+    "fw",  # FWMP
+    "gmc",  # Game Music Creator
     "gray",  # FredMon
+    "hd",  # Howie Davies
     "hip",  # Hippel
-    "hip7",  # Hippel 7-channel
+    "hip7",  # Hippel 7V
     "hipc",  # Hippel COSO
     "hvl",  # Hively Tracker
+    "ims",  # Images
     "instr",
+    "jam",  # JamCracker
+    "jcb",  # Jason Brooke
     "jd",  # Special FX
+    "jmf",  # Janko Mrsic-Flogel
+    "jo",  # Jesper Olsen
+    "jpn",  # Jason Page
+    "jpo",  # Steve Turner
     "jt",  # Jeroen Tel
+    "kh",  # Kris Hatlelid
+    "lme",  # Leggless Music Editor
+    "mc",  # Mark Cooksey
     "mcmd",
+    "md",  # Mike Davies
     "med",  # OctaMED
+    "mfp",  # Magnetic Fields Packer
+    "mii",  # Mark II Sound-System
     "mmd0",  # OctaMED MMD0
     "mmd1",  # OctaMED MMD1
     "mmd2",  # OctaMED MMD2
     "mmd3",  # OctaMED MMD3
     "mmdc",  # OctaMED MMDC
-    "mod",  # NoiseTracker, Protracker and derivatives
-    "mug",  # Digital Mugician 2
+    "mod",  # NoiseTracker, Protracker, StarTrekker and derivatives
+    "mok",  # Silmarils
+    "mon",  # M.O.N Old / New
+    "mug",  # Digital Mugician
+    "mug2",  # Mugician II
     "mus",  # Sidplayer / Stereo Sidplayer
+    "mw",  # Martin Walker
+    "mxtx",  # MaxTrax
+    "np2",  # NoisePacker 2.x
+    "np3",  # NoisePacker 3.x
+    "ntp",  # NovoTrade Packer
     "okt",  # Oktalyzer
     "okta",  # Oktalyzer
     "osp",  # Synth Pack
+    "p4x",  # The Player 4.x
+    "p60",  # The Player 6.x
+    "pap",  # Pierre Adane Packer
+    "pha",  # Pha Packer
+    "pp21",  # ProPacker 2.1
+    "pp30",  # ProPacker 3.0
+    "pr1",  # Promizer
+    "pru2",  # Prorunner 2.0
+    "prun",  # Prorunner 1.0
+    "ps",  # Paul Shields
+    "psa",  # Professional Sound Artists
+    "psf",  # Soundfactory
+    "puma",  # PumaTracker
+    "pvp",  # Peter Verswyvelen Packer
+    "rh",  # Rob Hubbard
+    "rho",  # Rob Hubbard Old
     "rk",  # Ron Klaren
     "sa",  # Sonic Arranger
+    "sb",  # Steve Barrett
     "sc",  # SoundControl
+    "scn",  # Sean Connolly
+    "scr",  # Sean Conran
+    "sct",  # Soundcontrol
+    "scumm",  # SCUMM
+    "sdr",  # Synth Dream
+    "sfx",  # SoundFX
     "sid",  # SidMon 1
     "sid2",  # SidMon 2
+    "sm",  # Sound Master
     "smod",  # Future Composer 1.0 - 1.3
     "smus",
     "sng",  # Synder SNG-Player
-    "ss",
-    "ssd",
-    "sun",  # SunTronic
+    "snk",  # Paul Summers
+    "snx",  # Sonix Music Driver
     "sonic",  # Sonic Arranger
+    "spl",  # Sound Programming Language
+    "ss",  # Speedy System
+    "ssd",  # Paul Robotham
+    "st26",  # SoundTracker 2.6
+    "sun",  # SunTronic
     "syn",  # Synthesis / Synder SNG-Player
-    "tf",
+    "tb3",  # Trackerpacker 3
+    "tf",  # Follin Player II
+    "tfm",  # TFMX
     "tfmx",  # TFMX
     "tfx",  # TFMX
-    "tfm",  # TFMX
     "thx",  # original name for the AHX
+    "tme",  # The Musical Enlightenment
+    "tw",  # Sound Images
     "vss",  # Voodoo Supreme Synthesizer
+    "wb",  # Wally Beben
     "ym",
 }
 
 DUAL_FILE_MODULES: Final = [
-    {"pattern_data": "mdat", "sample_data": "smpl"},  # TFMX
+    {"pattern_data": "dns", "sample_data": "smp"},  # Dynamic Synthesizer
+    {"pattern_data": "dum", "sample_data": "ins"},  # Infogrames
+    {"pattern_data": "han", "sample_data": "smp"},  # Digital Sound Creations
+    {"pattern_data": "mdat", "sample_data": "smpl"},  # TFMX (V7, Pro)
     {"pattern_data": "rjp", "sample_data": "smp"},  # Richard Joseph Player
-    {"pattern_data": "sng", "sample_data": "ins"},  # Richard Joseph Player
+    {"pattern_data": "sjs", "sample_data": "smp"},  # SoundPlayer
+    {"pattern_data": "sng", "sample_data": "ins"},  # Richard Joseph Player / etc.
+    {"pattern_data": "th", "sample_data": "smp"},  # Thomas Hermann
+    {"pattern_data": "tpu", "sample_data": "smp"},  # Dirk Bialluch
+    {"pattern_data": "uds", "sample_data": "smp"},  # Unique Development Sweden
 ]
 
 # Combined set of extensions and prefixes for finding playable music modules within extracted archives.
@@ -1460,7 +1538,7 @@ def download_and_limit_size(url, temp_file_path, error_context=""):
     """
     Downloads a file from a given URL in chunks, enforcing the maximum allowed download size (MAX_DOWNLOAD_SIZE).
 
-    This limit applies to all downloads, including LHA and ZIP archives fetched via URL. If the file exceeds the configured limit, 
+    This limit applies to all downloads, including LHA and ZIP archives fetched via URL. If the file exceeds the configured limit,
     the download is aborted and an error is returned.
 
     Important: When a download exceeds the size limit, the partial file is intentionally left on disk
