@@ -1,0 +1,26 @@
+# Enforce LF line endings for all text files on checkout
+* text eol=lf
+
+# Treat common binary files as binary to avoid EOL normalization
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.svg binary
+*.zip binary
+*.lha binary
+*.7z  binary
+*.gz  binary
+*.bz2 binary
+*.xz  binary
+*.pdf binary
+*.wav binary
+*.flac binary
+*.mp3 binary
+*.ogg binary
+*.exe binary
+*.dll binary
+*.so  binary
+*.a   binary
+*.psd binary
