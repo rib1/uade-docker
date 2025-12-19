@@ -919,8 +919,15 @@ def process_audio_conversion(input_path, compress_flac=False, sample_files=None)
                 str(input_path),
             ]  # Headless mode
 
+            # Ensure permissive file mode on UADE-created files so non-root can update mtime
+            # We set umask(0o002) in the child process before exec'ing uade123 (POSIX only)
             result = subprocess.run(
-                cmd, capture_output=True, text=True, timeout=300, encoding="latin1"
+                cmd,
+                capture_output=True,
+                text=True,
+                timeout=300,
+                encoding="latin1",
+                preexec_fn=(lambda: os.umask(0o002)),
             )  # 5 minute timeout
 
             if result.returncode != 0:

@@ -24,3 +24,7 @@
 *.so  binary
 *.a   binary
 *.psd binary
+*.mod binary
+mod.* binary
+mdat.* binary
+smpl.* binary
