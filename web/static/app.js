@@ -28,6 +28,41 @@ const elementsToDisable = [
   sampleUrlInput,
  ];
 
+// Helper function to download large files using range requests
+async function downloadWithRangeRequests(url, filename, fileSize) {
+  const chunkSize = 10 * 1024 * 1024; // 10MB chunks (well under 32MB limit)
+  const chunks = [];
+
+  for (let start = 0; start < fileSize; start += chunkSize) {
+    const end = Math.min(start + chunkSize - 1, fileSize - 1);
+    const response = await fetch(url, {
+      headers: { "Range": `bytes=${start}-${end}` }
+    });
+
+    if (!response.ok && response.status !== 206) {
+      throw new Error(`Server returned ${response.status} for range request`);
+    }
+
+    const chunk = await response.arrayBuffer();
+    chunks.push(chunk);
+  }
+
+  // Combine chunks into single blob
+  const blob = new Blob(chunks);
+  const blobUrl = URL.createObjectURL(blob);
+
+  // Trigger download
+  const a = document.createElement("a");
+  a.href = blobUrl;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+
+  // Clean up blob URL after short delay
+  setTimeout(() => URL.revokeObjectURL(blobUrl), 1000);
+}
+
 // Initialize
 document.addEventListener("DOMContentLoaded", () => {
   setupDragAndDrop();
@@ -597,8 +632,37 @@ function setupDownloadButton() {
           const data = await response.json();
           showStatus(`✗ Error: ${data.error || "Rate limit exceeded"}`, "error");
           downloadBtn.disabled = false;
+        } else if (response.status === 206 && response.headers.get("content-length") === "0") {
+          // Server sent empty 206 prompt for large file - download with range requests
+          const contentRange = response.headers.get("content-range");
+          const fileSizeMatch = contentRange ? contentRange.match(/\/(\d+)$/) : null;
+          const fileSize = fileSizeMatch ? parseInt(fileSizeMatch[1]) : null;
+
+          if (!fileSize) {
+            showStatus("✗ Download failed: Invalid server response", "error");
+            downloadBtn.disabled = false;
+            return;
+          }
+
+          // Extract filename from Content-Disposition header
+          let filename = "downloaded_file";
+          const disposition = response.headers.get("content-disposition");
+          if (disposition && disposition.includes("filename=")) {
+            filename = disposition.split("filename=")[1].replace(/["']/g, "").trim();
+          }
+
+          showStatus("Downloading large file...", "info");
+
+          try {
+            await downloadWithRangeRequests(currentDownloadUrl, filename, fileSize);
+            showStatus("Download complete", "success");
+          } catch (error) {
+            showStatus(`✗ Download failed: ${error.message}`, "error");
+          } finally {
+            downloadBtn.disabled = false;
+          }
         } else if (response.ok) {
-          // Use direct link for streaming download
+          // Standard download for small files
           // Extract filename from Content-Disposition header
           let filename = "downloaded_file";
           const disposition = response.headers.get("content-disposition");

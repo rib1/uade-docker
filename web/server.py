@@ -1986,6 +1986,7 @@ def serve_audio_file(file_id, as_attachment=False, custom_filename=None):
     else:
         # For large files without range header, return minimal 206 response to prompt client to use range requests
         # This applies to both downloads and streaming to avoid exceeding Cloud Run's 32MB response limit
+        # Client-side JavaScript handles downloads via range requests (see app.js downloadWithRangeRequests)
         if file_size > 20 * 1024 * 1024:
             response = Response("", 206, mimetype=mimetype)
             # Custom header to indicate that only single range requests are supported (for client-side handling)
@@ -1996,8 +1997,7 @@ def serve_audio_file(file_id, as_attachment=False, custom_filename=None):
             if as_attachment:
                 response.headers["Content-Disposition"] = f'attachment; filename="{filename}"'
             return response
-        # For requests without range header, stream the entire file
-        # Browsers will automatically use range requests for large files when needed
+        # For small files without range header, stream the entire file
         response = Response(stream_full_file(file_path), mimetype=mimetype)
         response.headers["Content-Length"] = str(file_size)
         response.headers["Accept-Ranges"] = "bytes"
