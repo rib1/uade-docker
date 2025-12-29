@@ -2,6 +2,9 @@
 
 // State
 let currentDownloadUrl = null;
+let currentSubsongDurations = [];
+let currentSubsongs = 1;
+let currentSubsongIndex = 0;
 
 // DOM Elements
 const dropZone = document.getElementById("drop-zone");
@@ -203,7 +206,8 @@ async function performConversion(endpoint, options, button, initialStatusMessage
         data.player_format || "Module",
         data.audio_format || "wav",
         data.module_format,
-        data.subsongs
+        data.subsongs,
+        data.subsong_durations || []
       );
       if (onSuccessCallback) {
         onSuccessCallback();
@@ -268,7 +272,7 @@ async function handleUrlConvert() {
     initialStatusMessage,
     successMessageTemplate,
     null, // moduleNameOverride
-    () => { 
+    () => {
       urlInput.value = "";
       sampleUrlInput.value = "";
     }
@@ -344,9 +348,12 @@ function playFile(
   playerFormat = "",
   audioFormat = "wav",
   moduleFormat,
-  subsongs = "1"
+  subsongs = "1",
+  subsongDurations = []
 ) {
   currentDownloadUrl = downloadUrl;
+  currentSubsongs = parseInt(subsongs) || 1;
+  currentSubsongDurations = subsongDurations || [];
 
   audioPlayer.src = playUrl;
 
@@ -356,6 +363,9 @@ function playFile(
     trackDisplay += ` (${subsongs} subsongs)`;
   }
   currentTrack.textContent = trackDisplay;
+
+  // Update subsong navigation
+  updateSubsongNavigation();
 
   trackFormat.textContent = ""; // Clear previous content
   if (moduleFormat && playerFormat && moduleFormat !== playerFormat) {
@@ -444,6 +454,134 @@ function updateMediaSession(title, artist, album) {
         { src: "/static/protracker_square.png", sizes: "512x512", type: "image/png" },
       ],
     });
+
+    // Set up subsong navigation with media controls (prev/next track buttons)
+    navigator.mediaSession.setActionHandler("previoustrack", () => {
+      if (currentSubsongs > 1 && currentSubsongDurations.length > 0) {
+        navigateToPreviousSubsong();
+      }
+    });
+
+    navigator.mediaSession.setActionHandler("nexttrack", () => {
+      if (currentSubsongs > 1 && currentSubsongDurations.length > 0) {
+        navigateToNextSubsong();
+      }
+    });
+  }
+}
+
+// Subsong Navigation
+function updateSubsongNavigation() {
+  const container = document.getElementById("subsong-navigation");
+  if (!container) return;
+
+  // Clear existing content
+  container.innerHTML = "";
+
+  // Only show navigation if there are multiple subsongs with duration data
+  if (currentSubsongs <= 1 || currentSubsongDurations.length === 0) {
+    container.style.display = "none";
+    currentSubsongIndex = 0;
+    return;
+  }
+
+  container.style.display = "flex";
+  currentSubsongIndex = 0;
+
+  // Track which subsong we're in based on playback time
+  audioPlayer.addEventListener("timeupdate", updateCurrentSubsongIndex);
+
+  // Create subsong buttons
+  const buttonsContainer = document.createElement("div");
+  buttonsContainer.className = "subsong-buttons";
+
+  // Calculate cumulative start times for each subsong
+  let cumulativeTime = 0;
+  const subsongStartTimes = [];
+
+  for (let i = 0; i < currentSubsongDurations.length; i++) {
+    subsongStartTimes.push(cumulativeTime);
+    cumulativeTime += currentSubsongDurations[i];
+
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "btn btn-subsong";
+    button.textContent = `${i + 1}`;
+    button.title = `Jump to subsong ${i + 1} (${formatTime(currentSubsongDurations[i])})`;
+
+    const startTime = subsongStartTimes[i];
+    button.addEventListener("click", () => {
+      jumpToSubsong(startTime);
+    });
+
+    buttonsContainer.appendChild(button);
+  }
+
+  const label = document.createElement("span");
+  label.className = "subsong-label";
+  label.textContent = "Jump to subsong: ";
+
+  container.appendChild(label);
+  container.appendChild(buttonsContainer);
+}
+
+function jumpToSubsong(startTime) {
+  if (audioPlayer) {
+    audioPlayer.currentTime = startTime;
+    if (audioPlayer.paused) {
+      audioPlayer.play().catch(err => {
+        console.error("Playback error:", err);
+      });
+    }
+  }
+}
+
+function formatTime(seconds) {
+  if (!seconds || seconds === 0) return "0:00";
+  const mins = Math.floor(seconds / 60);
+  const secs = Math.floor(seconds % 60);
+  return `${mins}:${secs.toString().padStart(2, "0")}`;
+}
+
+function updateCurrentSubsongIndex() {
+  if (!audioPlayer || currentSubsongDurations.length === 0) return;
+
+  const currentTime = audioPlayer.currentTime;
+  let cumulativeTime = 0;
+
+  for (let i = 0; i < currentSubsongDurations.length; i++) {
+    cumulativeTime += currentSubsongDurations[i];
+    if (currentTime < cumulativeTime) {
+      currentSubsongIndex = i;
+      return;
+    }
+  }
+  // If we're past all subsongs, we're on the last one
+  currentSubsongIndex = currentSubsongDurations.length - 1;
+}
+
+function navigateToPreviousSubsong() {
+  if (currentSubsongIndex > 0) {
+    // Calculate start time of previous subsong
+    let startTime = 0;
+    for (let i = 0; i < currentSubsongIndex - 1; i++) {
+      startTime += currentSubsongDurations[i];
+    }
+    jumpToSubsong(startTime);
+  } else {
+    // If at first subsong, restart it
+    audioPlayer.currentTime = 0;
+  }
+}
+
+function navigateToNextSubsong() {
+  if (currentSubsongIndex < currentSubsongDurations.length - 1) {
+    // Calculate start time of next subsong
+    let startTime = 0;
+    for (let i = 0; i <= currentSubsongIndex; i++) {
+      startTime += currentSubsongDurations[i];
+    }
+    jumpToSubsong(startTime);
   }
 }
 

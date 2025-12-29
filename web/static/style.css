@@ -591,3 +591,60 @@ audio::-webkit-media-controls-enclosure {
 #autoplay-overlay:hover .play-button-overlay-icon {
     transform: scale(1.1);
 }
+/* Player Meta - contains format badge and subsong navigation */
+.player-meta {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+}
+
+/* Subsong Navigation Styles */
+.subsong-navigation {
+    display: none;
+    align-items: center;
+    gap: 8px;
+}
+
+.subsong-label {
+    color: var(--text-dim);
+    font-weight: 400;
+    font-size: 0.85rem;
+}
+
+.subsong-buttons {
+    display: flex;
+    gap: 5px;
+    flex-wrap: wrap;
+}
+
+.btn-subsong {
+    min-width: 32px;
+    padding: 4px 10px;
+    background: var(--primary-dark);
+    color: white;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 0.8rem;
+    font-weight: 500;
+    transition: all 0.2s;
+}
+
+.btn-subsong:hover {
+    background: var(--primary);
+    transform: translateY(-1px);
+    box-shadow: 0 2px 8px rgba(74, 158, 255, 0.3);
+}
+
+.btn-subsong:active {
+    transform: translateY(0);
+}
+
+@media (max-width: 600px) {
+    .player-meta {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 8px;
+    }
+}

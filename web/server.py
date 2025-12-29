@@ -8,6 +8,7 @@ Cloud-ready with proper logging, error handling, stateless caching, and cleanup
 
 import hashlib
 import ipaddress
+import json
 import logging
 import os
 import re
@@ -623,7 +624,7 @@ def extract_zip(zip_path, extract_dir):
 
 
 def save_to_cache(cache_hash, file, ext):
-    """Save a converted file to remote cache (WAV or FLAC)."""
+    """Save a converted file and metadata to remote cache (WAV or FLAC)."""
     cache_file_remote = f"{root_cache}/{cache_hash}{ext}"
     temp_file_remote = f"{cache_file_remote}.{uuid.uuid4()}.tmp"
     if not fs_cache.exists(cache_file_remote):
@@ -633,9 +634,27 @@ def save_to_cache(cache_hash, file, ext):
         fs_cache.mv(temp_file_remote, cache_file_remote)
         logger.info(f"Cached conversion to remote: {cache_hash}{ext}")
 
+    # Save metadata to remote cache if local file exists
+    metadata_file_local = CONVERTED_DIR / f"{cache_hash}.json"
+    if metadata_file_local.exists():
+        # copy to remote cache
+        cache_file_remote = f"{root_cache}/{cache_hash}.json"
+        temp_file_remote = f"{cache_file_remote}.{uuid.uuid4()}.tmp"
+
+        if not fs_cache.exists(cache_file_remote):
+            with open(metadata_file_local, "rb") as src, fs_cache.open(temp_file_remote, "wb") as dst:
+                shutil.copyfileobj(src, dst, length=1024 * 1024)  # 1MB buffer
+            # Atomic move to final remote name
+            fs_cache.mv(temp_file_remote, cache_file_remote)
+            logger.info(f"Cached metadata to remote: {cache_hash}.json")
+
 
 def fetch_cached_file(cache_hash, prefer_flac=False):
-    """Check if a converted file exists in remote cache (WAV or FLAC). If found, copy to local and return local path."""
+    """Check if a converted file exists in remote cache (WAV or FLAC). If found, copy to local and return local path with metadata.
+
+    Returns:
+        tuple: (cache_file_path, metadata) where metadata contains subsongs and subsong_durations, or (None, None) if not found
+    """
     # Try FLAC first if preferred
     for ext in ([".flac"] if prefer_flac else []) + [".wav"]:
         cache_file_remote = f"{root_cache}/{cache_hash}{ext}"
@@ -647,7 +666,9 @@ def fetch_cached_file(cache_hash, prefer_flac=False):
                 logger.info(f"Cache hit ({ext[1:].upper()}): {cache_hash} already exists locally")
                 # Touch file to extend its cleanup interval (LRU-aware caching)
                 touch_for_lru(cache_file_local)
-                return cache_file_local
+                # Load metadata including subsong durations
+                metadata = load_metadata_cache(cache_hash)
+                return cache_file_local, metadata
             # Ensure local cache directory exists
             cache_dir_local = cache_file_local.parent
             cache_dir_local.mkdir(parents=True, exist_ok=True)
@@ -658,8 +679,10 @@ def fetch_cached_file(cache_hash, prefer_flac=False):
             logger.info(f"Cache hit ({ext[1:].upper()}): {cache_hash} from remote cache")
             # Touch file to extend its cleanup interval (LRU-aware caching)
             touch_for_lru(cache_file_local)
-            return cache_file_local
-    return None
+            # Load metadata including subsong durations
+            metadata = load_metadata_cache(cache_hash)
+            return cache_file_local, metadata
+    return None, None
 
 
 def detect_module_metadata(input_path):
@@ -699,14 +722,27 @@ def detect_module_metadata(input_path):
                 player_format = line.split(":", 1)[1].strip()
                 metadata_success = True  # A player was explicitly found
             elif line.startswith("subsongs:"):
-                # Parse "subsongs: cur 1 min 1 max 1"
+                # Parse "subsongs: cur 1 min 1 max 1" to get subsong count
+                # Extract min and max values to calculate count
                 parts = line.split()
+                min_val = None
+                max_val = None
                 for i, part in enumerate(parts):
-                    if part == "max" and i + 1 < len(parts):
+                    if part == "min" and i + 1 < len(parts):
                         try:
-                            subsongs = int(parts[i + 1])
+                            min_val = int(parts[i + 1])
                         except ValueError:
-                            subsongs = 1
+                            pass
+                    elif part == "max" and i + 1 < len(parts):
+                        try:
+                            max_val = int(parts[i + 1])
+                        except ValueError:
+                            pass
+                # Calculate subsongs: max - min + 1
+                if min_val is not None and max_val is not None:
+                    subsongs = max_val - min_val + 1
+                else:
+                    subsongs = 1 # Fallback if not found
 
         # Check for 'uade:is_custom': True in output
         if "'uade:is_custom': True" in result.stdout:
@@ -728,6 +764,97 @@ def detect_module_metadata(input_path):
         return False, None, None, None, 0
 
 
+def parse_subsong_durations(uade_output, subsong_count):
+    """
+    Parse UADE stdout/stderr output to extract per-subsong durations.
+    Only extracts duration information for modules with more than 1 subsong.
+
+    Args:
+        uade_output (str): UADE conversion output (stderr)
+        subsong_count (int): Expected number of subsongs from metadata detection
+
+    Returns:
+        tuple: (duration_list, error)
+            - duration_list: list[float] ordered durations, empty if single subsong
+            - error: None on success, error message string on failure
+    """
+    # Skip parsing for single subsong modules
+    if subsong_count <= 1:
+        return [], None
+
+    # Parse durations for multiple subsongs
+    durations = {}
+    time_pattern = re.compile(r'Playing time position (\d+(?:\.\d+)?)s in subsong (\d+)')
+
+    for line in uade_output.splitlines():
+        time_match = time_pattern.search(line)
+        if time_match:
+            time_sec = float(time_match.group(1))
+            subsong_index = int(time_match.group(2))
+            durations[subsong_index] = time_sec
+
+    # Construct ordered list of durations
+    duration_list = [durations.get(idx, 0.0) for idx in range(0, subsong_count)]
+
+    # Validate that parsed count matches expected count
+    if len(duration_list) != subsong_count:
+        return [], f"Subsong count mismatch: expected {subsong_count}, got {len(duration_list)}"
+
+    return duration_list, None
+
+def save_metadata(cache_hash, metadata):
+    """Save metadata JSON to local disk first, then copy to remote cache (same pattern as audio files)"""
+    try:
+        # Save to local disk
+        metadata_file_local = CONVERTED_DIR / f"{cache_hash}.json"
+        temp_file_local = metadata_file_local.with_name(f"{metadata_file_local.name}.{uuid.uuid4()}.tmp")
+
+        metadata_json = json.dumps(metadata)
+        with open(temp_file_local, "w") as f:
+            f.write(metadata_json)
+
+        # Atomic move to final local name
+        Path.replace(temp_file_local, metadata_file_local)
+        logger.info(f"Saved metadata to local: {cache_hash}.json")
+
+    except Exception as e:
+        logger.warning(f"Could not save metadata: {e}")
+
+
+def load_metadata_cache(cache_hash):
+    """Load metadata JSON from local disk first, fallback to remote cache if not found locally"""
+    try:
+        # Try local disk first
+        metadata_file_local = CONVERTED_DIR / f"{cache_hash}.json"
+        if metadata_file_local.exists():
+            with open(metadata_file_local, "r") as f:
+                metadata = json.load(f)
+            logger.info(f"Loaded metadata from local: {cache_hash}.json")
+            # Touch file to extend its cleanup interval (LRU-aware caching)
+            touch_for_lru(metadata_file_local)
+            return metadata
+
+        # Fallback to remote cache if not found locally
+        metadata_file_remote = f"{root_cache}/{cache_hash}.json"
+        if fs_cache.exists(metadata_file_remote):
+            with fs_cache.open(metadata_file_remote, "r") as f:
+                metadata = json.load(f)
+            logger.info(f"Loaded metadata from remote cache: {cache_hash}.json")
+
+            # Save to local disk for future access
+            temp_file_local = metadata_file_local.with_name(f"{metadata_file_local.name}.{uuid.uuid4()}.tmp")
+            metadata_json = json.dumps(metadata)
+            with open(temp_file_local, "w") as f:
+                f.write(metadata_json)
+            Path.replace(temp_file_local, metadata_file_local)
+            logger.info(f"Cached metadata to local: {cache_hash}.json")
+
+            return metadata
+    except Exception as e:
+        logger.warning(f"Could not load metadata cache: {e}")
+    return None
+
+
 def wait_for_conversion(
     cache_hash, prefer_flac, player_format, module_name, module_format, subsongs
 ):
@@ -736,9 +863,11 @@ def wait_for_conversion(
     # Wait for up to 300 seconds (5 minutes), matching the conversion timeout.
     for _ in range(60):
         time.sleep(5)
-        cached_file = fetch_cached_file(cache_hash, prefer_flac=prefer_flac)
+        cached_file, metadata = fetch_cached_file(cache_hash, prefer_flac=prefer_flac)
         if cached_file and cached_file.exists():
             logger.info(f"Conversion for {cache_hash} completed by another thread.")
+            # Extract duration_list from metadata
+            duration_list = metadata.get("subsong_durations", []) if metadata else []
             return (
                 True,
                 None,
@@ -749,6 +878,7 @@ def wait_for_conversion(
                 subsongs,
                 True,  # cached
                 cache_hash,
+                duration_list,
             )
     logger.warning(f"Timeout waiting for conversion of {cache_hash}.")
     return None
@@ -777,6 +907,7 @@ def process_audio_conversion(input_path, compress_flac=False, sample_files=None)
         subsongs (int): Number of subsongs detected.
         cached (bool): True if the audio was served from cache.
         cache_hash (str or None): The MD5 hash of the input file.
+        duration_list (list[float]): Per-subsong durations (empty for single subsong or cache hits).
     """
     # Hold metadata to return to the caller, even if conversion fails.
     (metadata_success, module_name, module_format, player_format, subsongs) = (
@@ -803,6 +934,7 @@ def process_audio_conversion(input_path, compress_flac=False, sample_files=None)
                 subsongs,
                 False,
                 cache_hash,
+                [],
             )
 
         # Detect module metadata before conversion
@@ -861,6 +993,7 @@ def process_audio_conversion(input_path, compress_flac=False, sample_files=None)
                 subsongs,
                 False,
                 cache_hash,
+                [],
             )
 
         output_path = CONVERTED_DIR / f"{cache_hash}.wav"
@@ -869,8 +1002,10 @@ def process_audio_conversion(input_path, compress_flac=False, sample_files=None)
         temp_uade_output_path = output_path.with_name(f"{output_path.name}.{str(uuid.uuid4())}.tmp")
 
         # Check remote cache first (before acquiring lock)
-        cached_file = fetch_cached_file(cache_hash, prefer_flac=compress_flac)
+        cached_file, metadata = fetch_cached_file(cache_hash, prefer_flac=compress_flac)
         if cached_file and cached_file.exists():
+            # Extract duration_list from metadata
+            duration_list = metadata.get("subsong_durations", []) if metadata else []
             return (
                 True,
                 None,
@@ -881,6 +1016,7 @@ def process_audio_conversion(input_path, compress_flac=False, sample_files=None)
                 subsongs,
                 True,
                 cache_hash,
+                duration_list,
             )
 
         # If lock exists, another thread is already converting this file
@@ -897,8 +1033,10 @@ def process_audio_conversion(input_path, compress_flac=False, sample_files=None)
         try:
             lock_path.touch(exist_ok=False)
 
-            cached_file = fetch_cached_file(cache_hash, prefer_flac=compress_flac)
+            cached_file, metadata = fetch_cached_file(cache_hash, prefer_flac=compress_flac)
             if cached_file and cached_file.exists():
+                # Extract duration_list from metadata
+                duration_list = metadata.get("subsong_durations", []) if metadata else []
                 return (
                     True,
                     None,
@@ -909,6 +1047,7 @@ def process_audio_conversion(input_path, compress_flac=False, sample_files=None)
                     subsongs,
                     True,
                     cache_hash,
+                    duration_list,
                 )
 
             cmd = [
@@ -942,6 +1081,7 @@ def process_audio_conversion(input_path, compress_flac=False, sample_files=None)
                     subsongs,
                     False,
                     cache_hash,
+                    [],
                 )
 
             Path.replace(temp_uade_output_path, output_path)
@@ -958,7 +1098,13 @@ def process_audio_conversion(input_path, compress_flac=False, sample_files=None)
                     subsongs,
                     False,
                     cache_hash,
+                    [],
                 )
+
+            # Parse subsong durations from conversion output
+            duration_list, duration_error = parse_subsong_durations(result.stderr, subsongs)
+            if duration_error:
+                logger.warning(f"Duration parsing error: {duration_error}")
 
             final_output = output_path
 
@@ -967,7 +1113,17 @@ def process_audio_conversion(input_path, compress_flac=False, sample_files=None)
                 flac_output = output_path.with_suffix(".flac")
                 if compress_to_flac(output_path, flac_output):
                     final_output = flac_output
-            # Save to remote cache
+            # Save metadata to local disk first (includes detected metadata and subsong durations)
+            metadata = {
+                "subsongs": subsongs,
+                "subsong_durations": duration_list,
+                "module_name": module_name,
+                "module_format": module_format,
+                "player_format": player_format,
+            }
+            save_metadata(cache_hash, metadata)
+
+            # Save audio to remote cache (will also copy metadata to remote)
             ext, file_to_save = (".flac", final_output) if compress_flac else (".wav", output_path)
             save_to_cache(cache_hash, file_to_save, ext)
             logger.info(f"Successfully converted: {input_path} -> {final_output}")
@@ -981,6 +1137,7 @@ def process_audio_conversion(input_path, compress_flac=False, sample_files=None)
                 subsongs,
                 False,
                 cache_hash,
+                duration_list,
             )
 
         except FileExistsError:
@@ -999,6 +1156,7 @@ def process_audio_conversion(input_path, compress_flac=False, sample_files=None)
                 subsongs,
                 False,
                 cache_hash,
+                [],
             )
         finally:
             lock_path.unlink(missing_ok=True)
@@ -1016,6 +1174,7 @@ def process_audio_conversion(input_path, compress_flac=False, sample_files=None)
             0,
             False,
             None,
+            [],
         )
 
     except subprocess.TimeoutExpired:
@@ -1029,6 +1188,7 @@ def process_audio_conversion(input_path, compress_flac=False, sample_files=None)
             subsongs,
             False,
             cache_hash,
+            [],
         )
     except Exception as e:
         logger.error(f"Conversion exception: {e}")
@@ -1042,6 +1202,7 @@ def process_audio_conversion(input_path, compress_flac=False, sample_files=None)
             subsongs,
             False,
             cache_hash,
+            [],
         )
 
 
@@ -1186,6 +1347,7 @@ def process_module_and_respond(
             subsongs,
             cached,
             converted_file_id,
+            duration_list,
         ) = process_audio_conversion(module_path, compress_flac=use_flac, sample_files=sample_files)
 
         if not success:
@@ -1200,6 +1362,7 @@ def process_module_and_respond(
                 "module_format": module_format,
                 "player_format": player_format,
                 "subsongs": subsongs,
+                "subsong_durations": duration_list,
                 "audio_format": final_file.suffix[1:] if final_file else "wav",
                 "play_url": f"/play/{converted_file_id}",
                 "download_url": f"/download/{converted_file_id}?filename={urllib.parse.quote(module_name or filename)}",
@@ -1754,6 +1917,7 @@ def serve_audio_file(file_id, as_attachment=False, custom_filename=None):
         for ext, mime in [(".flac", "audio/flac"), (".wav", "audio/wav")]:
             candidate_path = CONVERTED_DIR / f"{safe_file_id}{ext}"
             if not candidate_path.exists():
+                # Fetch from cache (we don't need the metadata here)
                 fetch_cached_file(safe_file_id, prefer_flac=(ext == ".flac"))
             if candidate_path.exists() and candidate_path.resolve().relative_to(converted_dir_base):
                 file_path = candidate_path.resolve()

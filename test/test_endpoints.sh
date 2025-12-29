@@ -376,7 +376,7 @@ test_url_with_ua() {
     HTTP_CODE_BODY=$(_perform_convert_url_call_with_agent_header "$URL" "$USER_AGENT")
     HTTP_CODE=$(echo "$HTTP_CODE_BODY" | head -n1)
     BODY=$(echo "$HTTP_CODE_BODY" | tail -n1)
-    
+
     AUDIO_FORMAT=$(echo "$BODY" | jq -r .audio_format)
 
     if [ "$HTTP_CODE" -eq 200 ] && [ "$AUDIO_FORMAT" == "$EXPECTED_AUDIO_FORMAT" ]; then
@@ -597,6 +597,80 @@ test_metadata_extraction() {
         echo "Response body: $BODY"
         exit 1
     fi
+    echo ""
+}
+
+# Function to test subsong durations
+# Arguments:
+# 1. Test name (string)
+# 2. URL to test (string)
+# 3. Optional sample URL (string)
+# 4. Expected subsongs count (integer)
+test_subsong_durations() {
+    TEST_NAME=$1
+    URL=$2
+    SAMPLE_URL=$3
+    EXPECTED_SUBSONGS=$4
+
+    echo "--- Testing Subsong Durations: $TEST_NAME ---"
+
+    HTTP_CODE_BODY=$(_perform_convert_url_call "$URL" "$SAMPLE_URL")
+    HTTP_CODE=$(echo "$HTTP_CODE_BODY" | head -n1)
+    BODY=$(echo "$HTTP_CODE_BODY" | tail -n1)
+
+    if [ "$HTTP_CODE" -ne 200 ]; then
+        echo "ERROR: Received HTTP $HTTP_CODE for test '$TEST_NAME'"
+        echo "Response body: $BODY"
+        exit 1
+    fi
+
+    SUBSONGS=$(echo "$BODY" | jq -r .subsongs)
+    DURATION_LIST=$(echo "$BODY" | jq -r .subsong_durations)
+
+    # Verify subsongs count matches expected
+    if [ "$SUBSONGS" -ne "$EXPECTED_SUBSONGS" ]; then
+        echo "ERROR: Subsong count mismatch for test '$TEST_NAME'"
+        echo "Expected subsongs: '$EXPECTED_SUBSONGS', Got: '$SUBSONGS'"
+        echo "Response body: $BODY"
+        exit 1
+    fi
+
+    # For multi-subsong modules, verify duration list exists and has correct length
+    if [ "$EXPECTED_SUBSONGS" -gt 1 ]; then
+        if [ "$DURATION_LIST" == "null" ] || [ -z "$DURATION_LIST" ]; then
+            echo "ERROR: Missing subsong_durations for multi-subsong module in test '$TEST_NAME'"
+            echo "Response body: $BODY"
+            exit 1
+        fi
+
+        DURATION_COUNT=$(echo "$BODY" | jq -r '.subsong_durations | length')
+        if [ "$DURATION_COUNT" -ne "$EXPECTED_SUBSONGS" ]; then
+            echo "ERROR: Duration list length mismatch for test '$TEST_NAME'"
+            echo "Expected $EXPECTED_SUBSONGS durations, got $DURATION_COUNT"
+            echo "Response body: $BODY"
+            exit 1
+        fi
+
+        # Verify all durations are non-negative numbers
+        HAS_INVALID=$(echo "$BODY" | jq -r '.subsong_durations[] | select(. < 0)' | wc -l)
+        if [ "$HAS_INVALID" -gt 0 ]; then
+            echo "ERROR: Found negative duration values for test '$TEST_NAME'"
+            echo "Response body: $BODY"
+            exit 1
+        fi
+
+        echo "SUCCESS: Subsong durations validated for multi-subsong module '$TEST_NAME'"
+        echo "Durations: $(echo "$BODY" | jq -r .subsong_durations)"
+    else
+        # For single-subsong modules, duration list should be empty or not present
+        if [ "$DURATION_LIST" != "null" ] && [ "$DURATION_LIST" != "[]" ]; then
+            echo "WARNING: Single-subsong module has non-empty duration list for test '$TEST_NAME'"
+            echo "Duration list: $DURATION_LIST"
+        fi
+        echo "SUCCESS: Single-subsong module validated for '$TEST_NAME'"
+    fi
+
+    echo "Response body: $BODY"
     echo ""
 }
 
@@ -844,7 +918,11 @@ test_url_cache_logic "URL download cache" "https://modland.com/pub/modules/Protr
 # Metadata extraction tests
 test_metadata_extraction "Full metadata" "https://modland.com/pub/modules/Protracker/Captain/space%20debris.mod" "" "space debris" "Protracker" "Protracker and family" 1
 test_metadata_extraction "Custom module" "https://zakalwe.fi/uade/amiga-music/customs/WingsOfDeath-Levels1-7/cust.WingsOfDeath-Levels1-7" "" "" "Custom" "Custom" 8
-test_metadata_extraction "Partial metadata" "https://modland.com/pub/modules/Richard%20Joseph/Richard%20Joseph/cannon%20fodder%20(intro).sng" "https://modland.com/pub/modules/Richard%20Joseph/Richard%20Joseph/cannon%20fodder%20(intro).ins" "" "" "Richard Joseph Player" 1
+test_metadata_extraction "Partial metadata" "https://modland.com/pub/modules/Richard%20Joseph/Richard%20Joseph/cannon%20fodder%20(intro).sng" "https://modland.com/pub/modules/Richard%20Joseph/Richard%20Joseph/cannon%20fodder%20(intro).ins" "" "" "Richard Joseph Player" 2
+
+# Subsong duration tests
+test_subsong_durations "Multi-subsong TFMX module" "https://modland.com/pub/modules/TFMX/Chris%20Huelsbeck/mdat.turrican%202%20level%200-intro" "https://modland.com/pub/modules/TFMX/Chris%20Huelsbeck/smpl.turrican%202%20level%200-intro" 3
+test_subsong_durations "Single subsong module" "https://modland.com/pub/modules/Protracker/Captain/space%20debris.mod" "" 1
 
 # Filename extraction tests
 test_filename_extraction "ModArchive URL" "https://api.modarchive.org/downloads.php?moduleid=188875#way_too_rude.mod" "way_too_rude.mod"
