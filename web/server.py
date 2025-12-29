@@ -1933,22 +1933,32 @@ def serve_audio_file(file_id, as_attachment=False, custom_filename=None):
             candidate_path = CONVERTED_DIR / f"{safe_file_id}{ext}"
             if not candidate_path.exists():
                 # Fetch from cache (we don't need the metadata here)
-                fetch_cached_file(safe_file_id, prefer_flac=(ext == ".flac"))
-            if candidate_path.exists() and candidate_path.resolve().relative_to(converted_dir_base):
-                file_path = candidate_path.resolve()
-                mimetype = mime
-                # Use custom filename if provided, else fallback to default
-                if custom_filename:
-                    filename = f"uade_{custom_filename}{ext}"
-                else:
-                    filename = f"uade_{safe_file_id}{ext}"
-                break
+                cached_file, _ = fetch_cached_file(safe_file_id, prefer_flac=(ext == ".flac"))
+                if cached_file:
+                    candidate_path = cached_file
+
+            if candidate_path.exists():
+                try:
+                    # Verify path is within converted_dir_base
+                    candidate_path.resolve().relative_to(converted_dir_base)
+                    file_path = candidate_path.resolve()
+                    mimetype = mime
+                    # Use custom filename if provided, else fallback to default
+                    if custom_filename:
+                        filename = f"uade_{custom_filename}{ext}"
+                    else:
+                        filename = f"uade_{safe_file_id}{ext}"
+                    break
+                except ValueError:
+                    # Path not contained within converted_dir_base, skip this candidate
+                    continue
+
         if not file_path:
             return json_response({"error": "File not found or forbidden"}, 404)
 
-    except ValueError:
-        # Path not contained within converted_dir_base
-        return json_response({"error": "File not found or forbidden"}, 404)
+    except Exception as e:
+        logger.error(f"Error serving file {safe_file_id}: {e}")
+        return json_response({"error": "Internal server error"}, 500)
 
     file_size = file_path.stat().st_size
 
