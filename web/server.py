@@ -72,6 +72,7 @@ app.config["MAX_DOWNLOAD_SIZE"] = MAX_DOWNLOAD_SIZE
 CLEANUP_INTERVAL: Final = int(os.getenv("CLEANUP_INTERVAL", 3600))  # 1 hour
 CACHE_CLEANUP_INTERVAL: Final = int(os.getenv("CACHE_CLEANUP_INTERVAL", 86400))  # 24 hours
 RATE_LIMIT: Final = int(os.getenv("RATE_LIMIT", 200))  # requests per hour
+DOWNLOAD_RATE_LIMIT: Final = int(os.getenv("DOWNLOAD_RATE_LIMIT", 3))  # downloads per minute
 PORT: Final = int(os.getenv("PORT", 5000))
 
 # Local directories for processing
@@ -1897,12 +1898,15 @@ def play_file(file_id):
 
 
 @app.route("/download/<file_id>")
-@limiter.limit("3 per minute")
+@limiter.limit(f"{DOWNLOAD_RATE_LIMIT} per minute", exempt_when=lambda: request.headers.get("Range") is not None)
 def download_file(file_id):
     """
     Download audio file (FLAC or WAV) with custom filename support.
 
     Client can pass ?filename=desired_name excluding extension to set the download filename.
+
+    Rate limiting: Apply DOWNLOAD_RATE_LIMIT per minute only to initial requests (no Range header).
+    Range requests for chunked downloads are exempt to avoid blocking large file downloads.
     """
     custom_filename = request.args.get("filename")
     if custom_filename:

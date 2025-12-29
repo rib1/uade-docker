@@ -475,10 +475,10 @@ test_download_functionality() {
     # Now, try to download the file
     DOWNLOAD_HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" "$BASE_URL$DOWNLOAD_URL")
 
-    if [ "$DOWNLOAD_HTTP_CODE" -eq 200 ]; then
-        echo "SUCCESS: Download URL returned HTTP 200."
+    if [ "$DOWNLOAD_HTTP_CODE" -eq 200 ] || [ "$DOWNLOAD_HTTP_CODE" -eq 206 ]; then
+        echo "SUCCESS: Download URL returned HTTP $DOWNLOAD_HTTP_CODE."
     else
-        echo "ERROR: Download URL returned unexpected HTTP $DOWNLOAD_HTTP_CODE (expected 200) for test '$TEST_NAME'"
+        echo "ERROR: Download URL returned unexpected HTTP $DOWNLOAD_HTTP_CODE (expected 200 or 206) for test '$TEST_NAME'"
         exit 1
     fi
     echo ""
