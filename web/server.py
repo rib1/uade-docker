@@ -848,6 +848,8 @@ def load_metadata_cache(cache_hash):
                 f.write(metadata_json)
             Path.replace(temp_file_local, metadata_file_local)
             logger.info(f"Cached metadata to local: {cache_hash}.json")
+            # Touch file to extend its cleanup interval (LRU-aware caching)
+            touch_for_lru(metadata_file_local)
 
             return metadata
     except Exception as e:
@@ -937,21 +939,34 @@ def process_audio_conversion(input_path, compress_flac=False, sample_files=None)
                 [],
             )
 
-        # Detect module metadata before conversion
+        # Calculate cache hash first to check for cached metadata
         cache_hash = get_file_hash(input_path)
-        # Use a unique lock file for metadata detection (per thread/process)
-        unique_metadata_lock = MODULES_DIR / f"{cache_hash}.metadatalock.{str(uuid.uuid4())}"
-        unique_metadata_lock.touch(exist_ok=True)
-        try:
-            (
-                metadata_success,
-                module_name,
-                module_format,
-                player_format,
-                subsongs,
-            ) = detect_module_metadata(input_path)
-        finally:
-            unique_metadata_lock.unlink(missing_ok=True)
+
+        # Try to load cached metadata first to avoid expensive metadata detection
+        cached_metadata = load_metadata_cache(cache_hash)
+        if cached_metadata:
+            # Use cached metadata instead of running detection
+            module_name = cached_metadata.get("module_name")
+            module_format = cached_metadata.get("module_format")
+            player_format = cached_metadata.get("player_format", "Module")
+            subsongs = cached_metadata.get("subsongs", 1)
+            metadata_success = True
+            logger.info(f"Using cached metadata for {cache_hash}: {module_name} ({player_format})")
+        else:
+            # No cached metadata, run detection
+            # Use a unique lock file for metadata detection (per thread/process)
+            unique_metadata_lock = MODULES_DIR / f"{cache_hash}.metadatalock.{str(uuid.uuid4())}"
+            unique_metadata_lock.touch(exist_ok=True)
+            try:
+                (
+                    metadata_success,
+                    module_name,
+                    module_format,
+                    player_format,
+                    subsongs,
+                ) = detect_module_metadata(input_path)
+            finally:
+                unique_metadata_lock.unlink(missing_ok=True)
 
         # Truncates file to 0 bytes if metadata detection fails.
         # This prevents disk abuse and caches the fact that this URL provides an invalid module.
