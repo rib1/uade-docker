@@ -624,13 +624,18 @@ function navigateToNextSubsong() {
 function setupDownloadButton() {
   downloadBtn.addEventListener("click", async () => {
     if (currentDownloadUrl) {
+      // Lock button and show spinner
       downloadBtn.disabled = true;
+      const originalText = downloadBtn.textContent;
+      downloadBtn.innerHTML = '<span class="loading"></span> Preparing download...';
+
       try {
         const response = await fetch(currentDownloadUrl);
         const contentType = response.headers.get("content-type") || "";
         if (contentType.includes("application/json")) {
           const data = await response.json();
           showStatus(`✗ Error: ${data.error || "Rate limit exceeded"}`, "error");
+          downloadBtn.textContent = originalText;
           downloadBtn.disabled = false;
         } else if (response.status === 206 && response.headers.get("content-length") === "0") {
           // Server sent empty 206 prompt for large file - download with range requests
@@ -640,6 +645,7 @@ function setupDownloadButton() {
 
           if (!fileSize) {
             showStatus("✗ Download failed: Invalid server response", "error");
+            downloadBtn.textContent = originalText;
             downloadBtn.disabled = false;
             return;
           }
@@ -651,14 +657,20 @@ function setupDownloadButton() {
             filename = disposition.split("filename=")[1].replace(/["']/g, "").trim();
           }
 
+          downloadBtn.innerHTML = '<span class="loading"></span> Downloading...';
           showStatus("Downloading large file...", "info");
 
           try {
             await downloadWithRangeRequests(currentDownloadUrl, filename, fileSize);
             showStatus("Download complete", "success");
+            // Re-enable after short delay to allow download window to pop up
+            setTimeout(() => {
+              downloadBtn.textContent = originalText;
+              downloadBtn.disabled = false;
+            }, 1000);
           } catch (error) {
             showStatus(`✗ Download failed: ${error.message}`, "error");
-          } finally {
+            downloadBtn.textContent = originalText;
             downloadBtn.disabled = false;
           }
         } else if (response.ok) {
@@ -678,19 +690,20 @@ function setupDownloadButton() {
           a.click();
           a.remove();
           showStatus("Download started", "success");
-          // Re-enable after short delay to avoid duplicate clicks
-          setTimeout(() => { downloadBtn.disabled = false; }, 1000);
+          // Re-enable after short delay to allow download window to pop up
+          setTimeout(() => {
+            downloadBtn.textContent = originalText;
+            downloadBtn.disabled = false;
+          }, 1000);
         } else {
           showStatus("✗ Download failed: Server error", "error");
+          downloadBtn.textContent = originalText;
           downloadBtn.disabled = false;
         }
       } catch (error) {
         showStatus(`✗ Download failed: ${error.message}`, "error");
-      } finally {
-        // Ensure button is re-enabled if an error occurs but wasn't caught in the try block (e.g. network error)
-        if (downloadBtn.disabled) {
-            downloadBtn.disabled = false;
-        }
+        downloadBtn.textContent = originalText;
+        downloadBtn.disabled = false;
       }
     }
   });
