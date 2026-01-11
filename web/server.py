@@ -72,7 +72,7 @@ app.config["MAX_DOWNLOAD_SIZE"] = MAX_DOWNLOAD_SIZE
 CLEANUP_INTERVAL: Final = int(os.getenv("CLEANUP_INTERVAL", 3600))  # 1 hour
 CACHE_CLEANUP_INTERVAL: Final = int(os.getenv("CACHE_CLEANUP_INTERVAL", 86400))  # 24 hours
 RATE_LIMIT: Final = int(os.getenv("RATE_LIMIT", 200))  # requests per hour
-DOWNLOAD_RATE_LIMIT: Final = int(os.getenv("DOWNLOAD_RATE_LIMIT", 3))  # downloads per minute
+DOWNLOAD_RATE_LIMIT: Final = int(os.getenv("DOWNLOAD_RATE_LIMIT", 6))  # downloads per minute
 PORT: Final = int(os.getenv("PORT", 5000))
 
 # Local directories for processing
