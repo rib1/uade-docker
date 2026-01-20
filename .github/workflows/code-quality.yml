@@ -39,7 +39,7 @@ jobs:
 
       - name: Run code quality checks
         run: |
-          docker-compose -f docker-compose.yml -f test/docker-compose.quality.yml up --build quality-check
+          docker compose -f docker-compose.yml -f test/docker-compose.quality.yml up --build quality-check
 
       - name: Check exit code
         if: failure()
