@@ -627,7 +627,7 @@ function setupDownloadButton() {
       // Lock button and show spinner
       downloadBtn.disabled = true;
       const originalText = downloadBtn.textContent;
-      downloadBtn.innerHTML = '<span class="loading"></span> Preparing download...';
+      downloadBtn.innerHTML = "<span class=\"loading\"></span> Preparing download...";
 
       try {
         const response = await fetch(currentDownloadUrl);
@@ -657,7 +657,7 @@ function setupDownloadButton() {
             filename = disposition.split("filename=")[1].replace(/["']/g, "").trim();
           }
 
-          downloadBtn.innerHTML = '<span class="loading"></span> Downloading...';
+          downloadBtn.innerHTML = "<span class=\"loading\"></span> Downloading...";
           showStatus("Downloading large file...", "info");
 
           try {

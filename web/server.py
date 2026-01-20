@@ -643,7 +643,9 @@ def save_to_cache(cache_hash, file, ext):
         temp_file_remote = f"{cache_file_remote}.{uuid.uuid4()}.tmp"
 
         if not fs_cache.exists(cache_file_remote):
-            with open(metadata_file_local, "rb") as src, fs_cache.open(temp_file_remote, "wb") as dst:
+            with open(metadata_file_local, "rb") as src, fs_cache.open(
+                temp_file_remote, "wb"
+            ) as dst:
                 shutil.copyfileobj(src, dst, length=1024 * 1024)  # 1MB buffer
             # Atomic move to final remote name
             fs_cache.mv(temp_file_remote, cache_file_remote)
@@ -743,7 +745,7 @@ def detect_module_metadata(input_path):
                 if min_val is not None and max_val is not None:
                     subsongs = max_val - min_val + 1
                 else:
-                    subsongs = 1 # Fallback if not found
+                    subsongs = 1  # Fallback if not found
 
         # Check for 'uade:is_custom': True in output
         if "'uade:is_custom': True" in result.stdout:
@@ -785,7 +787,7 @@ def parse_subsong_durations(uade_output, subsong_count):
 
     # Parse durations for multiple subsongs
     durations = {}
-    time_pattern = re.compile(r'Playing time position (\d+(?:\.\d+)?)s in subsong (\d+)')
+    time_pattern = re.compile(r"Playing time position (\d+(?:\.\d+)?)s in subsong (\d+)")
 
     for line in uade_output.splitlines():
         time_match = time_pattern.search(line)
@@ -803,12 +805,15 @@ def parse_subsong_durations(uade_output, subsong_count):
 
     return duration_list, None
 
+
 def save_metadata(cache_hash, metadata):
     """Save metadata JSON to local disk first, then copy to remote cache (same pattern as audio files)"""
     try:
         # Save to local disk
         metadata_file_local = CONVERTED_DIR / f"{cache_hash}.json"
-        temp_file_local = metadata_file_local.with_name(f"{metadata_file_local.name}.{uuid.uuid4()}.tmp")
+        temp_file_local = metadata_file_local.with_name(
+            f"{metadata_file_local.name}.{uuid.uuid4()}.tmp"
+        )
 
         metadata_json = json.dumps(metadata)
         with open(temp_file_local, "w") as f:
@@ -843,7 +848,9 @@ def load_metadata_cache(cache_hash):
             logger.info(f"Loaded metadata from remote cache: {cache_hash}.json")
 
             # Save to local disk for future access
-            temp_file_local = metadata_file_local.with_name(f"{metadata_file_local.name}.{uuid.uuid4()}.tmp")
+            temp_file_local = metadata_file_local.with_name(
+                f"{metadata_file_local.name}.{uuid.uuid4()}.tmp"
+            )
             metadata_json = json.dumps(metadata)
             with open(temp_file_local, "w") as f:
                 f.write(metadata_json)
@@ -1898,7 +1905,10 @@ def play_file(file_id):
 
 
 @app.route("/download/<file_id>")
-@limiter.limit(f"{DOWNLOAD_RATE_LIMIT} per minute", exempt_when=lambda: request.headers.get("Range") is not None)
+@limiter.limit(
+    f"{DOWNLOAD_RATE_LIMIT} per minute",
+    exempt_when=lambda: request.headers.get("Range") is not None,
+)
 def download_file(file_id):
     """
     Download audio file (FLAC or WAV) with custom filename support.

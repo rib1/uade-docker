@@ -1,10 +1,12 @@
 # Build and run the run web player:
 #    powershell:
-#    $env:GIT_COMMIT = (git rev-parse HEAD); docker-compose up -d --build uade-web
+#    $env:GIT_COMMIT = (git rev-parse HEAD); docker-compose -f docker-compose.yml up -d --build uade-web
 #    or in bash:
-#    GIT_COMMIT=$(git rev-parse HEAD); docker-compose up --build  uade-web
+#    GIT_COMMIT=$(git rev-parse HEAD); docker-compose -f docker-compose.yml up -d --build uade-web
 # To stop and remove all containers:
 #    docker compose down -v
+# To validate code quality:
+#     docker-compose -f docker-compose.yml -f test/docker-compose.quality.yml up --build quality-check
 # To run integration tests:
 # 1. Build and run the test runner service (this sets UADE_TEST_MODE=1 for uade-web):
 #    powershell:

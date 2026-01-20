@@ -1,0 +1,26 @@
+# Code Quality Validation Service (Docker Compose Override)
+#
+# Usage (from project root):
+#   # Run code quality checks
+#   docker-compose -f docker-compose.yml -f test/docker-compose.quality.yml up --build quality-check
+
+services:
+  quality-check:
+    build:
+      context: .
+      dockerfile: test/Dockerfile.quality
+    container_name: uade-quality-check
+    volumes:
+      # Mount Docker socket for Docker-in-Docker
+      - /var/run/docker.sock:/var/run/docker.sock
+      # Mount project files for validation (read-only)
+      - ./web:/workspace/web:ro
+      - ./.github:/workspace/.github:ro
+      - ./pyproject.toml:/workspace/pyproject.toml:ro
+    working_dir: /workspace
+    networks:
+      - uade-net
+
+networks:
+  uade-net:
+    driver: bridge

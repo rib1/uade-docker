@@ -62,7 +62,7 @@ jobs:
               echo "No BASE_IMAGE in Dockerfile.web; falling back to GHCR image: ${BASE_IMAGE}"
             fi
           fi
-          echo "base_image=${BASE_IMAGE}" >> $GITHUB_OUTPUT
+          echo "base_image=${BASE_IMAGE}" >> "$GITHUB_OUTPUT"
 
       - name: Pull pinned base image
         run: |
@@ -76,7 +76,7 @@ jobs:
           # Extract version from Dockerfile header comment
           # Format: # UADE CLI Base Image v3.05-base.1
           DOCKERFILE_VERSION=$(grep -oP 'UADE CLI Base Image v\K[0-9.]+' Dockerfile | head -1)
-          echo "version=${DOCKERFILE_VERSION}" >> $GITHUB_OUTPUT
+          echo "version=${DOCKERFILE_VERSION}" >> "$GITHUB_OUTPUT"
           echo "Dockerfile version: ${DOCKERFILE_VERSION}"
 
       - name: Get UADE binary version from container
@@ -85,18 +85,18 @@ jobs:
           # Get version from uade123 --version inside the pulled base image
           BASE_IMAGE="${{ steps.base-image.outputs.base_image }}"
           CONTAINER_VERSION=$(docker run --rm "$BASE_IMAGE" uade123 --version | grep -oP 'uade123 \K[0-9.]+')
-          echo "version=${CONTAINER_VERSION}" >> $GITHUB_OUTPUT
+          echo "version=${CONTAINER_VERSION}" >> "$GITHUB_OUTPUT"
           echo "Container version: ${CONTAINER_VERSION}"
 
       - name: Verify versions match
         run: |
           DOCKERFILE_VERSION="${{ steps.dockerfile-version.outputs.version }}"
           CONTAINER_VERSION="${{ steps.container-version.outputs.version }}"
-          
+
           echo "Checking UADE version consistency..."
           echo "  Dockerfile declares: ${DOCKERFILE_VERSION}"
           echo "  Container binary is: ${CONTAINER_VERSION}"
-          
+
           if [ "${DOCKERFILE_VERSION}" != "${CONTAINER_VERSION}" ]; then
             echo "❌ VERSION MISMATCH!"
             echo "   Dockerfile header shows v${DOCKERFILE_VERSION}"
@@ -105,15 +105,14 @@ jobs:
             echo "Fix: Update Dockerfile header to match actual version"
             exit 1
           fi
-          
+
           echo "✅ Version match verified: ${CONTAINER_VERSION}"
 
       - name: Verify UADE functionality
         run: |
           echo "Testing UADE help command..."
           BASE_IMAGE="${{ steps.base-image.outputs.base_image }}"
-          docker run --rm "$BASE_IMAGE" uade123 --help > /dev/null 2>&1
-          if [ $? -eq 0 ]; then
+          if docker run --rm "$BASE_IMAGE" uade123 --help > /dev/null 2>&1; then
             echo "✅ UADE help command works"
           else
             echo "❌ UADE help command failed"
