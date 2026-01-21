@@ -37,10 +37,12 @@ COPY --from=uade-base /usr/local/lib/ /usr/local/lib/
 RUN ldconfig
 
 # Create Python virtual environment and install dependencies
+# hadolint ignore=DL3059
 RUN python3 -m venv /opt/venv
 ENV PATH="/opt/venv/bin:$PATH"
 
 # Create app directory structure and non-root user
+# hadolint ignore=DL3059
 RUN mkdir -p /app /tmp/modules /tmp/converted /tmp/cache && \
     useradd -m -u 1000 -s /bin/bash uade && \
     chown -R uade:uade /app /opt/venv && \

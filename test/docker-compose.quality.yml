@@ -2,7 +2,7 @@
 #
 # Usage (from project root):
 #   # Run code quality checks
-#   docker-compose -f docker-compose.yml -f test/docker-compose.quality.yml up --build quality-check
+#   docker compose -f docker-compose.yml -f test/docker-compose.quality.yml up --build quality-check
 
 services:
   quality-check:
@@ -16,7 +16,13 @@ services:
       # Mount project files for validation (read-only)
       - ./web:/workspace/web:ro
       - ./.github:/workspace/.github:ro
+      - ./test:/workspace/test:ro
       - ./pyproject.toml:/workspace/pyproject.toml:ro
+      # Mount root-level files for Hadolint and Docker Compose validation
+      - ./Dockerfile:/workspace/Dockerfile:ro
+      - ./Dockerfile.web:/workspace/Dockerfile.web:ro
+      - ./docker-compose.yml:/workspace/docker-compose.yml:ro
+      - ./.hadolint.yaml:/workspace/.hadolint.yaml:ro
     working_dir: /workspace
     networks:
       - uade-net

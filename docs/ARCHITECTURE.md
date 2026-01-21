@@ -9,26 +9,26 @@ architecture-beta
     group user(cloud)[User Interface]
     group local(server)[Local Docker]
     group gcp(cloud)[Google Cloud Platform]
-    
+
     service browser(internet)[Web Browser] in user
     service cli(disk)[Command Line] in user
-    
+
     service docker_cli(server)[UADE CLI Container] in local
     service docker_web(server)[UADE Web Container] in local
-    
+
     service github(internet)[GitHub Actions] in gcp
   service ghcr(database)[GitHub Container Registry] in gcp
     service cloudrun(server)[Cloud Run Service] in gcp
-    
+
     service modland(internet)[Modland Archive]
-    
+
     browser:B --> T:cloudrun
     cli:B --> T:docker_cli
     browser:B --> T:docker_web
-    
+
   github:R --> L:ghcr
   ghcr:R --> L:cloudrun
-    
+
     cloudrun:B --> T:modland
     docker_web:B --> T:modland
     docker_cli:B --> T:modland
@@ -156,6 +156,13 @@ architecture-beta
 
 ### CI/CD
 
+- **Code Quality Checks**: Automated quality checks run on every push and pull request:
+  - **ESLint 9:** JavaScript/TypeScript linting with strict rules
+  - **Black 23.3.0:** Python code formatting enforcer
+  - **Hadolint 2.12.0:** Dockerfile linting and best practices validation
+  - **Docker Compose Validation:** Validates all compose files including test overrides
+  - **ActionLint 1.7.4:** GitHub Actions workflow validation
+  - See [docs/CODE-QUALITY.md](CODE-QUALITY.md) for detailed usage and configuration
 - **Dependabot**: Automatically monitors and updates Docker, Pip, and GitHub Actions dependencies with security patches.
 - **Dependency Review**: Scans for vulnerable dependencies in every pull request and blocks merging if issues of `moderate` severity or higher are found.
 - SAST (Static Application Security Testing):
@@ -164,14 +171,14 @@ architecture-beta
   - **Bandit:** Performs security analysis specifically for Python code.
 - Container Scanning:
   - **Trivy:** Scans the filesystem and Docker images for known vulnerabilities.
-  - **Hadolint:** Lints Dockerfiles to enforce best practices.
+  - **Hadolint:** Lints Dockerfiles to enforce best practices in CI/CD (also used in code quality checks).
 
 ## Dynamic Application Security Testing (DAST)
 
 ### OWASP ZAP Integration
 
 - **Manual DAST:** DAST scans are not run automatically in CI/CD pipelines. Developers must manually run OWASP ZAP using docker-compose:
-  - Run: `docker-compose up --build zap-scan`
+  - Run: `docker compose up --build zap-scan`
   - The HTML report will be generated in the `./reports` directory.
 - **Scope:** ZAP scans the running `uade-web` service for common web vulnerabilities (XSS, CSRF, authentication flaws, misconfigurations).
 - **Exclusions:** Health endpoints and static assets are excluded from scans to reduce noise.
@@ -180,7 +187,7 @@ architecture-beta
 ## Concurrency Testing
 
 - **Manual Stress and Concurrency Testing:** Concurrency tests are not run automatically in CI/CD pipelines. Developers must manually run the race condition test using docker-compose:
-  - Run: `docker-compose up --build uade-test-race-condition-runner`
+  - Run: `docker compose up --build uade-test-race-condition-runner`
   - This executes the custom shell script `test/test_race_condition.sh`, which fires multiple simultaneous requests to the conversion endpoint and checks for race conditions.
 - **Race Condition Defense:** All conversion logic uses atomic file locks and double-checked caching to prevent race conditions and ensure correct results under load.
 
@@ -215,8 +222,8 @@ architecture-beta
 
 ### Development
 
-- **Linting:** Black (Python), ESLint (JS), Hadolint (Docker), Prettier (All)
-- **Security:** Bandit, W3C Validator
+- **Code Quality:** ESLint 9 (JavaScript), Black 23.3.0 (Python), Hadolint 2.12.0 (Docker), ActionLint 1.7.4 (GitHub Actions), Docker Compose validation
+- **Security:** Bandit, Semgrep, CodeQL, Trivy
 - **Version Control:** Git, GitHub
 - **Documentation:** Markdown, Mermaid
 

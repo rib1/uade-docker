@@ -30,12 +30,12 @@ git clone https://github.com/rib1/uade-docker.git
 cd uade-docker
 
 # Start the web player
-docker-compose up -d uade-web
+docker compose up -d uade-web
 
 # Access at: http://localhost:5000
 ```
 
-**What docker-compose provides:**
+**What Docker Compose provides:**
 
 - Automatic build and startup
 - Health checks with auto-restart
@@ -48,18 +48,18 @@ docker-compose up -d uade-web
 
 ```powershell
 # View logs
-docker-compose logs -f uade-web
+docker compose logs -f uade-web
 
 # Stop the service
-docker-compose down uade-web # or docker-compose down for all services
+docker compose down uade-web # or docker compose down for all services
 
 # Rebuild after code changes (for web player only)
-docker-compose up -d --build uade-web
+docker compose up -d --build uade-web
 # To inject the current git commit hash into the container, run:
-$env:GIT_COMMIT = (git rev-parse HEAD); docker-compose up -d --build uade-web
+$env:GIT_COMMIT = (git rev-parse HEAD); docker compose up -d --build uade-web
 
 # View service status
-docker-compose ps
+docker compose ps
 ```
 
 **Configuration:**
@@ -90,7 +90,7 @@ services:
 
 ### Manual Docker Build
 
-For manual control without docker-compose:
+For manual control without Docker Compose:
 
 ```powershell
 # Build the image
@@ -372,11 +372,11 @@ Interactive input fields have associated accessible names to ensure they are pro
 
 - Ensure Docker Desktop is running
 - Check internet connection (downloads UADE from GitLab)
-- Try: `docker-compose build --no-cache`
+- Try: `docker compose build --no-cache`
 
 **"502 Bad Gateway" or health check fails:**
 
-- Check logs: `docker-compose logs -f`
+- Check logs: `docker compose logs -f`
 - Verify port 5000 is not in use
 - Wait 30s for container initialization
 
@@ -417,12 +417,12 @@ If issues persist, run with debug logging enabled and check cloud provider logs 
 
 ### Running Tests
 
-To run the integration tests using `docker-compose`:
+To run the integration tests using Docker Compose:
 
 1. **Build and run the test runner service (one time setup):**
 
     ```powershell
-    $env:GIT_COMMIT = (git rev-parse HEAD); docker-compose up --build uade-test-runner
+    $env:GIT_COMMIT = (git rev-parse HEAD); docker compose up --build uade-test-runner
     ```
 
     This will build the `uade-test-runner` image and run the tests. The container will exit after the tests are completed.
@@ -430,7 +430,7 @@ To run the integration tests using `docker-compose`:
 2. **To run tests again (after initial setup):**
 
     ```powershell
-    docker-compose run --rm uade-test-runner
+    docker compose run --rm uade-test-runner
     ```
 
     This command will run the tests in a new container and remove it upon completion (`--rm`).
@@ -440,7 +440,7 @@ To run the integration tests using `docker-compose`:
 
 UADE Web Player supports manual Dynamic Application Security Testing (DAST) using OWASP ZAP. To run a security scan against the running web service:
 
-- Run: `docker-compose up --build zap-scan`
+- Run: `docker compose up --build zap-scan`
 - The HTML report will be generated in the `./reports` directory.
 
 DAST scans are not automated in CI/CD and must be run manually by developers.

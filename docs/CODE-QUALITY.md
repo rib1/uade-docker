@@ -4,11 +4,13 @@ This document explains the code quality checks and how to run them for the UADE 
 
 ## Overview
 
-The UADE Docker project uses three automated code quality tools, all running in Docker containers (no local installation required):
+The UADE Docker project uses five automated code quality tools:
 
 1. **ESLint** - JavaScript/CSS linting and style checking
 2. **Black** - Python code formatting and consistency
-3. **ActionLint** - GitHub Actions workflow validation
+3. **Hadolint** - Dockerfile linting and best practices
+4. **Docker Compose** - Compose file validation
+5. **ActionLint** - GitHub Actions workflow validation
 
 ## Tools
 
@@ -60,32 +62,66 @@ docker run -it --rm -v ${pwd}/web/static:/data cytopia/eslint . --fix
 docker run --rm -v ${pwd}/web:/data cytopia/black . --line-length 100
 ```
 
-**With auto-fix:**
+### Hadolint (Dockerfiles)
+
+**Purpose:** Lint Dockerfiles for best practices and common errors.
+
+**Version:** 2.12.0
+
+**Configuration:** `.hadolint.yaml` (ignores warnings, only fails on errors)
+
+**Files checked:** All `Dockerfile*` files in the repository
+
+**Execution:** Requires Docker (runs hadolint/hadolint:v2.12.0 image)
+
+**Direct Docker command:**
 
 ```bash
-docker run --rm -v ${pwd}/web:/data cytopia/black . --line-length 100
+Get-Content Dockerfile | docker run --rm -i -v "${pwd}/.hadolint.yaml:/.hadolint.yaml:ro" hadolint/hadolint:v2.12.0 hadolint --config /.hadolint.yaml -
 ```
 
-(Note: Black auto-formats by default when `--check` is not specified)
+### Docker Compose (Validation)
 
-### ActionLint (GitHub Actions)
+**Purpose:** Validate Docker Compose file syntax and configuration.
 
-**Purpose:** Validate GitHub Actions workflow YAML syntax and best practices.
+**Files checked:**
 
-**Version:** ActionLint 1.7.4
+- `docker-compose.yml` (base file)
+- `test/docker-compose.endpoints.yml` (override)
+- `test/docker-compose.quality.yml` (override)
+- `test/docker-compose.ratelimit.yml` (override)
 
-**Files checked:** `/.github/workflows/**/*.yml`, `/.github/workflows/**/*.yaml`
+**Execution:** Uses `docker compose config --quiet` for validation. Override files are validated together with the base file.
+
+**Direct command:**
+
+```bash
+# Validate base file
+docker compose -f docker-compose.yml config --quiet
+
+# Validate override file with base
+docker compose -f docker-compose.yml -f test/docker-compose.quality.yml config --quiet
+```
+
+**Note:** Override files in `test/` are validated together with the base file.
+
+### ActionLint (GitHub Workflows)
+
+**Purpose:** Validate GitHub Actions workflow syntax and best practices.
+
+**Version:** 1.7.4
+
+**Files checked:** `.github/workflows/**/*.yml`
 
 **Dual-Mode Execution:**
 
-- In quality-check container: Uses locally installed ActionLint
+- In quality-check container: Uses locally installed ActionLint binary
 - Local development: Falls back to Docker container
 
 **Direct Docker command:**
 
 ```bash
-docker run --rm -v ${pwd}:/workspace --workdir /workspace \
-  rhysd/actionlint -color /workspace/.github/workflows/build-deploy-web-player.yml
+docker run --rm -v ${pwd}/.github/workflows:/workflows rhysd/actionlint:1.7.4 -color /workflows/*.yml
 ```
 
 ## Running Code Quality Checks
@@ -95,20 +131,22 @@ docker run --rm -v ${pwd}:/workspace --workdir /workspace \
 Use the Docker Compose quality-check service for consistent, isolated checks:
 
 ```bash
-# Run all checks in Docker container
-docker-compose -f docker-compose.yml -f test/docker-compose.quality.yml up --build quality-check
+# Run all available checks in Docker container (ESLint, Black, Hadolint, ActionLint)
+docker compose -f docker-compose.yml -f test/docker-compose.quality.yml run --rm --build quality-check
 ```
 
 This approach:
 
-- Runs all tools (ESLint, Black, ActionLint) in an isolated container
+- Runs ESLint, Black, Hadolint, and ActionLint in an isolated container
 - No local installation required
 - Consistent results across all environments
 - Properly exits with code 1 on failures
 
-### Local Script Execution
+**Note:** Docker Compose file validation requires the Docker Compose plugin and is only available via local script execution.
 
-You can also run the scripts directly on your machine:
+### Local Script Execution (All Checks Including Compose Validation)
+
+Run the scripts directly on your machine to execute all five checks:
 
 **Bash (Linux/Mac/Git Bash):**
 
@@ -122,6 +160,8 @@ You can also run the scripts directly on your machine:
 # Run specific checks only
 ./test/check-code-quality.sh --eslint
 ./test/check-code-quality.sh --black
+./test/check-code-quality.sh --hadolint
+./test/check-code-quality.sh --compose
 ./test/check-code-quality.sh --actionlint
 ```
 
@@ -137,6 +177,8 @@ You can also run the scripts directly on your machine:
 # Run specific checks only
 .\test\check-code-quality.ps1 -ESLint
 .\test\check-code-quality.ps1 -Black
+.\test\check-code-quality.ps1 -Hadolint
+.\test\check-code-quality.ps1 -Compose
 .\test\check-code-quality.ps1 -ActionLint
 ```
 
@@ -160,6 +202,23 @@ docker run --rm -v ${pwd}/web:/data cytopia/black . --line-length 100 --check
 
 # Auto-format code
 docker run --rm -v ${pwd}/web:/data cytopia/black . --line-length 100
+```
+
+#### Hadolint Only
+
+```bash
+# PowerShell
+Get-Content Dockerfile | docker run --rm -i -v "${pwd}/.hadolint.yaml:/.hadolint.yaml:ro" hadolint/hadolint:v2.12.0 hadolint --config /.hadolint.yaml -
+
+# Bash
+docker run --rm -i -v "${PWD}/.hadolint.yaml:/.hadolint.yaml:ro" hadolint/hadolint:v2.12.0 hadolint --config /.hadolint.yaml - < Dockerfile
+```
+
+#### Docker Compose Only
+
+```bash
+# Validate main compose file
+docker compose -f docker-compose.yml config --quiet
 ```
 
 #### ActionLint Only
@@ -193,7 +252,7 @@ Black is configured with:
 
 - Line length: 100 characters
 - Target Python version: 3.9+
-- Exclude: .git, .hg, .mypy_cache, .tox, .venv, build, dist, __pycache__
+- Exclude: .git, .hg, .mypy_cache, .tox, .venv, build, dist, `__pycache__`
 
 ### ActionLint Configuration
 
@@ -255,7 +314,7 @@ Then commit and push the fixes.
 1. Run code quality checks (Docker Compose - recommended):
 
    ```bash
-   docker-compose -f docker-compose.yml -f test/docker-compose.quality.yml up --build quality-check
+   docker compose -f docker-compose.yml -f test/docker-compose.quality.yml up --build quality-check
    ```
 
    Or using local scripts:

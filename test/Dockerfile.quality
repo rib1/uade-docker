@@ -1,9 +1,9 @@
 # UADE Docker - Code Quality Validation Service
 #
 # This Dockerfile creates a service that validates code quality before building
-# Use with: docker-compose -f docker-compose.yml -f test/docker-compose.quality.yml up quality-check
+# Use with: docker compose -f docker-compose.yml -f test/docker-compose.quality.yml up quality-check
 #
-# This allows developers to run: docker-compose up quality-check
+# This allows developers to run: docker compose up quality-check
 
 FROM node:20-alpine
 
@@ -18,16 +18,20 @@ RUN apk add --no-cache \
     py3-pip \
     docker-cli \
     && ACTIONLINT_VERSION=1.7.4 \
-    && curl -fsSL https://github.com/rhysd/actionlint/releases/download/v${ACTIONLINT_VERSION}/actionlint_${ACTIONLINT_VERSION}_linux_amd64.tar.gz -o /tmp/actionlint.tar.gz \
+    && curl -fsSL "https://github.com/rhysd/actionlint/releases/download/v${ACTIONLINT_VERSION}/actionlint_${ACTIONLINT_VERSION}_linux_amd64.tar.gz" -o /tmp/actionlint.tar.gz \
     && tar xzf /tmp/actionlint.tar.gz -C /tmp \
     && mv /tmp/actionlint /usr/local/bin/actionlint \
     && chmod +x /usr/local/bin/actionlint \
-    && rm -f /tmp/actionlint.tar.gz
+    && rm -f /tmp/actionlint.tar.gz \
+    && HADOLINT_VERSION=2.12.0 \
+    && curl -fsSL "https://github.com/hadolint/hadolint/releases/download/v${HADOLINT_VERSION}/hadolint-Linux-x86_64" -o /usr/local/bin/hadolint \
+    && chmod +x /usr/local/bin/hadolint
 
 # Install ESLint globally (version 9 for better flat config support)
 RUN npm install -g eslint@9
 
 # Install Black via pip
+# hadolint ignore=DL3042,DL3059
 RUN pip3 install black==23.3.0 --break-system-packages
 
 # Copy check script from test folder (context is project root)

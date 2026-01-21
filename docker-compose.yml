@@ -1,29 +1,29 @@
 # Build and run the run web player:
 #    powershell:
-#    $env:GIT_COMMIT = (git rev-parse HEAD); docker-compose -f docker-compose.yml up -d --build uade-web
+#    $env:GIT_COMMIT = (git rev-parse HEAD); docker compose -f docker-compose.yml up -d --build uade-web
 #    or in bash:
-#    GIT_COMMIT=$(git rev-parse HEAD); docker-compose -f docker-compose.yml up -d --build uade-web
+#    GIT_COMMIT=$(git rev-parse HEAD); docker compose -f docker-compose.yml up -d --build uade-web
 # To stop and remove all containers:
 #    docker compose down -v
 # To validate code quality:
-#     docker-compose -f docker-compose.yml -f test/docker-compose.quality.yml up --build quality-check
+#     docker compose -f docker-compose.yml -f test/docker-compose.quality.yml run --rm --build quality-check
 # To run integration tests:
 # 1. Build and run the test runner service (this sets UADE_TEST_MODE=1 for uade-web):
 #    powershell:
-#    $env:GIT_COMMIT = (git rev-parse HEAD); docker-compose -f docker-compose.yml -f test/docker-compose.endpoints.yml up --build uade-web uade-test-runner test-http-server
+#    $env:GIT_COMMIT = (git rev-parse HEAD); docker compose -f docker-compose.yml -f test/docker-compose.endpoints.yml up --build uade-web uade-test-runner test-http-server
 #    or in bash:
-#    GIT_COMMIT=$(git rev-parse HEAD); docker-compose -f docker-compose.yml -f test/docker-compose.endpoints.yml up --build uade-web uade-test-runner test-http-server
+#    GIT_COMMIT=$(git rev-parse HEAD); docker compose -f docker-compose.yml -f test/docker-compose.endpoints.yml up --build uade-web uade-test-runner test-http-server
 # 2. To run integration tests again:
-#    docker-compose -f docker-compose.yml -f test/docker-compose.endpoints.yml run --rm uade-test-runner
+#    docker compose -f docker-compose.yml -f test/docker-compose.endpoints.yml run --rm uade-test-runner
 # 3. To run ratelimit-tests (RATE_LIMIT_DISABLED set ON by docker-compose.ratelimit.yml):
-#    docker-compose -f docker-compose.yml -f test/docker-compose.ratelimit.yml up --build uade-test-ratelimit-runner
+#    docker compose -f docker-compose.yml -f test/docker-compose.ratelimit.yml up --build uade-test-ratelimit-runner
 # 4. To run the race condition test:
-#    docker-compose up --build uade-test-race-condition-runner
+#    docker compose up --build uade-test-race-condition-runner
 # 5. To run a DAST scan (UADE_TEST_MODE is OFF by default):
-#    docker-compose up --build zap-scan
+#    docker compose up --build zap-scan
 #    The HTML report will be in the ./reports directory.
 # 6. To run a full DAST scan (UADE_TEST_MODE is OFF by default):
-#    docker-compose up --build zap-full-scan
+#    docker compose up --build zap-full-scan
 #    The HTML report will be in the ./reports directory.
 
 services:

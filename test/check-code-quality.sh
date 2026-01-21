@@ -10,6 +10,8 @@
 #   ./test/check-code-quality.sh --eslint     # ESLint only
 #   ./test/check-code-quality.sh --black      # Black only
 #   ./test/check-code-quality.sh --actionlint # ActionLint only
+#   ./test/check-code-quality.sh --hadolint   # Hadolint only
+#   ./test/check-code-quality.sh --compose    # Docker Compose only
 
 # Don't use set -e because we want to run all checks even if one fails
 # We handle errors manually and exit at the end based on FAILED_CHECKS count
@@ -38,6 +40,8 @@ FIX_MODE=false
 RUN_ESLINT=true
 RUN_BLACK=true
 RUN_ACTIONLINT=true
+RUN_HADOLINT=true
+RUN_COMPOSE=true
 
 for arg in "$@"; do
     case $arg in
@@ -61,11 +65,29 @@ for arg in "$@"; do
             RUN_ACTIONLINT=true
             RUN_ESLINT=false
             RUN_BLACK=false
+            RUN_HADOLINT=false
+            RUN_COMPOSE=false
+            shift
+            ;;
+        --hadolint)
+            RUN_HADOLINT=true
+            RUN_ESLINT=false
+            RUN_BLACK=false
+            RUN_ACTIONLINT=false
+            RUN_COMPOSE=false
+            shift
+            ;;
+        --compose)
+            RUN_COMPOSE=true
+            RUN_ESLINT=false
+            RUN_BLACK=false
+            RUN_ACTIONLINT=false
+            RUN_HADOLINT=false
             shift
             ;;
         *)
             echo "Unknown option: $arg"
-            echo "Usage: $0 [--fix] [--eslint|--black|--actionlint]"
+            echo "Usage: $0 [--fix] [--eslint|--black|--actionlint|--hadolint|--compose]"
             exit 1
             ;;
     esac
@@ -157,6 +179,100 @@ if [ "$RUN_BLACK" = true ]; then
         print_result "Black" 0
     else
         print_result "Black" $EXIT_CODE "$OUTPUT"
+    fi
+fi
+
+# Hadolint Check
+if [ "$RUN_HADOLINT" = true ]; then
+    print_header "Hadolint - Dockerfile Linting"
+
+    # Find all Dockerfiles
+    DOCKERFILES=$(find "${PROJECT_ROOT}" -type f \( -name "Dockerfile" -o -name "Dockerfile.*" \) ! -path "*/node_modules/*" ! -path "*/.git/*" 2>/dev/null | sort)
+
+    if [ -z "$DOCKERFILES" ]; then
+        echo -e "${YELLOW}⚠ No Dockerfiles found${NC}"
+    else
+        DOCKERFILE_COUNT=$(echo "$DOCKERFILES" | wc -l)
+        echo "Found $DOCKERFILE_COUNT Dockerfile(s). Validating..."
+
+        HADOLINT_FAILED=false
+        HADOLINT_OUTPUT=""
+        while IFS= read -r dockerfile; do
+            dockerfile_name=$(basename "$dockerfile")
+            echo "  Checking: $dockerfile_name"
+
+            # Check if hadolint is available locally (in Docker container)
+            if command -v hadolint >/dev/null 2>&1; then
+                # Use local hadolint
+                OUTPUT=$(hadolint "$dockerfile" 2>&1)
+                EXIT_CODE=$?
+            else
+                # Fall back to Docker (for local dev environments)
+                OUTPUT=$(docker run --rm -i \
+                    -v "${PROJECT_ROOT}/.hadolint.yaml:/.hadolint.yaml:ro" \
+                    hadolint/hadolint:v2.12.0 hadolint --config /.hadolint.yaml - < "$dockerfile" 2>&1)
+                EXIT_CODE=$?
+            fi
+
+            if [ $EXIT_CODE -eq 0 ]; then
+                echo -e "    ${GREEN}✓${NC} $dockerfile_name"
+            else
+                echo -e "    ${RED}✗${NC} $dockerfile_name"
+                HADOLINT_FAILED=true
+                HADOLINT_OUTPUT="$HADOLINT_OUTPUT\n$OUTPUT"
+            fi
+        done <<< "$DOCKERFILES"
+
+        if [ "$HADOLINT_FAILED" = true ]; then
+            print_result "Hadolint" 1 "$HADOLINT_OUTPUT"
+        else
+            print_result "Hadolint" 0
+        fi
+    fi
+fi
+
+# Docker Compose Check
+if [ "$RUN_COMPOSE" = true ]; then
+    print_header "Docker Compose - Configuration Validation"
+
+    # Check if docker compose plugin is available
+    if ! docker compose version >/dev/null 2>&1; then
+        echo -e "${YELLOW}⚠ Docker Compose plugin not available (skipped in container)${NC}"
+    else
+        # Find main Docker Compose files (not overrides which require base file)
+        COMPOSE_FILES=$(find "${PROJECT_ROOT}" -maxdepth 1 -type f \( -name "docker-compose.yml" -o -name "compose.yml" \) 2>/dev/null | sort)
+
+        if [ -z "$COMPOSE_FILES" ]; then
+            echo -e "${YELLOW}⚠ No Docker Compose files found${NC}"
+        else
+            COMPOSE_COUNT=$(echo "$COMPOSE_FILES" | wc -l)
+            echo "Found $COMPOSE_COUNT compose file(s). Validating..."
+
+            COMPOSE_FAILED=false
+            COMPOSE_OUTPUT=""
+            while IFS= read -r composefile; do
+                composefile_name=$(basename "$composefile")
+                echo "  Checking: $composefile_name"
+
+                # Use docker compose config to validate
+                OUTPUT=$(docker compose -f "$composefile" config --quiet 2>&1)
+                EXIT_CODE=$?
+
+                if [ $EXIT_CODE -eq 0 ]; then
+                    echo -e "    ${GREEN}✓${NC} $composefile_name"
+                else
+                    echo -e "    ${RED}✗${NC} $composefile_name"
+                    COMPOSE_FAILED=true
+                    COMPOSE_OUTPUT="$COMPOSE_OUTPUT\n$OUTPUT"
+                fi
+            done <<< "$COMPOSE_FILES"
+
+            if [ "$COMPOSE_FAILED" = true ]; then
+                print_result "Docker Compose" 1 "$COMPOSE_OUTPUT"
+            else
+                print_result "Docker Compose" 0
+            fi
+        fi
     fi
 fi
 

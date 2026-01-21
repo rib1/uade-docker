@@ -286,7 +286,7 @@ The Web Player Container is built using multi-stage Docker build with `FROM uade
 
 UADE Web Player supports manual Dynamic Application Security Testing (DAST) using OWASP ZAP. To run a security scan against the running web service:
 
-- Run: `docker-compose up --build zap-scan`
+- Run: `docker compose up --build zap-scan`
 - The HTML report will be generated in the `./reports` directory.
 
 DAST scans are not automated in CI/CD and must be run manually by developers.
@@ -348,11 +348,14 @@ DAST scans are not automated in CI/CD and must be run manually by developers.
 
 1. Code pushed to GitHub
 2. GitHub Actions triggers on main branch
-3. Build CLI base image (stage 1)
-4. Build web player image FROM CLI base (stage 2)
-5. Security scanning (Hadolint)
-6. Push both images to Google Container Registry
-7. Deploy web player to Cloud Run
+3. **Code Quality Checks** (ESLint, Black, Hadolint, Docker Compose validation, ActionLint)
+4. **Security Scanning** (CodeQL, Semgrep, Bandit, Trivy, Hadolint)
+5. Build CLI base image (stage 1)
+6. Build web player image FROM CLI base (stage 2)
+7. Push both images to GitHub Container Registry
+8. Deploy web player to Cloud Run
+
+See [docs/CODE-QUALITY.md](CODE-QUALITY.md) for detailed code quality automation.
 
 ### Container Deployment
 

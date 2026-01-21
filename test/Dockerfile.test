@@ -15,7 +15,7 @@ RUN mkdir -p /home/tester/app/fixtures/invalid && chown -R tester:tester /home/t
 # Copy the scripts and give ownership to the non-root user
 COPY --chown=tester:tester test/*.sh .
 
-RUN chmod +x *.sh
+RUN chmod +x ./*.sh
 
 # Switch to the non-root user
 USER tester

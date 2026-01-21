@@ -8,6 +8,8 @@
 #   .\test\check-code-quality.ps1 -ESLint      # ESLint only
 #   .\test\check-code-quality.ps1 -Black       # Black only
 #   .\test\check-code-quality.ps1 -ActionLint  # ActionLint only
+#   .\test\check-code-quality.ps1 -Hadolint    # Hadolint only
+#   .\test\check-code-quality.ps1 -Compose     # Docker Compose only
 #
 # Requirements:
 #   - Docker Desktop installed and running
@@ -16,7 +18,9 @@ param(
     [switch]$Fix,
     [switch]$ESLint,
     [switch]$Black,
-    [switch]$ActionLint
+    [switch]$ActionLint,
+    [switch]$Hadolint,
+    [switch]$Compose
 )
 
 # Color codes
@@ -41,10 +45,12 @@ $PassedChecks = 0
 $FailedChecks = 0
 
 # Default to run all if no specific tool selected
-if (-not $ESLint -and -not $Black -and -not $ActionLint) {
+if (-not $ESLint -and -not $Black -and -not $ActionLint -and -not $Hadolint -and -not $Compose) {
     $ESLint = $true
     $Black = $true
     $ActionLint = $true
+    $Hadolint = $true
+    $Compose = $true
 }
 
 # Helper function to print headers
@@ -128,6 +134,96 @@ if ($Black) {
         Write-Result "Black" 0
     } else {
         Write-Result "Black" 1 $output
+    }
+}
+
+# Hadolint Check
+if ($Hadolint) {
+    Write-Header "Hadolint - Dockerfile Linting"
+
+    $Dockerfiles = Get-ChildItem -Path $ProjectRoot -Recurse -Include "Dockerfile","Dockerfile.*" -File | Where-Object { $_.FullName -notmatch "node_modules|.git" }
+
+    if ($null -eq $Dockerfiles -or $Dockerfiles.Count -eq 0) {
+        Write-Host "No Dockerfiles found" @Yellow
+    } else {
+        Write-Host "Found $($Dockerfiles.Count) Dockerfile(s). Validating..."
+
+        $HadolintFailed = $false
+
+        foreach ($Dockerfile in $Dockerfiles) {
+            $DockerfileName = $Dockerfile.Name
+            Write-Host "  Checking: $DockerfileName"
+
+            $output = Get-Content $Dockerfile.FullName -Raw | docker run --rm -i `
+                -v "${ProjectRoot}/.hadolint.yaml:/.hadolint.yaml:ro" `
+                hadolint/hadolint:v2.12.0 hadolint --config /.hadolint.yaml - 2>&1
+            $exitCode = $LASTEXITCODE
+
+            if ($exitCode -eq 0) {
+                Write-Host "    OK: $DockerfileName" @Green
+            } else {
+                Write-Host "    FAIL: $DockerfileName" @Red
+                $HadolintFailed = $true
+            }
+        }
+
+        if ($HadolintFailed) {
+            Write-Result "Hadolint" 1 $output
+        } else {
+            Write-Result "Hadolint" 0
+        }
+    }
+}
+
+# Docker Compose Check
+if ($Compose) {
+    Write-Header "Docker Compose - Configuration Validation"
+
+    # Find main compose file
+    $MainCompose = Join-Path $ProjectRoot "docker-compose.yml"
+    if (-not (Test-Path $MainCompose)) {
+        $MainCompose = Join-Path $ProjectRoot "compose.yml"
+    }
+
+    if (-not (Test-Path $MainCompose)) {
+        Write-Host "No base docker-compose.yml found" @Yellow
+    } else {
+        # Find all compose files (main + test overrides)
+        $ComposeFiles = @($MainCompose)
+        $TestComposes = Get-ChildItem -Path (Join-Path $ProjectRoot "test") -Filter "docker-compose.*.yml" -File -ErrorAction SilentlyContinue
+        if ($TestComposes) {
+            $ComposeFiles += $TestComposes.FullName
+        }
+
+        Write-Host "Found $($ComposeFiles.Count) compose file(s). Validating..."
+
+        $ComposeFailed = $false
+
+        foreach ($ComposeFile in $ComposeFiles) {
+            $ComposeFileName = Split-Path $ComposeFile -Leaf
+            Write-Host "  Checking: $ComposeFileName"
+
+            # Main compose file validates alone, overrides validate with base
+            if ($ComposeFile -eq $MainCompose) {
+                $output = docker compose -f $ComposeFile config --quiet 2>&1
+            } else {
+                $output = docker compose -f $MainCompose -f $ComposeFile config --quiet 2>&1
+            }
+            $exitCode = $LASTEXITCODE
+
+            if ($exitCode -eq 0) {
+                Write-Host "    OK: $ComposeFileName" @Green
+            } else {
+                Write-Host "    FAIL: $ComposeFileName" @Red
+                $ComposeFailed = $true
+            }
+        }
+
+        if ($ComposeFailed) {
+            Write-Result "Docker Compose" 1 $output
+        } else {
+            Write-Result "Docker Compose" 0
+        }
     }
 }
 
