@@ -142,7 +142,15 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        dockerfile: ['Dockerfile', 'Dockerfile.web', 'test/Dockerfile.quality', 'test/Dockerfile.test']
+        include:
+          - dockerfile: 'Dockerfile'
+            label: 'Dockerfile'
+          - dockerfile: 'Dockerfile.web'
+            label: 'Dockerfile.web'
+          - dockerfile: 'test/Dockerfile.quality'
+            label: 'Dockerfile.quality'
+          - dockerfile: 'test/Dockerfile.test'
+            label: 'Dockerfile.test'
 
     steps:
       - name: Checkout repository
@@ -153,15 +161,15 @@ jobs:
         with:
           dockerfile: ${{ matrix.dockerfile }}
           format: sarif
-          output-file: hadolint-${{ matrix.dockerfile }}.sarif
+          output-file: hadolint-${{ matrix.label }}.sarif
           no-fail: true
 
       - name: Upload Hadolint results
         uses: github/codeql-action/upload-sarif@v4
         if: always()
         with:
-          sarif_file: hadolint-${{ matrix.dockerfile }}.sarif
-          category: hadolint-${{ matrix.dockerfile }}
+          sarif_file: hadolint-${{ matrix.label }}.sarif
+          category: hadolint-${{ matrix.label }}
 
   dependency-review:
     name: Dependency Review
