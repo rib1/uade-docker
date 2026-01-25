@@ -1,7 +1,7 @@
 flask==3.1.2
 werkzeug==3.1.5
 requests==2.32.5
-gunicorn==23.0.0
+gunicorn==24.1.1
 fsspec==2026.1.0
 gcsfs==2026.1.0
 s3fs==2026.1.0
