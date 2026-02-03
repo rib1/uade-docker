@@ -7,6 +7,7 @@ Play Amiga music modules directly in your web browser! No desktop software requi
 - 🎵 **Play in Browser** - Upload or download modules, hear them instantly
 - 🕹️ **Example Modules** - Try famous Amiga classics with one click
 - 🌐 **URL Support** - Download directly from Modland, ModArchive, etc.
+- 🔗 **Shareable URLs** - Share direct links to modules that auto-play for recipients
 - 📦 **LHA & ZIP Archive Support** - Automatically extracts classic Amiga LHA archives (and ZIP)
 - 🗂️ **Dual-File Module Support** - Handles dual-file modules (e.g., TFMX, RJP) automatically
 - 💿 **Smart Compression** - Automatic FLAC compression for capable browsers (50-70% smaller files)
@@ -173,6 +174,27 @@ The web player automatically detects and extracts classic Amiga LHA archives. Ma
 - First music file found is played
 - Supports all common Amiga module formats inside archives
 - No manual extraction needed!
+
+### 4. Share Music with Friends
+
+After converting a module from URL or playing an example, click the **🔗 Share** button to copy a shareable link:
+
+- The link auto-plays when opened by recipients
+- If the module is cached, playback starts instantly
+- Supports dual-file modules (TFMX, RJP) with both URLs included
+- URL parameters are cleared after conversion to prevent accidental bookmarking
+
+**Shareable URL format:**
+
+```url
+# Single file
+https://your-uade-instance.com/?url=https://modland.com/pub/modules/Protracker/Captain/space%20debris.mod
+
+# Dual-file (TFMX with sample)
+https://your-uade-instance.com/?url=https://modland.com/.../mdat.turrican&sample=https://modland.com/.../smpl.turrican
+```
+
+> **Note:** File uploads cannot be shared (no public URL). Only URL-based conversions and examples have shareable links.
 
 ## API Reference
 

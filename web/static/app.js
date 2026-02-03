@@ -5,6 +5,8 @@ let currentDownloadUrl = null;
 let currentSubsongDurations = [];
 let currentSubsongs = 1;
 let currentSubsongIndex = 0;
+let currentShareableUrl = null; // For shareable URLs feature
+let currentShareableSampleUrl = null;
 
 // DOM Elements
 const dropZone = document.getElementById("drop-zone");
@@ -18,6 +20,7 @@ const playerSection = document.getElementById("player-section");
 const currentTrack = document.getElementById("current-track");
 const trackFormat = document.getElementById("track-format");
 const downloadBtn = document.getElementById("download-btn");
+const shareBtn = document.getElementById("share-btn");
 const examplesGrid = document.getElementById("examples-grid");
 const statusContainer = document.getElementById("status-container");
 
@@ -68,6 +71,7 @@ document.addEventListener("DOMContentLoaded", () => {
   setupDragAndDrop();
   setupFileInput();
   setupUrlForm();
+  setupShareButton();
   setupDownloadButton();
   loadExamples();
   loadVersionInfo();
@@ -82,7 +86,41 @@ document.addEventListener("DOMContentLoaded", () => {
       autoplayOverlay.style.pointerEvents = "none"; // Disable interaction
     }
   });
+
+  // Check for shared URL parameter and auto-convert
+  checkSharedUrlParameter();
 });
+
+// Check for ?url= parameter for shareable URLs
+function checkSharedUrlParameter() {
+  const urlParams = new URLSearchParams(window.location.search);
+  const sharedUrl = urlParams.get("url");
+  const sampleUrl = urlParams.get("sample");
+
+  if (sharedUrl) {
+    // Populate URL input fields
+    urlInput.value = sharedUrl;
+    if (sampleUrl) {
+      sampleUrlInput.value = sampleUrl;
+    }
+
+    // Scroll to URL input section for visibility
+    urlInput.scrollIntoView({ behavior: "smooth", block: "center" });
+
+    // Auto-trigger conversion after short delay (allow UI to settle)
+    setTimeout(() => {
+      handleUrlConvert();
+      // Clear URL parameters after conversion starts to prevent accidental bookmarking
+      clearUrlParameters();
+    }, 300);
+  }
+}
+
+// Clear URL parameters from address bar without page reload
+function clearUrlParameters() {
+  const cleanUrl = window.location.origin + window.location.pathname;
+  window.history.replaceState({}, document.title, cleanUrl);
+}
 
 async function loadSupportedExtensions() {
   try {
@@ -207,6 +245,9 @@ function setupFileInput() {
 
 // Upload File
 async function handleFileUpload(file) {
+  // Hide share button for uploaded files (not shareable via URL)
+  updateShareButton(false);
+
   const formData = new FormData();
   formData.append("file", file);
 
@@ -276,6 +317,48 @@ function setupUrlForm() {
   });
 }
 
+// Share Button
+function setupShareButton() {
+  shareBtn.addEventListener("click", handleShare);
+}
+
+async function handleShare() {
+  if (!currentShareableUrl) {
+    return;
+  }
+
+  // Build share URL
+  const baseUrl = window.location.origin + window.location.pathname;
+  let shareUrl = `${baseUrl}?url=${encodeURIComponent(currentShareableUrl)}`;
+
+  if (currentShareableSampleUrl) {
+    shareUrl += `&sample=${encodeURIComponent(currentShareableSampleUrl)}`;
+  }
+
+  // Copy to clipboard
+  try {
+    await navigator.clipboard.writeText(shareUrl);
+    const originalText = shareBtn.textContent;
+    shareBtn.textContent = "✓ Copied!";
+    setTimeout(() => {
+      shareBtn.textContent = originalText;
+    }, 2000);
+  } catch (err) {
+    // Fallback for older browsers or insecure contexts
+    showStatus("Failed to copy link to clipboard", "warning");
+  }
+}
+
+function updateShareButton(show) {
+  if (show && currentShareableUrl) {
+    shareBtn.style.display = "inline-block";
+  } else {
+    shareBtn.style.display = "none";
+    currentShareableUrl = null;
+    currentShareableSampleUrl = null;
+  }
+}
+
 async function handleUrlConvert() {
   const url = urlInput.value.trim();
   const sampleUrl = sampleUrlInput.value.trim();
@@ -284,6 +367,10 @@ async function handleUrlConvert() {
     showStatus("Please enter a URL", "warning");
     return;
   }
+
+  // Store URLs for share button
+  currentShareableUrl = url;
+  currentShareableSampleUrl = sampleUrl || null;
 
   const body = { url };
   let initialStatusMessage = "Downloading and converting...";
@@ -310,6 +397,8 @@ async function handleUrlConvert() {
     () => {
       urlInput.value = "";
       sampleUrlInput.value = "";
+      // Show share button after successful URL conversion
+      updateShareButton(true);
     }
   );
 }
@@ -364,13 +453,21 @@ async function loadExamples() {
 
 // Play Example
 async function handleExamplePlay(example, button) {
+  // Store URLs for share button (examples have url and optional sample_url)
+  currentShareableUrl = example.url;
+  currentShareableSampleUrl = example.sample_url || null;
+
   await performConversion(
     `/play-example/${example.id}`,
     { method: "POST" },
     button,
     `Converting ${example.name}...`,
     "✓ {moduleName} converted and ready to play",
-    example.name // Override module name to ensure it's displayed correctly
+    example.name, // Override module name to ensure it's displayed correctly
+    () => {
+      // Show share button after successful example conversion
+      updateShareButton(true);
+    }
   );
 }
 

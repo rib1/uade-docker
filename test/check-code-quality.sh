@@ -53,12 +53,16 @@ for arg in "$@"; do
             RUN_ESLINT=true
             RUN_BLACK=false
             RUN_ACTIONLINT=false
+            RUN_HADOLINT=false
+            RUN_COMPOSE=false
             shift
             ;;
         --black)
             RUN_BLACK=true
             RUN_ESLINT=false
             RUN_ACTIONLINT=false
+            RUN_HADOLINT=false
+            RUN_COMPOSE=false
             shift
             ;;
         --actionlint)
