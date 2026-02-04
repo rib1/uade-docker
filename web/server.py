@@ -61,8 +61,33 @@ def get_git_commit():
     return os.getenv("GIT_COMMIT", "unknown")
 
 
+def get_uade_version():
+    """Get UADE version from the uade123 binary"""
+    try:
+        result = subprocess.run(
+            ["/usr/local/bin/uade123", "--version"],
+            capture_output=True,
+            text=True,
+            timeout=5,
+        )
+        # Parse version from output like "uade123 3.05"
+        if result.returncode == 0:
+            output = result.stdout.strip()
+            # Try to extract version number
+            for line in output.split("\n"):
+                if "uade123" in line.lower():
+                    parts = line.split()
+                    if len(parts) >= 2:
+                        return parts[1]  # e.g., "3.05"
+            return output.split()[0] if output else "unknown"
+        return "unknown"
+    except Exception:
+        return "unknown"
+
+
 UADE123_BIN: Final = "/usr/local/bin/uade123"
 GIT_COMMIT: Final = get_git_commit()
+UADE_VERSION: Final = get_uade_version()
 
 # Configuration from environment variables (cloud-ready)
 MAX_UPLOAD_SIZE: Final = int(os.getenv("MAX_UPLOAD_SIZE", 10485760))  # 10MB
@@ -1266,6 +1291,7 @@ def health():
         {
             "status": "healthy",
             "version": GIT_COMMIT,
+            "uade_version": UADE_VERSION,
             "timestamp": datetime.now(timezone.utc).isoformat(),
             "uade_available": Path(UADE123_BIN).exists(),
         }

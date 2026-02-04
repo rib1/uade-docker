@@ -865,16 +865,42 @@ async function loadVersionInfo() {
     const data = await response.json();
     const versionElement = document.getElementById("version-info");
 
+    // Build version info string
+    const parts = [];
+
+    // Add UADE version if available
+    if (data.uade_version && data.uade_version !== "unknown") {
+      parts.push(`UADE ${data.uade_version}`);
+    }
+
+    // Add git commit version if available
     if (data.version && data.version !== "unknown") {
-      // Safely create version link without innerHTML
-      versionElement.textContent = "Version: ";
-      const link = document.createElement("a");
-      link.href = `https://github.com/rib1/uade-docker/commit/${encodeURIComponent(data.version)}`;
-      link.target = "_blank";
-      link.style.color = "#666";
-      link.style.textDecoration = "none";
-      link.textContent = data.version;
-      versionElement.appendChild(link);
+      parts.push(`Build: ${data.version.substring(0, 7)}`);
+    }
+
+    if (parts.length > 0) {
+      versionElement.textContent = "";
+
+      // Add UADE version as plain text
+      if (data.uade_version && data.uade_version !== "unknown") {
+        versionElement.appendChild(document.createTextNode(`UADE ${data.uade_version}`));
+      }
+
+      // Add separator and git link if both exist
+      if (data.uade_version && data.uade_version !== "unknown" && data.version && data.version !== "unknown") {
+        versionElement.appendChild(document.createTextNode(" • "));
+      }
+
+      // Add git commit as clickable link
+      if (data.version && data.version !== "unknown") {
+        const link = document.createElement("a");
+        link.href = `https://github.com/rib1/uade-docker/commit/${encodeURIComponent(data.version)}`;
+        link.target = "_blank";
+        link.style.color = "#666";
+        link.style.textDecoration = "none";
+        link.textContent = `Build ${data.version.substring(0, 7)}`;
+        versionElement.appendChild(link);
+      }
     } else {
       versionElement.textContent = "";
     }
