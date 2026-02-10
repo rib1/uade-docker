@@ -99,6 +99,7 @@ CACHE_CLEANUP_INTERVAL: Final = int(os.getenv("CACHE_CLEANUP_INTERVAL", 86400)) 
 RATE_LIMIT: Final = int(os.getenv("RATE_LIMIT", 200))  # requests per hour
 DOWNLOAD_RATE_LIMIT: Final = int(os.getenv("DOWNLOAD_RATE_LIMIT", 6))  # downloads per minute
 PORT: Final = int(os.getenv("PORT", 5000))
+DISABLE_SSL_VERIFY: Final = os.getenv("DISABLE_SSL_VERIFY", "0") == "1"  # For corporate proxies
 
 # Local directories for processing
 MODULES_DIR: Final = Path("/tmp/modules")
@@ -1805,7 +1806,7 @@ def download_and_limit_size(url, temp_file_path, error_context=""):
         with requests.get(
             url,
             timeout=30,
-            verify=False,  # Disable SSL verification
+            verify=not DISABLE_SSL_VERIFY,
             allow_redirects=True,
             stream=True,
             headers=headers,

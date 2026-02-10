@@ -74,6 +74,7 @@ MAX_DOWNLOAD_SIZE: 10485760 # 10MB max download from URLs
 CLEANUP_INTERVAL: 3600 # Local files deleted after 1 hour
 CACHE_CLEANUP_INTERVAL: 86400 # Cache purged after 24 hours
 RATE_LIMIT_DISABLED: 1  # disable rate limiting for local testing
+DISABLE_SSL_VERIFY: 1 # disable SSL verification for corporate proxies (Zscaler)
 ```
 
 To customize, edit `docker-compose.yml` or create a `docker-compose.override.yml`:
@@ -262,6 +263,7 @@ CACHE_CLEANUP_INTERVAL: 86400 # Cache cleanup interval (24 hours)
 CACHE_URI: file:///tmp/cache # Remote cache URI (default: file:///tmp/cache)
 RATE_LIMIT: 200 # Max Requests/hour per IP (all endpoints combined)
 RATE_LIMIT_DISABLED: 0 # Set to 1 to disable rate limiting for local development/testing
+DISABLE_SSL_VERIFY: 0 # Set to 1 to disable SSL verification for corporate proxies (Zscaler)
 GIT_COMMIT: unknown # Git commit hash (set automatically at build time)
 UADE_TEST_MODE: 0 # Set to 1 to enable test mode (allows internal test server access)
 ```
