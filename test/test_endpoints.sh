@@ -863,12 +863,55 @@ test_upload_negative_case() {
     echo ""
 }
 
+# Function to test the health endpoint
+test_health_endpoint() {
+    echo "--- Testing Health Endpoint ---"
+    RESPONSE=$(curl -s "$BASE_URL/health")
+    
+    # Check for basic status
+    STATUS=$(echo "$RESPONSE" | jq -r .status)
+    if [ "$STATUS" != "healthy" ]; then
+        echo "ERROR: Health status is '$STATUS', expected 'healthy'"
+        echo "Response: $RESPONSE"
+        exit 1
+    fi
+
+    # Check for presence of required keys
+    REQUIRED_KEYS=("uptime_seconds" "python_version" "os_platform" "memory" "disk" "binaries" "cache" "config" "uade_version" "version" "uade_available")
+    for key in "${REQUIRED_KEYS[@]}"; do
+        if ! echo "$RESPONSE" | jq -e "has(\"$key\")" > /dev/null; then
+            echo "ERROR: Missing key '$key' in health response"
+            echo "Response: $RESPONSE"
+            exit 1
+        fi
+    done
+
+    # Verify uptime is a number
+    UPTIME=$(echo "$RESPONSE" | jq -r .uptime_seconds)
+    if [[ ! "$UPTIME" =~ ^[0-9]+$ ]]; then
+        echo "ERROR: uptime_seconds is not a number: $UPTIME"
+        exit 1
+    fi
+
+    # Verify binaries check
+    UADE_BIN=$(echo "$RESPONSE" | jq -r .binaries.uade123)
+    if [ "$UADE_BIN" != "true" ]; then
+        echo "ERROR: uade123 binary reported as unavailable"
+        exit 1
+    fi
+
+    echo "SUCCESS: Health endpoint returned all expected fields and valid data."
+    echo ""
+}
+
 # Wait for the service to be up
 echo "Waiting for uade-web-player to be available..."
 while ! curl -s "$BASE_URL/health" > /dev/null; do
     sleep 1
 done
 echo "Service is up!"
+
+test_health_endpoint
 
 test_url "Protracker module" "https://modland.com/pub/modules/Protracker/Captain/space%20debris.mod"
 test_url "AHX module" "https://modland.com/pub/modules/AHX/Pink/stormlord.ahx"

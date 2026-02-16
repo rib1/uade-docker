@@ -259,7 +259,12 @@ architecture-beta
 ## Monitoring
 
 - Cloud Run logs (errors, requests)
-- Health endpoint (`/health`)
+- **Health endpoint (`/health`)**: Returns comprehensive runtime information:
+  - System status and uptime
+  - Resource usage (Memory, Disk space)
+  - Dependency verification (uade123, flac, lha, unzip availability)
+  - Environment details (Python version, OS platform)
+  - Redacted configuration and cache settings
 - Git commit tracking in responses
 - Budget alerts
 - Network egress monitoring (1GB free tier)

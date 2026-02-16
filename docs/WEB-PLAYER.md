@@ -207,7 +207,12 @@ The web player provides a REST API for programmatic access:
 GET /health
 ```
 
-Returns server health status and UADE availability.
+Returns comprehensive server health status, including:
+- **Service Status**: "healthy" status, versions (UADE, Git commit), and timestamp.
+- **Runtime Stats**: Uptime, Python version, and OS platform.
+- **System Resources**: Memory and disk usage statistics (Linux only for memory).
+- **Dependency Check**: Availability verification for `uade123`, `flac`, `lha`, and `unzip` binaries.
+- **Configuration**: Redacted cache URI/protocol and service limits (max sizes, rate limiting status).
 
 ### Upload File
 

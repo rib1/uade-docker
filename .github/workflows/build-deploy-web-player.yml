@@ -130,6 +130,26 @@ jobs:
         docker tag ghcr.io/${{ github.repository_owner }}/uade-web-player:${{ github.sha }} gcr.io/${{ env.PROJECT_ID }}/${{ env.SERVICE_NAME }}:latest
         docker push gcr.io/${{ env.PROJECT_ID }}/${{ env.SERVICE_NAME }}:latest
 
+    - name: Cleanup old untagged images
+      run: |
+        # Delete all untagged images in the repository to save costs.
+        # GCR/Artifact Registry keeps every version pushed, even if the ':latest' tag moves.
+        IMAGE_NAME="gcr.io/${{ env.PROJECT_ID }}/${{ env.SERVICE_NAME }}"
+        
+        echo "Fetching untagged images for $IMAGE_NAME..."
+        UNTAGGED_DIGESTS=$(gcloud container images list-tags $IMAGE_NAME --filter="NOT tags:*" --format="get(digest)")
+        
+        if [ -n "$UNTAGGED_DIGESTS" ]; then
+          COUNT=$(echo "$UNTAGGED_DIGESTS" | wc -l)
+          echo "Found $COUNT untagged images. Deleting..."
+          for digest in $UNTAGGED_DIGESTS; do
+            gcloud container images delete "$IMAGE_NAME@$digest" --quiet --force-delete-tags
+          done
+          echo "Cleanup complete."
+        else
+          echo "No untagged images found. Nothing to delete."
+        fi
+
     - name: Deploy to Cloud Run
       # Set to 1 CPU to match single-threaded Python (Gunicorn worker)
       # Use 8 threads to handle a mix of CPU-bound (conversion) and I/O-bound (streaming)

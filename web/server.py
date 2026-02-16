@@ -11,7 +11,9 @@ import ipaddress
 import json
 import logging
 import os
+import platform
 import re
+import sys
 
 import requests
 import shutil
@@ -41,6 +43,7 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 app = Flask(__name__, static_folder="static")
+START_TIME: Final = time.time()
 
 
 # Get git commit hash for version tracking
@@ -83,6 +86,52 @@ def get_uade_version():
         return "unknown"
     except Exception:
         return "unknown"
+
+
+def get_memory_usage():
+    """Get system memory usage from /proc/meminfo (Linux only)"""
+    try:
+        if platform.system() != "Linux":
+            return None
+        with open("/proc/meminfo", "r") as f:
+            lines = f.readlines()
+        mem_info = {}
+        for line in lines:
+            parts = line.split(":")
+            if len(parts) == 2:
+                name = parts[0].strip()
+                # Extract value and convert to KB
+                value_parts = parts[1].strip().split()
+                if value_parts:
+                    mem_info[name] = int(value_parts[0])
+        
+        total = mem_info.get("MemTotal", 0)
+        available = mem_info.get("MemAvailable", 0)
+        if total > 0:
+            used = total - available
+            return {
+                "total_mb": round(total / 1024, 2),
+                "available_mb": round(available / 1024, 2),
+                "percent_used": round((used / total) * 100, 1)
+            }
+    except Exception as e:
+        logger.warning(f"Could not get memory usage: {e}")
+    return None
+
+
+def get_disk_usage(path):
+    """Get disk usage for a specific path"""
+    try:
+        usage = shutil.disk_usage(path)
+        return {
+            "total_gb": round(usage.total / (1024**3), 2),
+            "used_gb": round(usage.used / (1024**3), 2),
+            "free_gb": round(usage.free / (1024**3), 2),
+            "percent_used": round((usage.used / usage.total) * 100, 1)
+        }
+    except Exception as e:
+        logger.warning(f"Could not get disk usage for {path}: {e}")
+    return None
 
 
 UADE123_BIN: Final = "/usr/local/bin/uade123"
@@ -1287,14 +1336,41 @@ def get_supported_extensions():
 @app.route("/health")
 @limiter.exempt
 def health():
-    """Health check for load balancers"""
+    """Health check for load balancers with detailed runtime information"""
+    # Check for presence of required external binaries
+    binaries = {
+        "uade123": Path(UADE123_BIN).exists(),
+        "flac": shutil.which("flac") is not None,
+        "lha": shutil.which("lha") is not None,
+        "unzip": shutil.which("unzip") is not None,
+    }
+
+    # Gather cache information (redact sensitive parts of URI)
+    cache_info = {
+        "protocol": fs_cache.protocol,
+        "uri_redacted": CACHE_URI.split("://")[0] + "://***" if "://" in CACHE_URI else "***"
+    }
+
     return json_response(
         {
             "status": "healthy",
             "version": GIT_COMMIT,
             "uade_version": UADE_VERSION,
             "timestamp": datetime.now(timezone.utc).isoformat(),
-            "uade_available": Path(UADE123_BIN).exists(),
+            "uptime_seconds": int(time.time() - START_TIME),
+            "uade_available": binaries["uade123"],
+            "python_version": sys.version.split()[0],
+            "os_platform": platform.platform(),
+            "memory": get_memory_usage(),
+            "disk": get_disk_usage("/tmp"),
+            "binaries": binaries,
+            "cache": cache_info,
+            "config": {
+                "max_upload_size_mb": MAX_UPLOAD_SIZE / (1024 * 1024),
+                "max_download_size_mb": MAX_DOWNLOAD_SIZE / (1024 * 1024),
+                "rate_limiting_enabled": rate_limit_enabled,
+                "cleanup_interval_seconds": CLEANUP_INTERVAL,
+            }
         }
     )
 

@@ -325,7 +325,7 @@ DAST scans are not automated in CI/CD and must be run manually by developers.
 - **Logs**: Cloud Logging (structured JSON)
 - **Metrics**: Container resource usage
 - **Tracing**: Request/response timing
-- **Health**: `/api/status` endpoint
+- **Health**: `/health` endpoint (detailed runtime status)
 
 ## Deployment Architecture
 
