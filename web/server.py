@@ -19,6 +19,7 @@ import requests
 import shutil
 import socket
 import subprocess
+import tempfile
 import time
 import unicodedata
 import urllib.parse
@@ -104,7 +105,7 @@ def get_memory_usage():
                 value_parts = parts[1].strip().split()
                 if value_parts:
                     mem_info[name] = int(value_parts[0])
-        
+
         total = mem_info.get("MemTotal", 0)
         available = mem_info.get("MemAvailable", 0)
         if total > 0:
@@ -112,7 +113,7 @@ def get_memory_usage():
             return {
                 "total_mb": round(total / 1024, 2),
                 "available_mb": round(available / 1024, 2),
-                "percent_used": round((used / total) * 100, 1)
+                "percent_used": round((used / total) * 100, 1),
             }
     except Exception as e:
         logger.warning(f"Could not get memory usage: {e}")
@@ -127,7 +128,7 @@ def get_disk_usage(path):
             "total_gb": round(usage.total / (1024**3), 2),
             "used_gb": round(usage.used / (1024**3), 2),
             "free_gb": round(usage.free / (1024**3), 2),
-            "percent_used": round((usage.used / usage.total) * 100, 1)
+            "percent_used": round((usage.used / usage.total) * 100, 1),
         }
     except Exception as e:
         logger.warning(f"Could not get disk usage for {path}: {e}")
@@ -151,8 +152,9 @@ PORT: Final = int(os.getenv("PORT", 5000))
 DISABLE_SSL_VERIFY: Final = os.getenv("DISABLE_SSL_VERIFY", "0") == "1"  # For corporate proxies
 
 # Local directories for processing
-MODULES_DIR: Final = Path("/tmp/modules")
-CONVERTED_DIR: Final = Path("/tmp/converted")
+TEMP_BASE: Final = tempfile.gettempdir()
+MODULES_DIR: Final = Path(TEMP_BASE) / "modules"
+CONVERTED_DIR: Final = Path(TEMP_BASE) / "converted"
 
 # Ensure local directories exist
 for directory in [MODULES_DIR, CONVERTED_DIR]:
@@ -179,7 +181,7 @@ def get_fs_and_root(uri, fs_kwargs=None):
 #   - "file" or "file:///path/to/cache" for local filesystem
 #   - "s3://bucket/path" for AWS S3
 #   - "gcs://bucket/path" for Google Cloud Storage
-CACHE_URI: Final = os.getenv("CACHE_URI", "file:///tmp/cache")
+CACHE_URI: Final = os.getenv("CACHE_URI", f"file://{TEMP_BASE}/cache")
 fs_cache, root_cache = get_fs_and_root(CACHE_URI)
 
 # Ensure remote cache directory exists (if using local filesystem)
@@ -1348,7 +1350,7 @@ def health():
     # Gather cache information (redact sensitive parts of URI)
     cache_info = {
         "protocol": fs_cache.protocol,
-        "uri_redacted": CACHE_URI.split("://")[0] + "://***" if "://" in CACHE_URI else "***"
+        "uri_redacted": CACHE_URI.split("://")[0] + "://***" if "://" in CACHE_URI else "***",
     }
 
     return json_response(
@@ -1362,7 +1364,7 @@ def health():
             "python_version": sys.version.split()[0],
             "os_platform": platform.platform(),
             "memory": get_memory_usage(),
-            "disk": get_disk_usage("/tmp"),
+            "disk": get_disk_usage(TEMP_BASE),
             "binaries": binaries,
             "cache": cache_info,
             "config": {
@@ -1370,7 +1372,7 @@ def health():
                 "max_download_size_mb": MAX_DOWNLOAD_SIZE / (1024 * 1024),
                 "rate_limiting_enabled": rate_limit_enabled,
                 "cleanup_interval_seconds": CLEANUP_INTERVAL,
-            }
+            },
         }
     )
 
