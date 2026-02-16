@@ -208,6 +208,7 @@ GET /health
 ```
 
 Returns comprehensive server health status, including:
+
 - **Service Status**: "healthy" status, versions (UADE, Git commit), and timestamp.
 - **Runtime Stats**: Uptime, Python version, and OS platform.
 - **System Resources**: Memory and disk usage statistics (Linux only for memory).

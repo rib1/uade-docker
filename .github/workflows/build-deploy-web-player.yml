@@ -56,7 +56,7 @@ jobs:
         build-args: |
           BASE_IMAGE=ghcr.io/${{ github.repository_owner }}/uade-cli:latest
           GIT_COMMIT=${{ github.sha }}
-  
+
     - name: Start Web Player container
       run: |
         docker run -d -p 5000:5000 --name uade-web-test ghcr.io/${{ github.repository_owner }}/uade-web-player:${{ github.sha }}
@@ -159,17 +159,17 @@ jobs:
     - name: Cleanup old untagged images
       continue-on-error: true
       run: |
-        # Delete untagged images to save costs. 
+        # Delete untagged images to save costs.
         # Note: Images pinned by active or inactive Cloud Run revisions will return 400 error and are skipped.
         IMAGE_NAME="gcr.io/${{ env.PROJECT_ID }}/${{ env.SERVICE_NAME }}"
-        
+
         echo "Fetching untagged images for $IMAGE_NAME..."
         UNTAGGED_DIGESTS=$(gcloud container images list-tags "$IMAGE_NAME" --filter="NOT tags:*" --format="get(digest)" 2>/dev/null || echo "")
-        
+
         if [ -n "$UNTAGGED_DIGESTS" ]; then
           COUNT=$(echo "$UNTAGGED_DIGESTS" | wc -l)
           echo "Found $COUNT untagged images. Processing..."
-          
+
           # Loop through digests and attempt deletion.
           # We wrap the command to ensure the loop continues even if gcloud returns an error (like 400 for pinned images).
           echo "$UNTAGGED_DIGESTS" | while read -r digest; do
@@ -190,13 +190,13 @@ jobs:
           --format 'value(status.url)')
         echo "url=$URL" >> "$GITHUB_OUTPUT"
         echo "Service deployed at: $URL"
-    
+
     - name: Test deployment
       run: |
         sleep 10
         curl -f ${{ steps.get-url.outputs.url }}/health || exit 1
         echo "✅ Health check passed!"
-    
+
     - name: Comment PR with deployment URL
       if: github.event_name == 'pull_request'
       uses: actions/github-script@v8
