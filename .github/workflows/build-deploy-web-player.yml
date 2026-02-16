@@ -133,27 +133,27 @@ jobs:
     - name: Cleanup old untagged images
       continue-on-error: true
       run: |
-        # Delete all untagged images in the repository to save costs.
-        # This requires 'artifactregistry.repositories.deleteArtifacts' permission.
+        # Delete untagged images to save costs. 
+        # Note: Images pinned by Cloud Run revisions will return 400 error and are skipped.
         IMAGE_NAME="gcr.io/${{ env.PROJECT_ID }}/${{ env.SERVICE_NAME }}"
         
         echo "Fetching untagged images for $IMAGE_NAME..."
-        # We use || true here to catch cases where the repository might not even exist yet
-        UNTAGGED_DIGESTS=$(gcloud container images list-tags $IMAGE_NAME --filter="NOT tags:*" --format="get(digest)" 2>/dev/null || echo "")
+        UNTAGGED_DIGESTS=$(gcloud container images list-tags "$IMAGE_NAME" --filter="NOT tags:*" --format="get(digest)" 2>/dev/null || echo "")
         
         if [ -n "$UNTAGGED_DIGESTS" ]; then
           COUNT=$(echo "$UNTAGGED_DIGESTS" | wc -l)
-          echo "Found $COUNT untagged images. Deleting..."
-          for digest in $UNTAGGED_DIGESTS; do
+          echo "Found $COUNT untagged images. Processing..."
+          
+          # Loop through digests and attempt deletion.
+          # We wrap the command to ensure the loop continues even if gcloud returns an error (like 400 for pinned images).
+          echo "$UNTAGGED_DIGESTS" | while read -r digest; do
+            [ -z "$digest" ] && continue
             echo "Deleting $digest..."
-            gcloud container images delete "$IMAGE_NAME@$digest" --quiet --force-delete-tags || {
-              echo "WARNING: Failed to delete $digest. Check if the Service Account has 'Artifact Registry Repository Administrator' role."
-              exit 0 # Exit the script successfully but with a warning in logs
-            }
+            gcloud container images delete "$IMAGE_NAME@$digest" --quiet --force-delete-tags || echo "  -> Skip: Image likely pinned by a Cloud Run revision."
           done
-          echo "Cleanup complete."
+          echo "Cleanup process finished."
         else
-          echo "No untagged images found or repository not accessible."
+          echo "No untagged images found."
         fi
 
     - name: Deploy to Cloud Run
