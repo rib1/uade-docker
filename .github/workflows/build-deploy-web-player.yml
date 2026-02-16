@@ -130,32 +130,6 @@ jobs:
         docker tag ghcr.io/${{ github.repository_owner }}/uade-web-player:${{ github.sha }} gcr.io/${{ env.PROJECT_ID }}/${{ env.SERVICE_NAME }}:latest
         docker push gcr.io/${{ env.PROJECT_ID }}/${{ env.SERVICE_NAME }}:latest
 
-    - name: Cleanup old untagged images
-      continue-on-error: true
-      run: |
-        # Delete untagged images to save costs. 
-        # Note: Images pinned by Cloud Run revisions will return 400 error and are skipped.
-        IMAGE_NAME="gcr.io/${{ env.PROJECT_ID }}/${{ env.SERVICE_NAME }}"
-        
-        echo "Fetching untagged images for $IMAGE_NAME..."
-        UNTAGGED_DIGESTS=$(gcloud container images list-tags "$IMAGE_NAME" --filter="NOT tags:*" --format="get(digest)" 2>/dev/null || echo "")
-        
-        if [ -n "$UNTAGGED_DIGESTS" ]; then
-          COUNT=$(echo "$UNTAGGED_DIGESTS" | wc -l)
-          echo "Found $COUNT untagged images. Processing..."
-          
-          # Loop through digests and attempt deletion.
-          # We wrap the command to ensure the loop continues even if gcloud returns an error (like 400 for pinned images).
-          echo "$UNTAGGED_DIGESTS" | while read -r digest; do
-            [ -z "$digest" ] && continue
-            echo "Deleting $digest..."
-            gcloud container images delete "$IMAGE_NAME@$digest" --quiet --force-delete-tags || echo "  -> Skip: Image likely pinned by a Cloud Run revision."
-          done
-          echo "Cleanup process finished."
-        else
-          echo "No untagged images found."
-        fi
-
     - name: Deploy to Cloud Run
       # Set to 1 CPU to match single-threaded Python (Gunicorn worker)
       # Use 8 threads to handle a mix of CPU-bound (conversion) and I/O-bound (streaming)
@@ -181,7 +155,33 @@ jobs:
           --set-env-vars "RATE_LIMIT=200" \
           --set-env-vars "CACHE_URI=file:///tmp/cache" \
           --set-env-vars "RATE_LIMIT_DISABLED=0"
-    
+
+    - name: Cleanup old untagged images
+      continue-on-error: true
+      run: |
+        # Delete untagged images to save costs. 
+        # Note: Images pinned by active or inactive Cloud Run revisions will return 400 error and are skipped.
+        IMAGE_NAME="gcr.io/${{ env.PROJECT_ID }}/${{ env.SERVICE_NAME }}"
+        
+        echo "Fetching untagged images for $IMAGE_NAME..."
+        UNTAGGED_DIGESTS=$(gcloud container images list-tags "$IMAGE_NAME" --filter="NOT tags:*" --format="get(digest)" 2>/dev/null || echo "")
+        
+        if [ -n "$UNTAGGED_DIGESTS" ]; then
+          COUNT=$(echo "$UNTAGGED_DIGESTS" | wc -l)
+          echo "Found $COUNT untagged images. Processing..."
+          
+          # Loop through digests and attempt deletion.
+          # We wrap the command to ensure the loop continues even if gcloud returns an error (like 400 for pinned images).
+          echo "$UNTAGGED_DIGESTS" | while read -r digest; do
+            [ -z "$digest" ] && continue
+            echo "Deleting $digest..."
+            gcloud container images delete "$IMAGE_NAME@$digest" --quiet --force-delete-tags || echo "  -> Skip: Image likely pinned by a Cloud Run revision."
+          done
+          echo "Cleanup process finished."
+        else
+          echo "No untagged images found."
+        fi
+
     - name: Get Service URL
       id: get-url
       run: |
