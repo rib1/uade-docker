@@ -131,23 +131,29 @@ jobs:
         docker push gcr.io/${{ env.PROJECT_ID }}/${{ env.SERVICE_NAME }}:latest
 
     - name: Cleanup old untagged images
+      continue-on-error: true
       run: |
         # Delete all untagged images in the repository to save costs.
-        # GCR/Artifact Registry keeps every version pushed, even if the ':latest' tag moves.
+        # This requires 'artifactregistry.repositories.deleteArtifacts' permission.
         IMAGE_NAME="gcr.io/${{ env.PROJECT_ID }}/${{ env.SERVICE_NAME }}"
         
         echo "Fetching untagged images for $IMAGE_NAME..."
-        UNTAGGED_DIGESTS=$(gcloud container images list-tags $IMAGE_NAME --filter="NOT tags:*" --format="get(digest)")
+        # We use || true here to catch cases where the repository might not even exist yet
+        UNTAGGED_DIGESTS=$(gcloud container images list-tags $IMAGE_NAME --filter="NOT tags:*" --format="get(digest)" 2>/dev/null || echo "")
         
         if [ -n "$UNTAGGED_DIGESTS" ]; then
           COUNT=$(echo "$UNTAGGED_DIGESTS" | wc -l)
           echo "Found $COUNT untagged images. Deleting..."
           for digest in $UNTAGGED_DIGESTS; do
-            gcloud container images delete "$IMAGE_NAME@$digest" --quiet --force-delete-tags
+            echo "Deleting $digest..."
+            gcloud container images delete "$IMAGE_NAME@$digest" --quiet --force-delete-tags || {
+              echo "WARNING: Failed to delete $digest. Check if the Service Account has 'Artifact Registry Repository Administrator' role."
+              exit 0 # Exit the script successfully but with a warning in logs
+            }
           done
           echo "Cleanup complete."
         else
-          echo "No untagged images found. Nothing to delete."
+          echo "No untagged images found or repository not accessible."
         fi
 
     - name: Deploy to Cloud Run
