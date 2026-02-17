@@ -115,8 +115,8 @@ def get_memory_usage():
                 "available_mb": round(available / 1024, 2),
                 "percent_used": round((used / total) * 100, 1),
             }
-    except Exception as e:
-        logger.warning(f"Could not get memory usage: {e}")
+    except Exception:
+        logger.warning("Could not get memory usage", exc_info=True)
     return None
 
 
@@ -130,8 +130,8 @@ def get_disk_usage(path):
             "free_gb": round(usage.free / (1024**3), 2),
             "percent_used": round((usage.used / usage.total) * 100, 1),
         }
-    except Exception as e:
-        logger.warning(f"Could not get disk usage for {path}: {e}")
+    except Exception:
+        logger.warning(f"Could not get disk usage for {path}", exc_info=True)
     return None
 
 
@@ -505,8 +505,8 @@ def cleanup_old_files():
                     continue
         if removed == 0:
             logger.info("No old files to clean up in local directories.")
-    except Exception as e:
-        logger.error(f"Cleanup error: {e}")
+    except Exception:
+        logger.error("Cleanup error", exc_info=True)
 
 
 def cleanup_cache_files():
@@ -535,12 +535,12 @@ def cleanup_cache_files():
                     fs_cache.rm_file(cache_file)
                     logger.info(f"Cleaned up old cache file: {cache_file}")
                     removed += 1
-            except Exception as e:
-                logger.warning(f"Cache cleanup error for {cache_file}: {e}")
+            except Exception:
+                logger.warning(f"Cache cleanup error for {cache_file}", exc_info=True)
         if removed == 0:
             logger.info("No old files to clean up in remote cache.")
-    except Exception as e:
-        logger.error(f"Cache cleanup error: {e}")
+    except Exception:
+        logger.error("Cache cleanup error", exc_info=True)
 
 
 def get_file_hash(file_path):
@@ -556,8 +556,8 @@ def touch_for_lru(file_path):
     """Touch a file to update its mtime for LRU cache eviction. Silently ignores errors."""
     try:
         Path(file_path).touch()
-    except Exception as e:
-        logger.warning(f"Could not touch file for LRU update {file_path}: {e}")
+    except Exception:
+        logger.warning(f"Could not touch file for LRU update {file_path}", exc_info=True)
 
 
 def supports_flac(user_agent):
@@ -592,8 +592,8 @@ def compress_to_flac(wav_path, flac_path):
         else:
             logger.error(f"FLAC compression failed: {result.stderr}")
             return False
-    except Exception as e:
-        logger.error(f"FLAC compression exception: {e}")
+    except Exception:
+        logger.error("FLAC compression exception", exc_info=True)
         return False
     finally:
         temp_flac_output_path.unlink(missing_ok=True)  # Clean up temp file
@@ -672,7 +672,7 @@ def extract_lha(lha_path, extract_dir):
     except subprocess.TimeoutExpired:
         return False, "LHA extraction timeout", None
     except Exception as e:
-        logger.error(f"LHA extraction exception: {e}")
+        logger.error("LHA extraction exception", exc_info=True)
         return False, str(e), None
 
 
@@ -697,7 +697,7 @@ def extract_zip(zip_path, extract_dir):
     except zipfile.BadZipFile:
         return False, "ZIP extraction failed: Bad ZIP file", None
     except Exception as e:
-        logger.error(f"ZIP extraction exception: {e}")
+        logger.error("ZIP extraction exception", exc_info=True)
         return False, str(e), None
 
 
@@ -839,8 +839,8 @@ def detect_module_metadata(input_path):
     except subprocess.TimeoutExpired:
         logger.warning(f"Detect metadata timeout (5 seconds exceeded) for file: {input_path}")
         return False, None, None, None, 0
-    except Exception as e:
-        logger.warning(f"Could not detect metadata: {e}")
+    except Exception:
+        logger.warning("Could not detect metadata", exc_info=True)
         return False, None, None, None, 0
 
 
@@ -900,8 +900,8 @@ def save_metadata(cache_hash, metadata):
         Path.replace(temp_file_local, metadata_file_local)
         logger.info(f"Saved metadata to local: {cache_hash}.json")
 
-    except Exception as e:
-        logger.warning(f"Could not save metadata: {e}")
+    except Exception:
+        logger.warning("Could not save metadata", exc_info=True)
 
 
 def load_metadata_cache(cache_hash):
@@ -937,8 +937,8 @@ def load_metadata_cache(cache_hash):
             touch_for_lru(metadata_file_local)
 
             return metadata
-    except Exception as e:
-        logger.warning(f"Could not load metadata cache: {e}")
+    except Exception:
+        logger.warning("Could not load metadata cache", exc_info=True)
     return None
 
 
@@ -1290,11 +1290,11 @@ def process_audio_conversion(input_path, compress_flac=False, sample_files=None)
             cache_hash,
             [],
         )
-    except Exception as e:
-        logger.error(f"Conversion exception: {e}")
+    except Exception:
+        logger.error("Conversion exception", exc_info=True)
         return (
             False,
-            str(e),
+            "Internal server error during conversion",
             None,
             player_format,
             module_name,
@@ -1422,9 +1422,9 @@ def upload_file():
             module_path, filename, use_flac, url_cached=False, sample_files=None
         )
 
-    except Exception as e:
-        logger.error(f"Upload error: {e}")
-        return json_response({"error": str(e)}, 500)
+    except Exception:
+        logger.error("Upload error", exc_info=True)
+        return json_response({"error": "Internal server error during upload"}, 500)
 
 
 def process_module_and_respond(
@@ -1547,9 +1547,10 @@ def is_safe_url(u):
                     ipaddress.ip_address(addr[4][0])
                     for addr in socket.getaddrinfo(normalized_hostname, None)
                 ]
-            except Exception as e:
+            except Exception:
                 logger.warning(
-                    f"is_safe_url: failed to resolve domain '{normalized_hostname}' in URL: {sanitized_url_for_log} ({e})"
+                    f"is_safe_url: failed to resolve domain '{normalized_hostname}' in URL: {sanitized_url_for_log}",
+                    exc_info=True,
                 )
                 return False
         for ip in check_ips:
@@ -1593,8 +1594,8 @@ def is_safe_url(u):
         # All checks passed
         logger.info(f"is_safe_url: accepted URL: {sanitized_url_for_log}")
         return True
-    except Exception as e:
-        logger.error(f"is_safe_url: exception for URL '{sanitized_url_for_log}': {e}")
+    except Exception:
+        logger.error(f"is_safe_url: exception for URL '{sanitized_url_for_log}'", exc_info=True)
         return False
 
 
@@ -1811,12 +1812,12 @@ def convert_url():
             module_path, filename, use_flac, url_cache_hit, sample_files
         )
 
-    except requests.RequestException as e:
-        logger.error(f"Download error: {e}")
-        return json_response({"error": f"Download failed: {str(e)}"}, 500)
-    except Exception as e:
-        logger.error(f"Convert URL error: {e}")
-        return json_response({"error": str(e)}, 500)
+    except requests.RequestException:
+        logger.error("Download error", exc_info=True)
+        return json_response({"error": "Download failed"}, 500)
+    except Exception:
+        logger.error("Convert URL error", exc_info=True)
+        return json_response({"error": "Internal server error during URL conversion"}, 500)
 
 
 def sanitized_url(url, log=True):
@@ -1826,8 +1827,8 @@ def sanitized_url(url, log=True):
     # Unquote percent-encodings (so %0d%0a becomes literal CR/LF and can be removed)
     try:
         url = urllib.parse.unquote(url)
-    except Exception as e:
-        logging.warning(f"Failed to unquote URL in sanitized_url: {e}")
+    except Exception:
+        logger.warning("Failed to unquote URL in sanitized_url", exc_info=True)
     # Normalize unicode to a consistent form
     url = unicodedata.normalize("NFKC", url)
     # Remove bidi controls and Unicode line/paragraph separators that can create fake lines
@@ -1928,7 +1929,7 @@ def download_and_limit_size(url, temp_file_path, error_context=""):
                                 },
                                 413,
                             )
-            except Exception as e:
+            except Exception:
                 # Clean up partial file on any write error
                 if temp_file_path.exists():
                     temp_file_path.unlink(missing_ok=True)
@@ -1936,23 +1937,22 @@ def download_and_limit_size(url, temp_file_path, error_context=""):
 
         return True, None
 
-    except requests.RequestException as e:
-        logger.error(f"Download failed for {sanitized_url(url)} ({error_context}): {e}")
+    except requests.RequestException:
+        logger.error(f"Download failed for {sanitized_url(url)} ({error_context})", exc_info=True)
         # Clean up partial file
         if temp_file_path.exists():
             temp_file_path.unlink(missing_ok=True)
-        return False, json_response(
-            {"error": f"Download failed for {error_context}: {str(e)}"}, 500
-        )
-    except Exception as e:
+        return False, json_response({"error": f"Download failed for {error_context}"}, 500)
+    except Exception:
         logger.error(
-            f"Unexpected error during download for {sanitized_url(url)} ({error_context}): {e}"
+            f"Unexpected error during download for {sanitized_url(url)} ({error_context})",
+            exc_info=True,
         )
         # Clean up partial file
         if temp_file_path.exists():
             temp_file_path.unlink(missing_ok=True)
         return False, json_response(
-            {"error": f"Unexpected error during {error_context} download: {str(e)}"}, 500
+            {"error": f"Unexpected error during {error_context} download"}, 500
         )
 
 
@@ -2075,8 +2075,8 @@ def serve_audio_file(file_id, as_attachment=False, custom_filename=None):
         if not file_path:
             return json_response({"error": "File not found or forbidden"}, 404)
 
-    except Exception as e:
-        logger.error(f"Error serving file {safe_file_id}: {e}")
+    except Exception:
+        logger.error(f"Error serving file {safe_file_id}", exc_info=True)
         return json_response({"error": "Internal server error"}, 500)
 
     file_size = file_path.stat().st_size
