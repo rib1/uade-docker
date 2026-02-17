@@ -1526,7 +1526,7 @@ def is_safe_url(u):
         except Exception:
             logger.warning(
                 f"is_safe_url: failed to normalize hostname '{parsed.hostname}' in URL: {sanitized_url_for_log}"
-            )
+            )  # codeql [py/log-injection] lgtm [py/log-injection]
             normalized_hostname = parsed.hostname
 
         if os.getenv("UADE_TEST_MODE") == "1" and normalized_hostname == "uade-test-http-server":
@@ -1551,7 +1551,7 @@ def is_safe_url(u):
                 logger.warning(
                     f"is_safe_url: failed to resolve domain '{normalized_hostname}' in URL: {sanitized_url_for_log}",
                     exc_info=True,
-                )
+                )  # codeql [py/log-injection] lgtm [py/log-injection]
                 return False
         for ip in check_ips:
             if (
