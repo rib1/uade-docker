@@ -13,25 +13,22 @@ import logging
 import os
 import platform
 import re
-import sys
-
-import requests
 import shutil
 import socket
 import subprocess
+import sys
 import tempfile
 import time
 import unicodedata
 import urllib.parse
 import uuid
 import zipfile
-
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Final
 
 import fsspec
-
+import requests
 from flask import Flask, Response, jsonify, request, send_from_directory
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
@@ -94,7 +91,7 @@ def get_memory_usage():
     try:
         if platform.system() != "Linux":
             return None
-        with open("/proc/meminfo", "r") as f:
+        with open("/proc/meminfo") as f:
             lines = f.readlines()
         mem_info = {}
         for line in lines:
@@ -193,10 +190,10 @@ rate_limit_enabled = os.getenv("RATE_LIMIT_DISABLED", "0") != "1"
 limiter: Final = Limiter(
     get_remote_address,
     app=app,
-    storage_uri="memory://",  # NOTE: Rate limits are per-instance/pod only. Not global across all instances unless using a distributed backend (e.g. Redis).
-    default_limits={
-        f"{RATE_LIMIT}/hour"
-    },  # An instance/pod wide rate limit of requests per hour for all endpoints
+    storage_uri="memory://",  # NOTE: Rate limits are per-instance/pod only.
+    # Not global across all instances unless using a distributed backend (e.g. Redis).
+    # An instance/pod wide rate limit of requests per hour for all endpoints
+    default_limits={f"{RATE_LIMIT}/hour"},
     enabled=rate_limit_enabled,
 )
 
@@ -383,9 +380,9 @@ DUAL_FILE_MODULES: Final = [
     {"pattern_data": "uds", "sample_data": "smp"},  # Unique Development Sweden
 ]
 
-# Combined set of extensions and prefixes for finding playable music modules within extracted archives.
-# This excludes archive formats (lha, zip) and explicitly excludes sample data extensions (smpl, smp, ins)
-# to avoid incorrectly identifying them as primary music modules.
+# Combined set of extensions and prefixes for finding playable music modules within archives.
+# This excludes archive formats (lha, zip) and explicitly excludes sample data extensions
+# (smpl, smp, ins) to avoid incorrectly identifying them as primary music modules.
 PLAYABLE_MODULE_EXTENSIONS: Final = MODULE_FILE_EXTENSIONS | {
     entry["pattern_data"] for entry in DUAL_FILE_MODULES
 }
@@ -485,7 +482,10 @@ def json_response(data, status=200):
 
 
 def cleanup_old_files():
-    """Remove files older than CLEANUP_INTERVAL from local directories. This function is designed to be thread-safe."""
+    """
+    Remove files older than CLEANUP_INTERVAL from local directories.
+    This function is designed to be thread-safe.
+    """
     try:
         cutoff = time.time() - CLEANUP_INTERVAL
         removed = 0
@@ -600,12 +600,15 @@ def compress_to_flac(wav_path, flac_path):
 
 
 def find_music_file(extract_dir):
-    """Find and return the first music file in a directory matching known extensions or prefixes."""
+    """
+    Find and return the first music file in a directory matching known extensions or prefixes.
+    """
     music_files = []
     for file_path in extract_dir.rglob("*"):
         if file_path.is_file():
             # Strip is applied to remove any leading/trailing spaces from extension and prefix,
-            # which can occur in extracted files (e.g., 'Spirit-Creator.mod '), ensuring robust matching.
+            # which can occur in extracted files (e.g., 'Spirit-Creator.mod '), ensuring
+            # robust matching.
             ext = file_path.suffix.lower()[1:].strip()
             prefix = file_path.name.lower().split(".")[0].strip()
             if ext in PLAYABLE_MODULE_EXTENSIONS or prefix in PLAYABLE_MODULE_EXTENSIONS:
@@ -730,10 +733,13 @@ def save_to_cache(cache_hash, file, ext):
 
 
 def fetch_cached_file(cache_hash, prefer_flac=False):
-    """Check if a converted file exists in remote cache (WAV or FLAC). If found, copy to local and return local path with metadata.
+    """
+    Check if a converted file exists in remote cache (WAV or FLAC).
+    If found, copy to local and return local path with metadata.
 
     Returns:
-        tuple: (cache_file_path, metadata) where metadata contains subsongs and subsong_durations, or (None, None) if not found
+        tuple: (cache_file_path, metadata) where metadata contains subsongs and
+               subsong_durations, or (None, None) if not found
     """
     # Try FLAC first if preferred
     for ext in ([".flac"] if prefer_flac else []) + [".wav"]:
@@ -832,7 +838,8 @@ def detect_module_metadata(input_path):
                 module_format = "Custom"
 
         logger.info(
-            f"Detected: metadata_success={metadata_success}, modulename={module_name}, moduleformat={module_format}, player={player_format}, subsongs={subsongs}"
+            f"Detected: metadata_success={metadata_success}, modulename={module_name}, "
+            f"moduleformat={module_format}, player={player_format}, subsongs={subsongs}"
         )
         return metadata_success, module_name, module_format, player_format, subsongs
 
@@ -884,7 +891,10 @@ def parse_subsong_durations(uade_output, subsong_count):
 
 
 def save_metadata(cache_hash, metadata):
-    """Save metadata JSON to local disk first, then copy to remote cache (same pattern as audio files)"""
+    """
+    Save metadata JSON to local disk first, then copy to remote cache
+    (same pattern as audio files)
+    """
     try:
         # Save to local disk
         metadata_file_local = CONVERTED_DIR / f"{cache_hash}.json"
@@ -910,7 +920,7 @@ def load_metadata_cache(cache_hash):
         # Try local disk first
         metadata_file_local = CONVERTED_DIR / f"{cache_hash}.json"
         if metadata_file_local.exists():
-            with open(metadata_file_local, "r") as f:
+            with open(metadata_file_local) as f:
                 metadata = json.load(f)
             logger.info(f"Loaded metadata from local: {cache_hash}.json")
             # Touch file to extend its cleanup interval (LRU-aware caching)
@@ -981,7 +991,8 @@ def process_audio_conversion(input_path, compress_flac=False, sample_files=None)
     Args:
         input_path (Path): Path to the module file to convert.
         compress_flac (bool): Whether to compress output to FLAC format.
-        sample_files (list): Optional list of associated sample file paths to clean up if metadata detection fails.
+        sample_files (list): Optional list of associated sample file paths to clean up
+                             if metadata detection fails.
 
     Returns:
         A tuple containing:
@@ -1062,9 +1073,10 @@ def process_audio_conversion(input_path, compress_flac=False, sample_files=None)
             lock_glob = MODULES_DIR.glob(f"{cache_hash}.metadatalock.*")
             if not any(lock_glob):
                 logger.info(
-                    f"Could not detect metadata for {input_path}. Truncating file to 0 bytes to cache as invalid module."
+                    f"Could not detect metadata for {input_path}. "
+                    "Truncating file to 0 bytes to cache as invalid module."
                 )
-                with open(input_resolved, "w") as f:  # Truncate to 0 bytes
+                with open(input_resolved, "w") as _:  # Truncate to 0 bytes
                     pass
 
                 # Also truncate any associated sample files to prevent disk abuse
@@ -1076,16 +1088,18 @@ def process_audio_conversion(input_path, compress_flac=False, sample_files=None)
                                 sample_file_path.unlink(missing_ok=True)
                                 logger.info(f"Removed sample symlink: {sample_file_path}")
                             else:
-                                with open(sample_file_path, "w") as f:
+                                with open(sample_file_path, "w") as _:
                                     pass
                                 logger.info(f"Truncated sample file to 0 bytes: {sample_file_path}")
             else:
                 logger.info(
-                    f"Could not detect metadata for {input_path}, but other locks exist. Retaining file for ongoing metadata detection."
+                    f"Could not detect metadata for {input_path}, but other locks exist. "
+                    "Retaining file for ongoing metadata detection."
                 )
             return (
                 False,
-                "Could not detect module metadata. The file may be corrupt or not a supported module.",
+                "Could not detect module metadata. "
+                "The file may be corrupt or not a supported module.",
                 None,
                 player_format,
                 module_name,
@@ -1127,7 +1141,8 @@ def process_audio_conversion(input_path, compress_flac=False, sample_files=None)
             if result:
                 return result
             logger.warning(
-                f"Timeout waiting for conversion of {cache_hash} by another thread. Proceeding with conversion ourselves."
+                f"Timeout waiting for conversion of {cache_hash} by another thread. "
+                "Proceeding with conversion ourselves."
             )
 
         try:
@@ -1331,7 +1346,7 @@ def sitemap_xml():
 @limiter.exempt
 def get_supported_extensions():
     """Return a list of supported file extensions"""
-    extensions = sorted(list(PLAYABLE_MODULE_EXTENSIONS)) + ["lha", "zip"]
+    extensions = sorted(PLAYABLE_MODULE_EXTENSIONS) + ["lha", "zip"]
     return json_response([f".{ext}" for ext in extensions])
 
 
@@ -1430,7 +1445,9 @@ def upload_file():
 def process_module_and_respond(
     module_path, filename, use_flac, url_cached=False, sample_files=None
 ):
-    """Shared logic for archive detection, extraction, conversion, metadata, cleanup, and response."""
+    """
+    Shared logic for archive detection, extraction, conversion, metadata, cleanup, and response.
+    """
     # Generate a unique ID for the extraction directory to prevent race conditions
     unique_id = str(uuid.uuid4())
     extract_dir = Path(f"{module_path}_extracted_{unique_id}")
@@ -1440,7 +1457,8 @@ def process_module_and_respond(
         logger.info(f"Skipping processing for known invalid zero-byte module: {module_path}")
         return json_response(
             {
-                "error": "Could not detect module metadata. The file may be corrupt or not a supported module."
+                "error": "Could not detect module metadata. "
+                "The file may be corrupt or not a supported module."
             },
             500,
         )
@@ -1493,7 +1511,10 @@ def process_module_and_respond(
                 "subsong_durations": duration_list,
                 "audio_format": final_file.suffix[1:] if final_file else "wav",
                 "play_url": f"/play/{converted_file_id}",
-                "download_url": f"/download/{converted_file_id}?filename={urllib.parse.quote(module_name or filename)}",
+                "download_url": (
+                    f"/download/{converted_file_id}?filename="
+                    f"{urllib.parse.quote(module_name or filename)}"
+                ),
                 "cached": cached,
                 "url_cached": url_cached,
             }
@@ -1506,7 +1527,10 @@ def process_module_and_respond(
 
 
 def is_safe_url(u):
-    """Reject private/LAN/loopback/non-HTTP(S) URLs for SSRF defense, including IDN/punycode normalization."""
+    """
+    Reject private/LAN/loopback/non-HTTP(S) URLs for SSRF defense,
+    including IDN/punycode normalization.
+    """
     try:
         # Prepare a safe, normalized string for logging
         sanitized_url_for_log = sanitized_url(u)
@@ -1525,13 +1549,15 @@ def is_safe_url(u):
             normalized_hostname = parsed.hostname.encode("idna").decode("ascii")
         except Exception:
             logger.warning(
-                f"is_safe_url: failed to normalize hostname '{parsed.hostname}' in URL: {sanitized_url_for_log}"
+                f"is_safe_url: failed to normalize hostname '{parsed.hostname}' "
+                f"in URL: {sanitized_url_for_log}"
             )  # codeql [py/log-injection] lgtm [py/log-injection]
             normalized_hostname = parsed.hostname
 
         if os.getenv("UADE_TEST_MODE") == "1" and normalized_hostname == "uade-test-http-server":
             logger.info(
-                f"is_safe_url: allowed internal test host '{normalized_hostname}' in test mode for URL: {sanitized_url_for_log}"
+                f"is_safe_url: allowed internal test host '{normalized_hostname}' "
+                f"in test mode for URL: {sanitized_url_for_log}"
             )
             return True  # Allow immediately, skipping IP and other checks
 
@@ -1549,7 +1575,8 @@ def is_safe_url(u):
                 ]
             except Exception:
                 logger.warning(
-                    f"is_safe_url: failed to resolve domain '{normalized_hostname}' in URL: {sanitized_url_for_log}",
+                    f"is_safe_url: failed to resolve domain '{normalized_hostname}' "
+                    f"in URL: {sanitized_url_for_log}",
                     exc_info=True,
                 )  # codeql [py/log-injection] lgtm [py/log-injection]
                 return False
@@ -1575,7 +1602,8 @@ def is_safe_url(u):
         for char in problematic_chars:
             if char in unquoted_path or char in unquoted_query:
                 logger.warning(
-                    f"is_safe_url: rejected URL due to problematic character '{char}' in path/query for URL: {sanitized_url_for_log}"
+                    f"is_safe_url: rejected URL due to problematic character '{char}' "
+                    f"in path/query for URL: {sanitized_url_for_log}"
                 )
                 return False
 
@@ -1587,7 +1615,8 @@ def is_safe_url(u):
             seg == ".." for seg in normalized_query.split("/")
         ):
             logger.warning(
-                f"is_safe_url: rejected URL due to path traversal pattern '..' in path/query for URL: {sanitized_url_for_log}"
+                f"is_safe_url: rejected URL due to path traversal pattern '..' "
+                f"in path/query for URL: {sanitized_url_for_log}"
             )
             return False
 
@@ -1675,7 +1704,8 @@ def convert_url():
             sample_filename,
             sample_suffix,
         ) = get_dual_file_module_filenames(filename)
-        # The suffix must be placed after the hash for UADE to correctly recognize the file type in dual-file modules
+        # The suffix must be placed after the hash for UADE to correctly recognize the
+        # file type in dual-file modules
         module_path = MODULES_DIR / f"{filename}_{url_hash}{suffix}"
         lock_path = module_path.with_suffix(f"{module_path.suffix}.lock")
 
@@ -1702,7 +1732,8 @@ def convert_url():
                             url, temp_path, "External module"
                         )
 
-                        # Always attempt to move the partial/complete file to its final destination (cache it)
+                        # Always attempt to move the partial/complete file to its final
+                        # destination (cache it)
                         if temp_path.exists():
                             Path.replace(temp_path, module_path)
                             logger.info(f"Moved partial/complete download to: {module_path}")
@@ -1718,7 +1749,8 @@ def convert_url():
                     time.sleep(1)
                     if module_path.exists():
                         logger.info(
-                            f"Cache hit for module completed by another thread: {sanitized_url(url)}, using cached file: {module_path}"
+                            f"Cache hit for module completed by another thread: "
+                            f"{sanitized_url(url)}, using cached file: {module_path}"
                         )
                         # Touch file to extend its cleanup interval (LRU-aware caching)
                         touch_for_lru(module_path)
@@ -1741,7 +1773,8 @@ def convert_url():
                 sanitized_url(sample_url, log=False).encode(), usedforsecurity=False
             ).hexdigest()
 
-            # The suffix must be placed after the hash for UADE to correctly recognize the file type in dual-file modules
+            # The suffix must be placed after the hash for UADE to correctly recognize the
+            # file type in dual-file modules
             sample_path = MODULES_DIR / f"{sample_filename}_{url_hash}{sample_suffix}"
             cached_sample_path = MODULES_DIR / f"{sample_filename}_{sample_url_hash}{sample_suffix}"
             sample_lock_path = module_path.with_suffix(f"{cached_sample_path.suffix}.lock")
@@ -1754,7 +1787,8 @@ def convert_url():
                     sample_path.unlink(missing_ok=True)  # Ensure no stale link
                     os.symlink(cached_sample_path, sample_path)
                 logger.info(
-                    f"Cache hit for sample file: {sanitized_url(sample_url)}, using cached file {cached_sample_path}, linking to {sample_path}"
+                    f"Cache hit for sample file: {sanitized_url(sample_url)}, "
+                    f"using cached file {cached_sample_path}, linking to {sample_path}"
                 )
                 # Touch file to extend its cleanup interval (LRU-aware caching)
                 touch_for_lru(cached_sample_path)
@@ -1767,7 +1801,8 @@ def convert_url():
                         sample_url, temp_path, "External sample"
                     )
 
-                    # Always attempt to move the partial/complete file to its final destination (cache it)
+                    # Always attempt to move the partial/complete file to its final
+                    # destination (cache it)
                     if temp_path.exists():
                         Path.replace(temp_path, cached_sample_path)
                         logger.info(
@@ -1785,7 +1820,8 @@ def convert_url():
                     )
                 except FileExistsError:
                     logger.info(
-                        f"Download for {sanitized_url(cached_sample_path)} is already in progress, waiting..."
+                        f"Download for {sanitized_url(cached_sample_path)} is already "
+                        "in progress, waiting..."
                     )
                     for _ in range(20):  # Wait up to 20 seconds
                         time.sleep(1)
@@ -1794,7 +1830,9 @@ def convert_url():
                                 sample_path.unlink(missing_ok=True)  # Ensure no stale link
                                 os.symlink(cached_sample_path, sample_path)
                             logger.info(
-                                f"Cache hit for sample file completed by another thread: {sanitized_url(sample_url)}, using cached file {cached_sample_path}, linking to {sample_path}"
+                                f"Cache hit for sample file completed by another thread: "
+                                f"{sanitized_url(sample_url)}, using cached file "
+                                f"{cached_sample_path}, linking to {sample_path}"
                             )
                             # Touch file to extend its cleanup interval (LRU-aware caching)
                             touch_for_lru(cached_sample_path)
@@ -1821,7 +1859,9 @@ def convert_url():
 
 
 def sanitized_url(url, log=True):
-    """Sanitize URL for safe logging (removes control/meta chars, line breaks, trims, limits length)"""
+    """
+    Sanitize URL for safe logging (removes control/meta chars, line breaks, trims, limits length)
+    """
     if not isinstance(url, str):
         return "<non-string URL>"
     # Unquote percent-encodings (so %0d%0a becomes literal CR/LF and can be removed)
@@ -1846,7 +1886,7 @@ def sanitized_url(url, log=True):
         if 0x20 <= o <= 0x7E:
             out_chars.append(ch)
         else:
-            out_chars.append("\\u%04x" % o)
+            out_chars.append(f"\\u{o:04x}")
     out = "".join(out_chars)
     if len(out) > 200:
         out = out[:200] + "..."
@@ -1855,20 +1895,23 @@ def sanitized_url(url, log=True):
 
 def download_and_limit_size(url, temp_file_path, error_context=""):
     """
-    Downloads a file from a given URL in chunks, enforcing the maximum allowed download size (MAX_DOWNLOAD_SIZE).
+    Downloads a file from a given URL in chunks, enforcing the maximum allowed download size
+    (MAX_DOWNLOAD_SIZE).
 
-    This limit applies to all downloads, including LHA and ZIP archives fetched via URL. If the file exceeds the configured limit,
-    the download is aborted and an error is returned.
+    This limit applies to all downloads, including LHA and ZIP archives fetched via URL.
+    If the file exceeds the configured limit, the download is aborted and an error is returned.
 
-    Important: When a download exceeds the size limit, the partial file is intentionally left on disk
-    and moved to its final cache location. This enables URL caching - subsequent requests for the same URL
-    will find the cached file and immediately return an error without re-downloading. This prevents
-    repeated downloads of oversized files and protects against bandwidth abuse.
+    Important: When a download exceeds the size limit, the partial file is intentionally
+    left on disk and moved to its final cache location. This enables URL caching -
+    subsequent requests for the same URL will find the cached file and immediately
+    return an error without re-downloading.
+    This prevents repeated downloads of oversized files and protects against bandwidth abuse.
 
     Args:
         url (str): The URL to download.
         temp_file_path (Path): The path to save the downloaded file temporarily.
-        error_context (str): Additional context for error messages (e.g., 'External sample', 'LHA archive').
+        error_context (str): Additional context for error messages (e.g., 'External sample',
+                             'LHA archive').
 
     Returns:
         tuple: (True, None) on success, or (False, json_response) on failure.
@@ -1899,13 +1942,15 @@ def download_and_limit_size(url, temp_file_path, error_context=""):
                     content_length = int(content_length)
                     if content_length > max_size:
                         logger.error(
-                            f"External download size ({content_length} bytes) exceeds limit before download ({error_context}): {sanitized_url(url)}"
+                            f"External download size ({content_length} bytes) exceeds limit "
+                            f"before download ({error_context}): {sanitized_url(url)}"
                         )
                         # Create zero-byte file to cache that this URL is oversized
                         temp_file_path.touch()
                         return False, json_response(
                             {
-                                "error": f"{error_context} file size exceeds the maximum allowed limit of {max_size / (1024 * 1024):.0f}MB"
+                                "error": f"{error_context} file size exceeds the maximum "
+                                f"allowed limit of {max_size / (1024 * 1024):.0f}MB"
                             },
                             413,
                         )
@@ -1921,11 +1966,13 @@ def download_and_limit_size(url, temp_file_path, error_context=""):
                         if downloaded_size > max_size:
                             response.close()
                             logger.error(
-                                f"External download exceeded limit during download ({error_context}): {sanitized_url(url)}"
+                                f"External download exceeded limit during download "
+                                f"({error_context}): {sanitized_url(url)}"
                             )
                             return False, json_response(
                                 {
-                                    "error": f"{error_context} file size exceeds the maximum allowed limit of {max_size / (1024 * 1024):.0f}MB"
+                                    "error": f"{error_context} file size exceeds the maximum "
+                                    f"allowed limit of {max_size / (1024 * 1024):.0f}MB"
                                 },
                                 413,
                             )
@@ -2087,7 +2134,8 @@ def serve_audio_file(file_id, as_attachment=False, custom_filename=None):
     if range_info:
         start, end, length = range_info
         response = Response(stream_file_range(file_path, start, length), 206, mimetype=mimetype)
-        # Custom header to indicate that only single range requests are supported (for client-side handling)
+        # Custom header to indicate only single range requests are supported
+        # (for client-side handling)
         response.headers["X-Single-Range-Only"] = "true"
         response.headers["Content-Range"] = f"bytes {start}-{end}/{file_size}"
         response.headers["Content-Length"] = str(length)
@@ -2103,12 +2151,14 @@ def serve_audio_file(file_id, as_attachment=False, custom_filename=None):
         # Malformed or invalid range
         return Response("", 416)
     else:
-        # For large files without range header, return minimal 206 response to prompt client to use range requests
-        # This applies to both downloads and streaming to avoid exceeding Cloud Run's 32MB response limit
-        # Client-side JavaScript handles downloads via range requests (see app.js downloadWithRangeRequests)
+        # For large files without range header, return minimal 206 response to prompt client to
+        # use range requests. This applies to both downloads and streaming to avoid exceeding
+        # Cloud Run's 32MB response limit.
+        # Client-side JavaScript handles downloads via range requests (see app.js)
         if file_size > 20 * 1024 * 1024:
             response = Response("", 206, mimetype=mimetype)
-            # Custom header to indicate that only single range requests are supported (for client-side handling)
+            # Custom header to indicate only single range requests are supported
+            # (for client-side handling)
             response.headers["X-Single-Range-Only"] = "true"
             response.headers["Content-Range"] = f"bytes 0-0/{file_size}"
             response.headers["Content-Length"] = "0"

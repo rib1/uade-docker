@@ -30,9 +30,9 @@ RUN apk add --no-cache \
 # Install ESLint globally (version 9 for better flat config support)
 RUN npm install -g eslint@9
 
-# Install Black via pip
+# Install Black and Ruff via pip
 # hadolint ignore=DL3042,DL3059
-RUN pip3 install black==23.3.0 --break-system-packages
+RUN pip3 install black==23.3.0 ruff==0.1.6 --break-system-packages
 
 # Copy check script from test folder (context is project root)
 COPY test/check-code-quality.sh /usr/local/bin/check-code-quality.sh

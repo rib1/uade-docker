@@ -7,6 +7,7 @@
 #   .\test\check-code-quality.ps1 -Fix         # Run with fixes enabled
 #   .\test\check-code-quality.ps1 -ESLint      # ESLint only
 #   .\test\check-code-quality.ps1 -Black       # Black only
+#   .\test\check-code-quality.ps1 -Ruff        # Ruff only
 #   .\test\check-code-quality.ps1 -ActionLint  # ActionLint only
 #   .\test\check-code-quality.ps1 -Hadolint    # Hadolint only
 #   .\test\check-code-quality.ps1 -Compose     # Docker Compose only
@@ -18,6 +19,7 @@ param(
     [switch]$Fix,
     [switch]$ESLint,
     [switch]$Black,
+    [switch]$Ruff,
     [switch]$ActionLint,
     [switch]$Hadolint,
     [switch]$Compose
@@ -45,9 +47,10 @@ $PassedChecks = 0
 $FailedChecks = 0
 
 # Default to run all if no specific tool selected
-if (-not $ESLint -and -not $Black -and -not $ActionLint -and -not $Hadolint -and -not $Compose) {
+if (-not $ESLint -and -not $Black -and -not $Ruff -and -not $ActionLint -and -not $Hadolint -and -not $Compose) {
     $ESLint = $true
     $Black = $true
+    $Ruff = $true
     $ActionLint = $true
     $Hadolint = $true
     $Compose = $true
@@ -134,6 +137,28 @@ if ($Black) {
         Write-Result "Black" 0
     } else {
         Write-Result "Black" 1 $output
+    }
+}
+
+# Ruff Check
+if ($Ruff) {
+    Write-Header "Ruff - Python Linting and Formatting"
+
+    Write-Host "Running Ruff on /web..."
+
+    $FixArg = if ($Fix) { "--fix" } else { "" }
+
+    $output = & docker run --rm `
+        -v "${ProjectRoot}:/workspace" `
+        --workdir /workspace/web `
+        ghcr.io/astral-sh/ruff:latest check . $FixArg 2>&1
+
+    $exitCode = $LASTEXITCODE
+
+    if ($exitCode -eq 0) {
+        Write-Result "Ruff" 0
+    } else {
+        Write-Result "Ruff" 1 $output
     }
 }
 

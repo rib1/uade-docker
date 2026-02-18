@@ -9,6 +9,7 @@
 #   ./test/check-code-quality.sh --fix        # Run with fixes enabled
 #   ./test/check-code-quality.sh --eslint     # ESLint only
 #   ./test/check-code-quality.sh --black      # Black only
+#   ./test/check-code-quality.sh --ruff       # Ruff only
 #   ./test/check-code-quality.sh --actionlint # ActionLint only
 #   ./test/check-code-quality.sh --hadolint   # Hadolint only
 #   ./test/check-code-quality.sh --compose    # Docker Compose only
@@ -39,6 +40,7 @@ FAILED_CHECKS=0
 FIX_MODE=false
 RUN_ESLINT=true
 RUN_BLACK=true
+RUN_RUFF=true
 RUN_ACTIONLINT=true
 RUN_HADOLINT=true
 RUN_COMPOSE=true
@@ -52,6 +54,7 @@ for arg in "$@"; do
         --eslint)
             RUN_ESLINT=true
             RUN_BLACK=false
+            RUN_RUFF=false
             RUN_ACTIONLINT=false
             RUN_HADOLINT=false
             RUN_COMPOSE=false
@@ -60,6 +63,16 @@ for arg in "$@"; do
         --black)
             RUN_BLACK=true
             RUN_ESLINT=false
+            RUN_RUFF=false
+            RUN_ACTIONLINT=false
+            RUN_HADOLINT=false
+            RUN_COMPOSE=false
+            shift
+            ;;
+        --ruff)
+            RUN_RUFF=true
+            RUN_ESLINT=false
+            RUN_BLACK=false
             RUN_ACTIONLINT=false
             RUN_HADOLINT=false
             RUN_COMPOSE=false
@@ -183,6 +196,38 @@ if [ "$RUN_BLACK" = true ]; then
         print_result "Black" 0
     else
         print_result "Black" $EXIT_CODE "$OUTPUT"
+    fi
+fi
+
+# Ruff Check
+if [ "$RUN_RUFF" = true ]; then
+    print_header "Ruff - Python Linting and Formatting"
+
+    echo "Running Ruff on /web..."
+
+    FIX_MODE_ARG=""
+    if [ "$FIX_MODE" = true ]; then
+        FIX_MODE_ARG="--fix"
+    fi
+
+    # Check if ruff is available locally (in Docker container)
+    if command -v ruff >/dev/null 2>&1; then
+        # Use local ruff
+        OUTPUT=$(cd "${PROJECT_ROOT}/web" && ruff check . $FIX_MODE_ARG 2>&1)
+        EXIT_CODE=$?
+    else
+        # Fall back to Docker (for local dev environments)
+        OUTPUT=$(docker run --rm \
+               -v "${PROJECT_ROOT}:/workspace" \
+               --workdir /workspace/web \
+               ghcr.io/astral-sh/ruff:latest check . $FIX_MODE_ARG 2>&1)
+        EXIT_CODE=$?
+    fi
+
+    if [ $EXIT_CODE -eq 0 ]; then
+        print_result "Ruff" 0
+    else
+        print_result "Ruff" $EXIT_CODE "$OUTPUT"
     fi
 fi
 

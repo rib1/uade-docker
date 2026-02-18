@@ -53,5 +53,5 @@ jobs:
         if: failure()
         run: |
           echo "❌ Code quality checks failed!"
-          echo "Please run './test/check-code-quality.sh --fix' locally to auto-fix issues."
+          echo "Please run './test/check-code-quality.sh --fix' (Bash) or '.\test\check-code-quality.ps1 -Fix' (PowerShell) locally to auto-fix issues."
           exit 1

@@ -4,13 +4,14 @@ This document explains the code quality checks and how to run them for the UADE 
 
 ## Overview
 
-The UADE Docker project uses five automated code quality tools:
+The UADE Docker project uses six automated code quality tools:
 
 1. **ESLint** - JavaScript/CSS linting and style checking
 2. **Black** - Python code formatting and consistency
-3. **Hadolint** - Dockerfile linting and best practices
-4. **Docker Compose** - Compose file validation
-5. **ActionLint** - GitHub Actions workflow validation
+3. **Ruff** - Fast Python linting and formatting
+4. **Hadolint** - Dockerfile linting and best practices
+5. **Docker Compose** - Compose file validation
+6. **ActionLint** - GitHub Actions workflow validation
 
 ## Tools
 
@@ -60,6 +61,33 @@ docker run -it --rm -v ${pwd}/web/static:/data cytopia/eslint . --fix
 
 ```bash
 docker run --rm -v ${pwd}/web:/data cytopia/black . --line-length 100
+```
+
+### Ruff (Python)
+
+**Purpose:** Extremely fast Python linter and formatter, replacing flake8, isort, and more.
+
+**Version:** 0.1.6
+
+**Configuration:** `pyproject.toml` (selects E, F, B, I, UP, C4 rules)
+
+**Files checked:** `/web/**/*.py`
+
+**Dual-Mode Execution:**
+
+- In quality-check container: Uses locally installed Ruff binary
+- Local development: Falls back to Docker container
+
+**Direct Docker command:**
+
+```bash
+docker run --rm -v ${pwd}:/workspace --workdir /workspace/web ghcr.io/astral-sh/ruff:latest check .
+```
+
+**With auto-fix:**
+
+```bash
+docker run --rm -v ${pwd}:/workspace --workdir /workspace/web ghcr.io/astral-sh/ruff:latest check . --fix
 ```
 
 ### Hadolint (Dockerfiles)
@@ -131,13 +159,13 @@ docker run --rm -v ${pwd}/.github/workflows:/workflows rhysd/actionlint:1.7.4 -c
 Use the Docker Compose quality-check service for consistent, isolated checks:
 
 ```bash
-# Run all available checks in Docker container (ESLint, Black, Hadolint, ActionLint)
+# Run all available checks in Docker container (ESLint, Black, Ruff, Hadolint, ActionLint)
 docker compose -f docker-compose.yml -f test/docker-compose.quality.yml run --rm --build quality-check
 ```
 
 This approach:
 
-- Runs ESLint, Black, Hadolint, and ActionLint in an isolated container
+- Runs ESLint, Black, Ruff, Hadolint, and ActionLint in an isolated container
 - No local installation required
 - Consistent results across all environments
 - Properly exits with code 1 on failures
@@ -146,7 +174,7 @@ This approach:
 
 ### Local Script Execution (All Checks Including Compose Validation)
 
-Run the scripts directly on your machine to execute all five checks:
+Run the scripts directly on your machine to execute all six checks:
 
 **Bash (Linux/Mac/Git Bash):**
 
@@ -160,6 +188,7 @@ Run the scripts directly on your machine to execute all five checks:
 # Run specific checks only
 ./test/check-code-quality.sh --eslint
 ./test/check-code-quality.sh --black
+./test/check-code-quality.sh --ruff
 ./test/check-code-quality.sh --hadolint
 ./test/check-code-quality.sh --compose
 ./test/check-code-quality.sh --actionlint
@@ -177,6 +206,7 @@ Run the scripts directly on your machine to execute all five checks:
 # Run specific checks only
 .\test\check-code-quality.ps1 -ESLint
 .\test\check-code-quality.ps1 -Black
+.\test\check-code-quality.ps1 -Ruff
 .\test\check-code-quality.ps1 -Hadolint
 .\test\check-code-quality.ps1 -Compose
 .\test\check-code-quality.ps1 -ActionLint
@@ -202,6 +232,16 @@ docker run --rm -v ${pwd}/web:/data cytopia/black . --line-length 100 --check
 
 # Auto-format code
 docker run --rm -v ${pwd}/web:/data cytopia/black . --line-length 100
+```
+
+#### Ruff Only
+
+```bash
+# Check only
+docker run --rm -v ${pwd}:/workspace --workdir /workspace/web ghcr.io/astral-sh/ruff:latest check .
+
+# Fix issues automatically
+docker run --rm -v ${pwd}:/workspace --workdir /workspace/web ghcr.io/astral-sh/ruff:latest check . --fix
 ```
 
 #### Hadolint Only
@@ -254,6 +294,15 @@ Black is configured with:
 - Target Python version: 3.9+
 - Exclude: .git, .hg, .mypy_cache, .tox, .venv, build, dist, `__pycache__`
 
+### Ruff Configuration
+
+**File:** `pyproject.toml`
+
+Ruff is configured with:
+
+- Line length: 100 characters
+- Rule selection: E (pycodestyle), F (Pyflakes), B (flake8-bugbear), I (isort), UP (pyupgrade), C4 (flake8-comprehensions)
+
 ### ActionLint Configuration
 
 ActionLint uses default GitHub Actions validation rules. No configuration file needed.
@@ -279,7 +328,7 @@ The code quality checks run automatically as part of CI/CD via the [code-quality
 **Workflow behavior:**
 
 - Builds the quality-check Docker container
-- Runs all three checks (ESLint, Black, ActionLint)
+- Runs all four checks (ESLint, Black, Ruff, ActionLint)
 - Fails the build if any check reports errors
 - Provides helpful error messages with fix instructions
 
@@ -289,6 +338,7 @@ The workflow will fail if:
 
 - ESLint finds linting issues (syntax errors, style violations)
 - Black detects formatting inconsistencies
+- Ruff identifies linting or formatting issues
 - ActionLint identifies workflow validation errors
 
 **How to fix failures:**
@@ -412,6 +462,7 @@ Typical run times (first run includes Docker image pull):
 
 - **ESLint:** 5-10 seconds (first time: 30-45 seconds with image pull)
 - **Black:** 5-10 seconds (first time: 30-45 seconds with image pull)
+- **Ruff:** 1-2 seconds (first time: 10-15 seconds with image pull)
 - **ActionLint:** 5-10 seconds per workflow (first time: 20-30 seconds)
 - **All checks:** 15-30 seconds (first time: 90-120 seconds)
 
@@ -423,7 +474,7 @@ Subsequent runs are much faster due to Docker image caching.
 
 Both `check-code-quality.sh` (Bash) and `check-code-quality.ps1` (PowerShell) scripts:
 
-1. **Parse arguments** - Determines which checks to run (--fix, --eslint, --black, --actionlint)
+1. **Parse arguments** - Determines which checks to run (--fix, --eslint, --black, --ruff, --actionlint)
 2. **Detect environment** - Checks if tools are available locally or need Docker
 3. **Run checks** - Executes each tool (local or Docker container)
 4. **Capture output** - Stores results directly in variables (no temp files)
@@ -435,7 +486,7 @@ The scripts intelligently choose execution mode:
 
 **Quality-Check Container Mode:**
 
-- Tools (ESLint, Black, ActionLint) are pre-installed
+- Tools (ESLint, Black, Ruff, ActionLint) are pre-installed
 - Runs directly without nested Docker
 - Faster execution, simpler volume mounting
 
@@ -460,6 +511,7 @@ Tools are run with proper error handling:
 
 - ESLint: Non-zero exit on linting errors
 - Black: Non-zero exit on formatting inconsistencies
+- Ruff: Non-zero exit on linting or formatting issues
 - ActionLint: Non-zero exit on workflow validation errors
 
 Script aggregates all results and returns:
@@ -471,7 +523,9 @@ Script aggregates all results and returns:
 
 - [ESLint Documentation](https://eslint.org/)
 - [Black Documentation](https://black.readthedocs.io/)
+- [Ruff Documentation](https://ruff.rs/)
 - [ActionLint Documentation](https://rhysd.github.io/actionlint/)
 - [Docker Hub - cytopia/eslint](https://hub.docker.com/r/cytopia/eslint)
 - [Docker Hub - cytopia/black](https://hub.docker.com/r/cytopia/black)
+- [Docker Hub - astral-sh/ruff](https://github.com/astral-sh/ruff)
 - [Docker Hub - rhysd/actionlint](https://hub.docker.com/r/rhysd/actionlint)
