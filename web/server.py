@@ -58,7 +58,9 @@ def get_git_commit():
             return result.stdout.strip()
     except Exception:
         # Ignore errors (e.g., not a git repo, git not installed); fallback to env var
-        pass
+        logger.info(
+            "Could not get git commit via command line, using environment variable fallback"
+        )
     return os.getenv("GIT_COMMIT", "unknown")
 
 
@@ -818,12 +820,12 @@ def detect_module_metadata(input_path):
                         try:
                             min_val = int(parts[i + 1])
                         except ValueError:
-                            pass
+                            logger.warning(f"Failed to parse subsong value: {parts[i+1]}")
                     elif part == "max" and i + 1 < len(parts):
                         try:
                             max_val = int(parts[i + 1])
                         except ValueError:
-                            pass
+                            logger.warning(f"Failed to parse subsong value: {parts[i+1]}")
                 # Calculate subsongs: max - min + 1
                 if min_val is not None and max_val is not None:
                     subsongs = max_val - min_val + 1
@@ -1958,7 +1960,10 @@ def download_and_limit_size(url, temp_file_path, error_context=""):
                         )
                 except ValueError:
                     # Invalid Content-Length header, continue with chunked download
-                    pass
+                    logger.info(
+                        f"Invalid Content-Length header for {sanitized_url(url)}, "
+                        "continuing with chunked download"
+                    )
 
             try:
                 with open(temp_file_path, "wb") as fd:
