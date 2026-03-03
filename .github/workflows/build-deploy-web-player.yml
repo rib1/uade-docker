@@ -159,6 +159,30 @@ jobs:
     - name: Cleanup old untagged images
       continue-on-error: true
       run: |
+        # First, prune old Cloud Run revisions so old container digests are no longer pinned.
+        # Keep the newest 5 revisions to preserve rollback safety.
+        KEEP_REVISIONS=5
+        echo "Pruning old Cloud Run revisions (keeping newest ${KEEP_REVISIONS})..."
+        REVISIONS=$(gcloud run revisions list \
+          --service "${{ env.SERVICE_NAME }}" \
+          --region "${{ env.REGION }}" \
+          --sort-by="~metadata.creationTimestamp" \
+          --format="value(metadata.name)")
+
+        COUNT=0
+        echo "$REVISIONS" | while read -r rev; do
+          [ -z "$rev" ] && continue
+          COUNT=$((COUNT + 1))
+          if [ "$COUNT" -le "$KEEP_REVISIONS" ]; then
+            echo "Keeping revision: $rev"
+            continue
+          fi
+          echo "Deleting old revision: $rev"
+          gcloud run revisions delete "$rev" \
+            --region "${{ env.REGION }}" \
+            --quiet || echo "  -> Skip: Revision in use or already deleted."
+        done
+
         # Delete untagged images to save costs.
         # Note: Images pinned by active or inactive Cloud Run revisions will return 400 error and are skipped.
         IMAGE_NAME="gcr.io/${{ env.PROJECT_ID }}/${{ env.SERVICE_NAME }}"
