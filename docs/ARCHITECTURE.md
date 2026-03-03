@@ -158,7 +158,7 @@ architecture-beta
 
 - **Code Quality Checks**: Automated quality checks run on every push and pull request:
   - **ESLint 9:** JavaScript/TypeScript linting with strict rules
-  - **Black 23.3.0:** Python code formatting enforcer
+  - **Black 26.1.0:** Python code formatting enforcer
   - **Hadolint 2.12.0:** Dockerfile linting and best practices validation
   - **Docker Compose Validation:** Validates all compose files including test overrides
   - **ActionLint 1.7.4:** GitHub Actions workflow validation
@@ -195,9 +195,9 @@ architecture-beta
 
 ### Backend
 
-- **Language:** Python 3
-- **Framework:** Flask 3.0.0
-- **Server:** Gunicorn 21.2.0
+- **Language:** Python 3.13
+- **Framework:** Flask 3.1.3
+- **Server:** Gunicorn 25.1.0
 - **Audio Processing:** UADE player, FLAC encoder
 
 ### Frontend
@@ -222,7 +222,7 @@ architecture-beta
 
 ### Development
 
-- **Code Quality:** ESLint 9 (JavaScript), Black 23.3.0 (Python), Hadolint 2.12.0 (Docker), ActionLint 1.7.4 (GitHub Actions), Docker Compose validation
+- **Code Quality:** ESLint 9 (JavaScript), Black 26.1.0 (Python), Ruff 0.15.4 (Python), Hadolint 2.12.0 (Docker), ActionLint 1.7.4 (GitHub Actions), Docker Compose validation
 - **Security:** Bandit, Semgrep, CodeQL, Trivy
 - **Version Control:** Git, GitHub
 - **Documentation:** Markdown, Mermaid

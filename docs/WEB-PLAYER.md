@@ -320,7 +320,7 @@ Older or unsupported browsers automatically receive WAV files as fallback. No co
 ### Multi-Stage Build
 
 - **Stage 1 (base):** Compile UADE and dependencies from source
-- **Stage 2 (runtime):** Lightweight image with Python/Flask + UADE binaries + FLAC encoder
+- **Stage 2 (runtime):** Lightweight image with Python 3.13/Flask + UADE binaries + FLAC encoder
 
 ### Production Server
 

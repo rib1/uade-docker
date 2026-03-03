@@ -82,6 +82,7 @@ for arg in "$@"; do
             RUN_ACTIONLINT=true
             RUN_ESLINT=false
             RUN_BLACK=false
+            RUN_RUFF=false
             RUN_HADOLINT=false
             RUN_COMPOSE=false
             shift
@@ -90,6 +91,7 @@ for arg in "$@"; do
             RUN_HADOLINT=true
             RUN_ESLINT=false
             RUN_BLACK=false
+            RUN_RUFF=false
             RUN_ACTIONLINT=false
             RUN_COMPOSE=false
             shift
@@ -98,6 +100,7 @@ for arg in "$@"; do
             RUN_COMPOSE=true
             RUN_ESLINT=false
             RUN_BLACK=false
+            RUN_RUFF=false
             RUN_ACTIONLINT=false
             RUN_HADOLINT=false
             shift

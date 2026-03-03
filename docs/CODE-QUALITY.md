@@ -46,7 +46,7 @@ docker run -it --rm -v ${pwd}/web/static:/data cytopia/eslint . --fix
 
 **Purpose:** Enforce consistent Python code formatting (PEP 8 compliant).
 
-**Version:** Black 23.3.0
+**Version:** Black 26.1.0
 
 **Configuration:** `pyproject.toml` (line length: 100 characters)
 

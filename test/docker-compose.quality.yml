@@ -14,7 +14,7 @@ services:
       # Mount Docker socket for Docker-in-Docker
       - /var/run/docker.sock:/var/run/docker.sock
       # Mount project files for validation (read-only)
-      - ./web:/workspace/web:ro
+      - ./web:/workspace/web
       - ./.github:/workspace/.github:ro
       - ./test:/workspace/test:ro
       - ./pyproject.toml:/workspace/pyproject.toml:ro

@@ -23,7 +23,7 @@ import unicodedata
 import urllib.parse
 import uuid
 import zipfile
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Final
 
@@ -216,9 +216,9 @@ def add_security_headers(response):
     response.headers["X-Content-Type-Options"] = "nosniff"
     response.headers["X-Frame-Options"] = "SAMEORIGIN"
     # A more complete CSP.
-    response.headers[
-        "Content-Security-Policy"
-    ] = "default-src 'self'; base-uri 'self'; form-action 'self'; frame-ancestors 'self'"
+    response.headers["Content-Security-Policy"] = (
+        "default-src 'self'; base-uri 'self'; form-action 'self'; frame-ancestors 'self'"
+    )
     return response
 
 
@@ -725,9 +725,10 @@ def save_to_cache(cache_hash, file, ext):
         temp_file_remote = f"{cache_file_remote}.{uuid.uuid4()}.tmp"
 
         if not fs_cache.exists(cache_file_remote):
-            with open(metadata_file_local, "rb") as src, fs_cache.open(
-                temp_file_remote, "wb"
-            ) as dst:
+            with (
+                open(metadata_file_local, "rb") as src,
+                fs_cache.open(temp_file_remote, "wb") as dst,
+            ):
                 shutil.copyfileobj(src, dst, length=1024 * 1024)  # 1MB buffer
             # Atomic move to final remote name
             fs_cache.mv(temp_file_remote, cache_file_remote)
@@ -1010,7 +1011,7 @@ def process_audio_conversion(input_path, compress_flac=False, sample_files=None)
         duration_list (list[float]): Per-subsong durations (empty for single subsong or cache hits).
     """
     # Hold metadata to return to the caller, even if conversion fails.
-    (metadata_success, module_name, module_format, player_format, subsongs) = (
+    metadata_success, module_name, module_format, player_format, subsongs = (
         False,
         None,
         None,
@@ -1377,7 +1378,7 @@ def health():
             "status": "healthy",
             "version": GIT_COMMIT,
             "uade_version": UADE_VERSION,
-            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "timestamp": datetime.now(UTC).isoformat(),
             "uptime_seconds": int(time.time() - START_TIME),
             "uade_available": binaries["uade123"],
             "python_version": sys.version.split()[0],

@@ -73,7 +73,7 @@ services:
       - uade-net
 
   test-http-server: # Service for serving test files
-    image: python:3.9-alpine # A lightweight Python image
+    image: python:3.13-alpine # A lightweight Python image
     container_name: uade-test-http-server
     command: python -m http.server 8000 # Serve on port 8000
     volumes:
