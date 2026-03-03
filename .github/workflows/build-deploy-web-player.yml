@@ -16,12 +16,14 @@ on:
       - '.github/workflows/build-deploy-web-player.yml'
 
 permissions:
-  contents: write
-  packages: write
+  contents: read
 
 jobs:
   build-web:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
     steps:
     - name: Checkout code
       uses: actions/checkout@v6
@@ -98,9 +100,7 @@ jobs:
     permissions:
       contents: read
       id-token: write
-      actions: write
       pull-requests: write
-      issues: write
 
     steps:
     - name: Checkout code
