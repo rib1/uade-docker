@@ -42,6 +42,12 @@ logger = logging.getLogger(__name__)
 
 app = Flask(__name__, static_folder="static")
 START_TIME: Final = time.time()
+UADE_VERSION_TOKEN_PARTS_MIN: Final = 2
+MEMINFO_LINE_PARTS_EXPECTED: Final = 2
+LHA_HEADER_MIN_BYTES: Final = 7
+ASCII_PRINTABLE_MIN: Final = 0x20
+ASCII_PRINTABLE_MAX: Final = 0x7E
+SANITIZED_URL_LOG_MAX_LEN: Final = 200
 
 
 # Get git commit hash for version tracking
@@ -52,6 +58,7 @@ def get_git_commit():
             ["git", "rev-parse", "--short", "HEAD"],
             capture_output=True,
             text=True,
+            check=False,
             timeout=2,
         )
         if result.returncode == 0:
@@ -71,6 +78,7 @@ def get_uade_version():
             ["/usr/local/bin/uade123", "--version"],
             capture_output=True,
             text=True,
+            check=False,
             timeout=5,
         )
         # Parse version from output like "uade123 3.05"
@@ -80,7 +88,7 @@ def get_uade_version():
             for line in output.split("\n"):
                 if "uade123" in line.lower():
                     parts = line.split()
-                    if len(parts) >= 2:
+                    if len(parts) >= UADE_VERSION_TOKEN_PARTS_MIN:
                         return parts[1]  # e.g., "3.05"
             return output.split()[0] if output else "unknown"
         return "unknown"
@@ -93,12 +101,12 @@ def get_memory_usage():
     try:
         if platform.system() != "Linux":
             return None
-        with open("/proc/meminfo") as f:
+        with Path("/proc/meminfo").open() as f:
             lines = f.readlines()
         mem_info = {}
         for line in lines:
             parts = line.split(":")
-            if len(parts) == 2:
+            if len(parts) == MEMINFO_LINE_PARTS_EXPECTED:
                 name = parts[0].strip()
                 # Extract value and convert to KB
                 value_parts = parts[1].strip().split()
@@ -139,15 +147,15 @@ GIT_COMMIT: Final = get_git_commit()
 UADE_VERSION: Final = get_uade_version()
 
 # Configuration from environment variables (cloud-ready)
-MAX_UPLOAD_SIZE: Final = int(os.getenv("MAX_UPLOAD_SIZE", 10485760))  # 10MB
+MAX_UPLOAD_SIZE: Final = int(os.getenv("MAX_UPLOAD_SIZE", "10485760"))  # 10MB
 app.config["MAX_CONTENT_LENGTH"] = MAX_UPLOAD_SIZE
-MAX_DOWNLOAD_SIZE: Final = int(os.getenv("MAX_DOWNLOAD_SIZE", 10485760))  # 10MB
+MAX_DOWNLOAD_SIZE: Final = int(os.getenv("MAX_DOWNLOAD_SIZE", "10485760"))  # 10MB
 app.config["MAX_DOWNLOAD_SIZE"] = MAX_DOWNLOAD_SIZE
-CLEANUP_INTERVAL: Final = int(os.getenv("CLEANUP_INTERVAL", 3600))  # 1 hour
-CACHE_CLEANUP_INTERVAL: Final = int(os.getenv("CACHE_CLEANUP_INTERVAL", 86400))  # 24 hours
-RATE_LIMIT: Final = int(os.getenv("RATE_LIMIT", 200))  # requests per hour
-DOWNLOAD_RATE_LIMIT: Final = int(os.getenv("DOWNLOAD_RATE_LIMIT", 6))  # downloads per minute
-PORT: Final = int(os.getenv("PORT", 5000))
+CLEANUP_INTERVAL: Final = int(os.getenv("CLEANUP_INTERVAL", "3600"))  # 1 hour
+CACHE_CLEANUP_INTERVAL: Final = int(os.getenv("CACHE_CLEANUP_INTERVAL", "86400"))  # 24 hours
+RATE_LIMIT: Final = int(os.getenv("RATE_LIMIT", "200"))  # requests per hour
+DOWNLOAD_RATE_LIMIT: Final = int(os.getenv("DOWNLOAD_RATE_LIMIT", "6"))  # downloads per minute
+PORT: Final = int(os.getenv("PORT", "5000"))
 DISABLE_SSL_VERIFY: Final = os.getenv("DISABLE_SSL_VERIFY", "0") == "1"  # For corporate proxies
 
 # Local directories for processing
@@ -548,7 +556,7 @@ def cleanup_cache_files():
 def get_file_hash(file_path):
     """Calculate MD5 hash of a file for caching"""
     md5 = hashlib.md5(usedforsecurity=False)  # Only used for caching, not security
-    with open(file_path, "rb") as f:
+    with Path(file_path).open("rb") as f:
         for chunk in iter(lambda: f.read(4096), b""):
             md5.update(chunk)
     return md5.hexdigest()
@@ -573,7 +581,7 @@ def supports_flac(user_agent):
 def compress_to_flac(wav_path, flac_path):
     """Compress WAV to FLAC format"""
     # Use a temporary file for UADE output to ensure atomic write
-    temp_flac_output_path = flac_path.with_name(f"{flac_path.name}.{str(uuid.uuid4())}.tmp")
+    temp_flac_output_path = flac_path.with_name(f"{flac_path.name}.{uuid.uuid4()!s}.tmp")
     try:
         # Prevent division by zero if wav file is empty
         if wav_path.stat().st_size == 0:
@@ -581,7 +589,7 @@ def compress_to_flac(wav_path, flac_path):
             return False
 
         cmd = ["flac", "--best", "--silent", "-f", "-o", str(temp_flac_output_path), str(wav_path)]
-        result = subprocess.run(cmd, capture_output=True, text=True, timeout=60)
+        result = subprocess.run(cmd, capture_output=True, text=True, check=False, timeout=60)
 
         if result.returncode == 0 and temp_flac_output_path.exists():
             Path.replace(temp_flac_output_path, flac_path)
@@ -626,10 +634,10 @@ def find_music_file(extract_dir):
 def is_lha_file(file_path):
     """Check if file is an LHA archive by magic bytes"""
     try:
-        with open(file_path, "rb") as f:
+        with Path(file_path).open("rb") as f:
             # LHA files have signature at offset 2: '-lh' or '-lz'
             header = f.read(20)
-            if len(header) >= 7:
+            if len(header) >= LHA_HEADER_MIN_BYTES:
                 signature = header[2:5]
                 return signature == b"-lh" or signature == b"-lz"
         return False
@@ -640,7 +648,7 @@ def is_lha_file(file_path):
 def is_zip_file(file_path):
     """Check if file is a ZIP archive by magic bytes"""
     try:
-        with open(file_path, "rb") as f:
+        with Path(file_path).open("rb") as f:
             header = f.read(4)
             # ZIP files start with PK\x03\x04 or PK\x05\x06 or PK\x07\x08
             return header[:2] == b"PK"
@@ -660,7 +668,7 @@ def extract_lha(lha_path, extract_dir):
         # Change to extract directory and run lha extraction
         cmd = ["lha", "x", str(lha_path)]
         result = subprocess.run(
-            cmd, capture_output=True, text=True, timeout=30, cwd=str(extract_dir)
+            cmd, capture_output=True, text=True, check=False, timeout=30, cwd=str(extract_dir)
         )
 
         if result.returncode != 0:
@@ -711,7 +719,7 @@ def save_to_cache(cache_hash, file, ext):
     cache_file_remote = f"{root_cache}/{cache_hash}{ext}"
     temp_file_remote = f"{cache_file_remote}.{uuid.uuid4()}.tmp"
     if not fs_cache.exists(cache_file_remote):
-        with open(file, "rb") as src, fs_cache.open(temp_file_remote, "wb") as dst:
+        with Path(file).open("rb") as src, fs_cache.open(temp_file_remote, "wb") as dst:
             shutil.copyfileobj(src, dst, length=1024 * 1024)  # 1MB buffer
         # Atomic move to final name
         fs_cache.mv(temp_file_remote, cache_file_remote)
@@ -726,7 +734,7 @@ def save_to_cache(cache_hash, file, ext):
 
         if not fs_cache.exists(cache_file_remote):
             with (
-                open(metadata_file_local, "rb") as src,
+                Path(metadata_file_local).open("rb") as src,
                 fs_cache.open(temp_file_remote, "wb") as dst,
             ):
                 shutil.copyfileobj(src, dst, length=1024 * 1024)  # 1MB buffer
@@ -762,7 +770,10 @@ def fetch_cached_file(cache_hash, prefer_flac=False):
             cache_dir_local = cache_file_local.parent
             cache_dir_local.mkdir(parents=True, exist_ok=True)
             # Copy from remote cache to local temp file, then move atomically
-            with fs_cache.open(cache_file_remote, "rb") as src, open(temp_file_local, "wb") as dst:
+            with (
+                fs_cache.open(cache_file_remote, "rb") as src,
+                Path(temp_file_local).open("wb") as dst,
+            ):
                 shutil.copyfileobj(src, dst, length=1024 * 1024)  # 1MB buffer
             Path.replace(temp_file_local, cache_file_local)
             logger.info(f"Cache hit ({ext[1:].upper()}): {cache_hash} from remote cache")
@@ -783,7 +794,9 @@ def detect_module_metadata(input_path):
     try:
         cmd = [UADE123_BIN, "-g", str(input_path)]
         # Use encoding='latin1' to avoid decode errors with non-UTF-8 bytes in output
-        result = subprocess.run(cmd, capture_output=True, text=True, timeout=5, encoding="latin1")
+        result = subprocess.run(
+            cmd, capture_output=True, text=True, check=False, timeout=5, encoding="latin1"
+        )
         if result.returncode != 0:
             logger.error(f"UADE metadata detection error: {result.stderr}")
             return False, None, None, None, 0
@@ -906,7 +919,7 @@ def save_metadata(cache_hash, metadata):
         )
 
         metadata_json = json.dumps(metadata)
-        with open(temp_file_local, "w") as f:
+        with Path(temp_file_local).open("w") as f:
             f.write(metadata_json)
 
         # Atomic move to final local name
@@ -923,7 +936,7 @@ def load_metadata_cache(cache_hash):
         # Try local disk first
         metadata_file_local = CONVERTED_DIR / f"{cache_hash}.json"
         if metadata_file_local.exists():
-            with open(metadata_file_local) as f:
+            with Path(metadata_file_local).open() as f:
                 metadata = json.load(f)
             logger.info(f"Loaded metadata from local: {cache_hash}.json")
             # Touch file to extend its cleanup interval (LRU-aware caching)
@@ -942,7 +955,7 @@ def load_metadata_cache(cache_hash):
                 f"{metadata_file_local.name}.{uuid.uuid4()}.tmp"
             )
             metadata_json = json.dumps(metadata)
-            with open(temp_file_local, "w") as f:
+            with Path(temp_file_local).open("w") as f:
                 f.write(metadata_json)
             Path.replace(temp_file_local, metadata_file_local)
             logger.info(f"Cached metadata to local: {cache_hash}.json")
@@ -1054,7 +1067,7 @@ def process_audio_conversion(input_path, compress_flac=False, sample_files=None)
         else:
             # No cached metadata, run detection
             # Use a unique lock file for metadata detection (per thread/process)
-            unique_metadata_lock = MODULES_DIR / f"{cache_hash}.metadatalock.{str(uuid.uuid4())}"
+            unique_metadata_lock = MODULES_DIR / f"{cache_hash}.metadatalock.{uuid.uuid4()!s}"
             unique_metadata_lock.touch(exist_ok=True)
             try:
                 (
@@ -1079,7 +1092,7 @@ def process_audio_conversion(input_path, compress_flac=False, sample_files=None)
                     f"Could not detect metadata for {input_path}. "
                     "Truncating file to 0 bytes to cache as invalid module."
                 )
-                with open(input_resolved, "w") as _:  # Truncate to 0 bytes
+                with Path(input_resolved).open("w") as _:  # Truncate to 0 bytes
                     pass
 
                 # Also truncate any associated sample files to prevent disk abuse
@@ -1091,7 +1104,7 @@ def process_audio_conversion(input_path, compress_flac=False, sample_files=None)
                                 sample_file_path.unlink(missing_ok=True)
                                 logger.info(f"Removed sample symlink: {sample_file_path}")
                             else:
-                                with open(sample_file_path, "w") as _:
+                                with Path(sample_file_path).open("w") as _:
                                     pass
                                 logger.info(f"Truncated sample file to 0 bytes: {sample_file_path}")
             else:
@@ -1116,7 +1129,7 @@ def process_audio_conversion(input_path, compress_flac=False, sample_files=None)
         output_path = CONVERTED_DIR / f"{cache_hash}.wav"
         lock_path = CONVERTED_DIR / f"{cache_hash}.lock"
         # Use a temporary file for UADE output to ensure atomic write
-        temp_uade_output_path = output_path.with_name(f"{output_path.name}.{str(uuid.uuid4())}.tmp")
+        temp_uade_output_path = output_path.with_name(f"{output_path.name}.{uuid.uuid4()!s}.tmp")
 
         # Check remote cache first (before acquiring lock)
         cached_file, metadata = fetch_cached_file(cache_hash, prefer_flac=compress_flac)
@@ -1179,12 +1192,13 @@ def process_audio_conversion(input_path, compress_flac=False, sample_files=None)
             # Modern way to set umask for a child process without using the deprecated preexec_fn.
             # We wrap the command in a shell that sets the umask and then execs the binary.
             # This is thread-safe and avoids Python's deprecated preexec_fn.
-            full_cmd = ["/bin/sh", "-c", 'umask 0002; exec "$@"', "--"] + cmd
+            full_cmd = ["/bin/sh", "-c", 'umask 0002; exec "$@"', "--", *cmd]
 
             result = subprocess.run(
                 full_cmd,
                 capture_output=True,
                 text=True,
+                check=False,
                 timeout=300,
                 encoding="latin1",
             )  # 5 minute timeout
@@ -1351,7 +1365,7 @@ def sitemap_xml():
 @limiter.exempt
 def get_supported_extensions():
     """Return a list of supported file extensions"""
-    extensions = sorted(PLAYABLE_MODULE_EXTENSIONS) + ["lha", "zip"]
+    extensions = [*sorted(PLAYABLE_MODULE_EXTENSIONS), "lha", "zip"]
     return json_response([f".{ext}" for ext in extensions])
 
 
@@ -1790,7 +1804,7 @@ def convert_url():
             if cached_sample_path.exists():
                 if not sample_path.exists():
                     sample_path.unlink(missing_ok=True)  # Ensure no stale link
-                    os.symlink(cached_sample_path, sample_path)
+                    sample_path.symlink_to(cached_sample_path)
                 logger.info(
                     f"Cache hit for sample file: {sanitized_url(sample_url)}, "
                     f"using cached file {cached_sample_path}, linking to {sample_path}"
@@ -1817,9 +1831,9 @@ def convert_url():
                     if not success:
                         return error_response
 
-                    if sample_path.exists():
+                    if sample_path.exists() or sample_path.is_symlink():
                         sample_path.unlink(missing_ok=True)
-                    os.symlink(cached_sample_path, sample_path)
+                    sample_path.symlink_to(cached_sample_path)
                     logger.info(
                         f"Cached sample file: {cached_sample_path}, linking to {sample_path}"
                     )
@@ -1833,7 +1847,7 @@ def convert_url():
                         if cached_sample_path.exists():
                             if not sample_path.exists():
                                 sample_path.unlink(missing_ok=True)  # Ensure no stale link
-                                os.symlink(cached_sample_path, sample_path)
+                                sample_path.symlink_to(cached_sample_path)
                             logger.info(
                                 f"Cache hit for sample file completed by another thread: "
                                 f"{sanitized_url(sample_url)}, using cached file "
@@ -1888,13 +1902,13 @@ def sanitized_url(url, log=True):
     out_chars = []
     for ch in url:
         o = ord(ch)
-        if 0x20 <= o <= 0x7E:
+        if ASCII_PRINTABLE_MIN <= o <= ASCII_PRINTABLE_MAX:
             out_chars.append(ch)
         else:
             out_chars.append(f"\\u{o:04x}")
     out = "".join(out_chars)
-    if len(out) > 200:
-        out = out[:200] + "..."
+    if len(out) > SANITIZED_URL_LOG_MAX_LEN:
+        out = out[:SANITIZED_URL_LOG_MAX_LEN] + "..."
     return out
 
 
@@ -1967,7 +1981,7 @@ def download_and_limit_size(url, temp_file_path, error_context=""):
                     )
 
             try:
-                with open(temp_file_path, "wb") as fd:
+                with Path(temp_file_path).open("wb") as fd:
                     for chunk in response.iter_content(chunk_size=8192):
                         fd.write(chunk)
                         downloaded_size += len(chunk)
@@ -2189,7 +2203,7 @@ def serve_audio_file(file_id, as_attachment=False, custom_filename=None):
 
 def stream_full_file(file_path, chunk_size=8192):
     """Yield the entire file in chunks (used for small file streaming)"""
-    with open(file_path, "rb") as f:
+    with Path(file_path).open("rb") as f:
         while True:
             chunk = f.read(chunk_size)
             if not chunk:
@@ -2199,7 +2213,7 @@ def stream_full_file(file_path, chunk_size=8192):
 
 def stream_file_range(file_path, start, length, chunk_size=8192):
     """Yield a byte range from a file (used for range requests)"""
-    with open(file_path, "rb") as f:
+    with Path(file_path).open("rb") as f:
         f.seek(start)
         remaining = length
         while remaining > 0:
