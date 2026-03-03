@@ -225,7 +225,7 @@ architecture-beta
 
 ### Development
 
-- **Code Quality:** ESLint 9 (JavaScript), Black 26.1.0 (Python), Ruff 0.15.4 (Python), Hadolint 2.12.0 (Docker), ActionLint 1.7.4 (GitHub Actions), ShellCheck (Shell), Yamllint (YAML), Docker Compose validation
+- **Code Quality:** ESLint 10 (JavaScript), Black 26.1.0 (Python), Ruff 0.15.4 (Python), Hadolint 2.14.0 (Docker), ActionLint 1.7.11 (GitHub Actions), ShellCheck (Shell), Yamllint (YAML), Docker Compose validation
 - **Security:** Bandit, Semgrep, CodeQL, Trivy
 - **Version Control:** Git, GitHub
 - **Documentation:** Markdown, Mermaid

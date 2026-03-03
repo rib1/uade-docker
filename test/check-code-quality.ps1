@@ -13,6 +13,7 @@
 #   .\test\check-code-quality.ps1 -Compose     # Docker Compose only
 #   .\test\check-code-quality.ps1 -ShellCheck  # ShellCheck only
 #   .\test\check-code-quality.ps1 -Yamllint    # Yamllint only
+#   .\test\check-code-quality.ps1 -MyPy        # mypy only
 #
 # Requirements:
 #   - Docker Desktop installed and running
@@ -26,7 +27,8 @@ param(
     [switch]$Hadolint,
     [switch]$Compose,
     [switch]$ShellCheck,
-    [switch]$Yamllint
+    [switch]$Yamllint,
+    [switch]$MyPy
 )
 
 # Color codes
@@ -51,7 +53,7 @@ $PassedChecks = 0
 $FailedChecks = 0
 
 # Default to run all if no specific tool selected
-if (-not $ESLint -and -not $Black -and -not $Ruff -and -not $ActionLint -and -not $Hadolint -and -not $Compose -and -not $ShellCheck -and -not $Yamllint) {
+if (-not $ESLint -and -not $Black -and -not $Ruff -and -not $ActionLint -and -not $Hadolint -and -not $Compose -and -not $ShellCheck -and -not $Yamllint -and -not $MyPy) {
     $ESLint = $true
     $Black = $true
     $Ruff = $true
@@ -60,6 +62,7 @@ if (-not $ESLint -and -not $Black -and -not $Ruff -and -not $ActionLint -and -no
     $Compose = $true
     $ShellCheck = $true
     $Yamllint = $true
+    $MyPy = $true
 }
 
 # Helper function to print headers
@@ -165,6 +168,26 @@ if ($Ruff) {
         Write-Result "Ruff" 0
     } else {
         Write-Result "Ruff" 1 $output
+    }
+}
+
+# mypy Check
+if ($MyPy) {
+    Write-Header "mypy - Lightweight Python Type Checking"
+
+    Write-Host "Running mypy on web/server.py..."
+
+    $output = & docker run --rm `
+        -v "${ProjectRoot}:/workspace" `
+        --workdir /workspace `
+        python:3.13-slim sh -lc "pip install --no-cache-dir mypy==1.19.0 >/dev/null && mypy --config-file pyproject.toml --no-error-summary" 2>&1
+
+    $exitCode = $LASTEXITCODE
+
+    if ($exitCode -eq 0) {
+        Write-Result "mypy" 0
+    } else {
+        Write-Result "mypy" 1 $output
     }
 }
 

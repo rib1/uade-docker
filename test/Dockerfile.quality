@@ -5,7 +5,7 @@
 #
 # This allows developers to run: docker compose up quality-check
 
-FROM node:20-alpine
+FROM node:24-alpine
 
 # Install bash, Python, Docker CLI, and other utilities
 RUN apk add --no-cache \
@@ -18,22 +18,22 @@ RUN apk add --no-cache \
     python3 \
     py3-pip \
     docker-cli \
-    && ACTIONLINT_VERSION=1.7.4 \
+    && ACTIONLINT_VERSION=1.7.11 \
     && curl -fsSL "https://github.com/rhysd/actionlint/releases/download/v${ACTIONLINT_VERSION}/actionlint_${ACTIONLINT_VERSION}_linux_amd64.tar.gz" -o /tmp/actionlint.tar.gz \
     && tar xzf /tmp/actionlint.tar.gz -C /tmp \
     && mv /tmp/actionlint /usr/local/bin/actionlint \
     && chmod +x /usr/local/bin/actionlint \
     && rm -f /tmp/actionlint.tar.gz \
-    && HADOLINT_VERSION=2.12.0 \
+    && HADOLINT_VERSION=2.14.0 \
     && curl -fsSL "https://github.com/hadolint/hadolint/releases/download/v${HADOLINT_VERSION}/hadolint-Linux-x86_64" -o /usr/local/bin/hadolint \
     && chmod +x /usr/local/bin/hadolint
 
-# Install ESLint globally (version 9 for better flat config support)
-RUN npm install -g eslint@9
+# Install ESLint globally (version 10 for better flat config support)
+RUN npm install -g eslint@10
 
-# Install Black, Ruff, and yamllint via pip
+# Install Black, Ruff, mypy, and yamllint via pip
 # hadolint ignore=DL3042,DL3059
-RUN pip3 install black==26.1.0 ruff==0.15.4 yamllint==1.37.1 --break-system-packages
+RUN pip3 install black==26.1.0 ruff==0.15.4 mypy==1.19.0 yamllint==1.38.0 --break-system-packages
 
 # Copy check script from test folder (context is project root)
 COPY test/check-code-quality.sh /usr/local/bin/check-code-quality.sh

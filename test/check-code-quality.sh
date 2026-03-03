@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # UADE Docker - Code Quality Automation Script
-# This script runs all code quality checks: ESLint, Black, ActionLint
+# This script runs all code quality checks: ESLint, Black, Ruff, mypy, ActionLint
 # No local dependencies needed - all tools run in Docker containers
 #
 # Usage:
@@ -15,6 +15,7 @@
 #   ./test/check-code-quality.sh --compose    # Docker Compose only
 #   ./test/check-code-quality.sh --shellcheck # ShellCheck only
 #   ./test/check-code-quality.sh --yamllint   # Yamllint only
+#   ./test/check-code-quality.sh --mypy       # mypy only
 
 # Don't use set -e because we want to run all checks even if one fails
 # We handle errors manually and exit at the end based on FAILED_CHECKS count
@@ -48,6 +49,7 @@ RUN_HADOLINT=true
 RUN_COMPOSE=true
 RUN_SHELLCHECK=true
 RUN_YAMLLINT=true
+RUN_MYPY=true
 
 for arg in "$@"; do
     case $arg in
@@ -64,6 +66,7 @@ for arg in "$@"; do
             RUN_COMPOSE=false
             RUN_SHELLCHECK=false
             RUN_YAMLLINT=false
+            RUN_MYPY=false
             shift
             ;;
         --black)
@@ -75,6 +78,7 @@ for arg in "$@"; do
             RUN_COMPOSE=false
             RUN_SHELLCHECK=false
             RUN_YAMLLINT=false
+            RUN_MYPY=false
             shift
             ;;
         --ruff)
@@ -86,6 +90,7 @@ for arg in "$@"; do
             RUN_COMPOSE=false
             RUN_SHELLCHECK=false
             RUN_YAMLLINT=false
+            RUN_MYPY=false
             shift
             ;;
         --actionlint)
@@ -97,6 +102,7 @@ for arg in "$@"; do
             RUN_COMPOSE=false
             RUN_SHELLCHECK=false
             RUN_YAMLLINT=false
+            RUN_MYPY=false
             shift
             ;;
         --hadolint)
@@ -108,6 +114,7 @@ for arg in "$@"; do
             RUN_COMPOSE=false
             RUN_SHELLCHECK=false
             RUN_YAMLLINT=false
+            RUN_MYPY=false
             shift
             ;;
         --compose)
@@ -119,6 +126,7 @@ for arg in "$@"; do
             RUN_HADOLINT=false
             RUN_SHELLCHECK=false
             RUN_YAMLLINT=false
+            RUN_MYPY=false
             shift
             ;;
         --shellcheck)
@@ -130,6 +138,7 @@ for arg in "$@"; do
             RUN_HADOLINT=false
             RUN_COMPOSE=false
             RUN_YAMLLINT=false
+            RUN_MYPY=false
             shift
             ;;
         --yamllint)
@@ -141,11 +150,24 @@ for arg in "$@"; do
             RUN_HADOLINT=false
             RUN_COMPOSE=false
             RUN_SHELLCHECK=false
+            RUN_MYPY=false
+            shift
+            ;;
+        --mypy)
+            RUN_MYPY=true
+            RUN_ESLINT=false
+            RUN_BLACK=false
+            RUN_RUFF=false
+            RUN_ACTIONLINT=false
+            RUN_HADOLINT=false
+            RUN_COMPOSE=false
+            RUN_SHELLCHECK=false
+            RUN_YAMLLINT=false
             shift
             ;;
         *)
             echo "Unknown option: $arg"
-            echo "Usage: $0 [--fix] [--eslint|--black|--ruff|--actionlint|--hadolint|--compose|--shellcheck|--yamllint]"
+            echo "Usage: $0 [--fix] [--eslint|--black|--ruff|--mypy|--actionlint|--hadolint|--compose|--shellcheck|--yamllint]"
             exit 1
             ;;
     esac
@@ -325,6 +347,34 @@ if [ "$RUN_RUFF" = true ]; then
         print_result "Ruff" 0
     else
         print_result "Ruff" $EXIT_CODE "$OUTPUT"
+    fi
+fi
+
+# mypy Check
+if [ "$RUN_MYPY" = true ]; then
+    print_header "mypy - Lightweight Python Type Checking"
+
+    echo "Running mypy on web/server.py..."
+
+    # Keep this pass lightweight and stable during gradual typing adoption.
+    MYPY_ARGS=(--config-file pyproject.toml --no-error-summary)
+
+    # Check if mypy is available locally (in Docker container)
+    if command -v mypy >/dev/null 2>&1; then
+        OUTPUT=$(cd "${PROJECT_ROOT}" && mypy "${MYPY_ARGS[@]}" 2>&1)
+        EXIT_CODE=$?
+    else
+        OUTPUT=$(docker run --rm \
+               -v "${PROJECT_ROOT}:/workspace" \
+               --workdir /workspace \
+               python:3.13-slim sh -lc "pip install --no-cache-dir mypy==1.19.0 >/dev/null && mypy --config-file pyproject.toml --no-error-summary" 2>&1)
+        EXIT_CODE=$?
+    fi
+
+    if [ $EXIT_CODE -eq 0 ]; then
+        print_result "mypy" 0
+    else
+        print_result "mypy" $EXIT_CODE "$OUTPUT"
     fi
 fi
 

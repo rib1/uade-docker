@@ -4,16 +4,17 @@ This document explains the code quality checks and how to run them for the UADE 
 
 ## Overview
 
-The UADE Docker project uses eight automated code quality tools:
+The UADE Docker project uses nine automated code quality tools:
 
 1. **ESLint** - JavaScript/CSS linting and style checking
 2. **Black** - Python code formatting and consistency
 3. **Ruff** - Fast Python linting and formatting
-4. **Hadolint** - Dockerfile linting and best practices
-5. **Docker Compose** - Compose file validation
-6. **ActionLint** - GitHub Actions workflow validation
-7. **ShellCheck** - Shell script linting and bug detection
-8. **Yamllint** - YAML syntax and style validation
+4. **mypy** - Lightweight Python type checking
+5. **Hadolint** - Dockerfile linting and best practices
+6. **Docker Compose** - Compose file validation
+7. **ActionLint** - GitHub Actions workflow validation
+8. **ShellCheck** - Shell script linting and bug detection
+9. **Yamllint** - YAML syntax and style validation
 
 ## Tools
 
@@ -21,7 +22,7 @@ The UADE Docker project uses eight automated code quality tools:
 
 **Purpose:** Enforce code style, detect errors, ensure consistency in JavaScript/CSS files.
 
-**Version:** ESLint 9 (with flat config support)
+**Version:** ESLint 10 (with flat config support)
 
 **Configuration:** `/web/static/eslint.config.js`
 
@@ -29,7 +30,7 @@ The UADE Docker project uses eight automated code quality tools:
 
 **Dual-Mode Execution:**
 
-- In quality-check container: Uses locally installed ESLint 9
+- In quality-check container: Uses locally installed ESLint 10
 - Local development: Falls back to Docker container
 
 **Direct Docker command:**
@@ -92,22 +93,38 @@ docker run --rm -v ${pwd}:/workspace --workdir /workspace/web ghcr.io/astral-sh/
 docker run --rm -v ${pwd}:/workspace --workdir /workspace/web ghcr.io/astral-sh/ruff:latest check . --fix
 ```
 
+### mypy (Python Type Checking)
+
+**Purpose:** Add a lightweight static type check pass for core Python server code.
+
+**Version:** 1.19.0
+
+**Configuration:** `pyproject.toml` (`[tool.mypy]`)
+
+**Files checked:** `web/server.py`
+
+**Direct Docker command:**
+
+```bash
+docker run --rm -v ${pwd}:/workspace --workdir /workspace python:3.13-slim sh -lc "pip install --no-cache-dir mypy==1.19.0 >/dev/null && mypy --config-file pyproject.toml --no-error-summary"
+```
+
 ### Hadolint (Dockerfiles)
 
 **Purpose:** Lint Dockerfiles for best practices and common errors.
 
-**Version:** 2.12.0
+**Version:** 2.14.0
 
 **Configuration:** `.hadolint.yaml` (ignores warnings, only fails on errors)
 
 **Files checked:** All `Dockerfile*` files in the repository
 
-**Execution:** Requires Docker (runs hadolint/hadolint:v2.12.0 image)
+**Execution:** Requires Docker (runs hadolint/hadolint:v2.14.0 image)
 
 **Direct Docker command:**
 
 ```bash
-Get-Content Dockerfile | docker run --rm -i -v "${pwd}/.hadolint.yaml:/.hadolint.yaml:ro" hadolint/hadolint:v2.12.0 hadolint --config /.hadolint.yaml -
+Get-Content Dockerfile | docker run --rm -i -v "${pwd}/.hadolint.yaml:/.hadolint.yaml:ro" hadolint/hadolint:v2.14.0 hadolint --config /.hadolint.yaml -
 ```
 
 ### Docker Compose (Validation)
@@ -139,7 +156,7 @@ docker compose -f docker-compose.yml -f test/docker-compose.quality.yml config -
 
 **Purpose:** Validate GitHub Actions workflow syntax and best practices.
 
-**Version:** 1.7.4
+**Version:** 1.7.11
 
 **Files checked:** `.github/workflows/**/*.yml`
 
@@ -151,7 +168,7 @@ docker compose -f docker-compose.yml -f test/docker-compose.quality.yml config -
 **Direct Docker command:**
 
 ```bash
-docker run --rm -v ${pwd}/.github/workflows:/workflows rhysd/actionlint:1.7.4 -color /workflows/*.yml
+docker run --rm -v ${pwd}/.github/workflows:/workflows rhysd/actionlint:1.7.11 -color /workflows/*.yml
 ```
 
 ## Running Code Quality Checks
@@ -161,13 +178,13 @@ docker run --rm -v ${pwd}/.github/workflows:/workflows rhysd/actionlint:1.7.4 -c
 Use the Docker Compose quality-check service for consistent, isolated checks:
 
 ```bash
-# Run all available checks in Docker container (ESLint, Black, Ruff, Hadolint, ActionLint, ShellCheck, Yamllint)
+# Run all available checks in Docker container (ESLint, Black, Ruff, mypy, Hadolint, ActionLint, ShellCheck, Yamllint)
 docker compose -f docker-compose.yml -f test/docker-compose.quality.yml run --rm --build quality-check
 ```
 
 This approach:
 
-- Runs ESLint, Black, Ruff, Hadolint, ActionLint, ShellCheck, and Yamllint in an isolated container
+- Runs ESLint, Black, Ruff, mypy, Hadolint, ActionLint, ShellCheck, and Yamllint in an isolated container
 - No local installation required
 - Consistent results across all environments
 - Properly exits with code 1 on failures
@@ -176,7 +193,7 @@ This approach:
 
 ### Local Script Execution (All Checks Including Compose Validation)
 
-Run the scripts directly on your machine to execute all eight checks:
+Run the scripts directly on your machine to execute all nine checks:
 
 **Bash (Linux/Mac/Git Bash):**
 
@@ -196,6 +213,7 @@ Run the scripts directly on your machine to execute all eight checks:
 ./test/check-code-quality.sh --actionlint
 ./test/check-code-quality.sh --shellcheck
 ./test/check-code-quality.sh --yamllint
+./test/check-code-quality.sh --mypy
 ```
 
 **PowerShell (Windows):**
@@ -216,6 +234,7 @@ Run the scripts directly on your machine to execute all eight checks:
 .\test\check-code-quality.ps1 -ActionLint
 .\test\check-code-quality.ps1 -ShellCheck
 .\test\check-code-quality.ps1 -Yamllint
+.\test\check-code-quality.ps1 -MyPy
 ```
 
 ### Individual Tool Commands
@@ -254,10 +273,10 @@ docker run --rm -v ${pwd}:/workspace --workdir /workspace/web ghcr.io/astral-sh/
 
 ```bash
 # PowerShell
-Get-Content Dockerfile | docker run --rm -i -v "${pwd}/.hadolint.yaml:/.hadolint.yaml:ro" hadolint/hadolint:v2.12.0 hadolint --config /.hadolint.yaml -
+Get-Content Dockerfile | docker run --rm -i -v "${pwd}/.hadolint.yaml:/.hadolint.yaml:ro" hadolint/hadolint:v2.14.0 hadolint --config /.hadolint.yaml -
 
 # Bash
-docker run --rm -i -v "${PWD}/.hadolint.yaml:/.hadolint.yaml:ro" hadolint/hadolint:v2.12.0 hadolint --config /.hadolint.yaml - < Dockerfile
+docker run --rm -i -v "${PWD}/.hadolint.yaml:/.hadolint.yaml:ro" hadolint/hadolint:v2.14.0 hadolint --config /.hadolint.yaml - < Dockerfile
 ```
 
 #### Docker Compose Only
@@ -355,7 +374,7 @@ The code quality checks run automatically as part of CI/CD via the [code-quality
 **Workflow behavior:**
 
 - Builds the quality-check Docker container
-- Runs ESLint, Black, Ruff, Hadolint, ActionLint, ShellCheck, and Yamllint
+- Runs ESLint, Black, Ruff, mypy, Hadolint, ActionLint, ShellCheck, and Yamllint
 - Fails the build if any check reports errors
 - Provides helpful error messages with fix instructions
 
@@ -366,6 +385,7 @@ The workflow will fail if:
 - ESLint finds linting issues (syntax errors, style violations)
 - Black detects formatting inconsistencies
 - Ruff identifies linting or formatting issues
+- mypy identifies Python type issues in the configured scope
 - Hadolint identifies Dockerfile best-practice violations
 - ActionLint identifies workflow validation errors
 - ShellCheck identifies shell script issues
@@ -493,6 +513,7 @@ Typical run times (first run includes Docker image pull):
 - **ESLint:** 5-10 seconds (first time: 30-45 seconds with image pull)
 - **Black:** 5-10 seconds (first time: 30-45 seconds with image pull)
 - **Ruff:** 1-2 seconds (first time: 10-15 seconds with image pull)
+- **mypy:** 3-8 seconds (first time: 20-40 seconds with image pull)
 - **ActionLint:** 5-10 seconds per workflow (first time: 20-30 seconds)
 - **ShellCheck:** 1-3 seconds
 - **Yamllint:** 1-3 seconds
@@ -506,7 +527,7 @@ Subsequent runs are much faster due to Docker image caching.
 
 Both `check-code-quality.sh` (Bash) and `check-code-quality.ps1` (PowerShell) scripts:
 
-1. **Parse arguments** - Determines which checks to run (--fix, --eslint, --black, --ruff, --hadolint, --compose, --actionlint, --shellcheck, --yamllint)
+1. **Parse arguments** - Determines which checks to run (--fix, --eslint, --black, --ruff, --mypy, --hadolint, --compose, --actionlint, --shellcheck, --yamllint)
 2. **Detect environment** - Checks if tools are available locally or need Docker
 3. **Run checks** - Executes each tool (local or Docker container)
 4. **Capture output** - Stores results directly in variables (no temp files)
@@ -518,7 +539,7 @@ The scripts intelligently choose execution mode:
 
 **Quality-Check Container Mode:**
 
-- Tools (ESLint, Black, Ruff, Hadolint, ActionLint, ShellCheck, Yamllint) are pre-installed
+- Tools (ESLint, Black, Ruff, mypy, Hadolint, ActionLint, ShellCheck, Yamllint) are pre-installed
 - Runs directly without nested Docker
 - Faster execution, simpler volume mounting
 
@@ -544,6 +565,7 @@ Tools are run with proper error handling:
 - ESLint: Non-zero exit on linting errors
 - Black: Non-zero exit on formatting inconsistencies
 - Ruff: Non-zero exit on linting or formatting issues
+- mypy: Non-zero exit on detected type issues in configured scope
 - Hadolint: Non-zero exit on Dockerfile linting errors
 - ActionLint: Non-zero exit on workflow validation errors
 - ShellCheck: Non-zero exit on shell script linting errors
@@ -559,6 +581,7 @@ Script aggregates all results and returns:
 - [ESLint Documentation](https://eslint.org/)
 - [Black Documentation](https://black.readthedocs.io/)
 - [Ruff Documentation](https://ruff.rs/)
+- [mypy Documentation](https://mypy.readthedocs.io/)
 - [ActionLint Documentation](https://rhysd.github.io/actionlint/)
 - [ShellCheck Documentation](https://www.shellcheck.net/)
 - [Yamllint Documentation](https://yamllint.readthedocs.io/)
