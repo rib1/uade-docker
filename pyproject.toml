@@ -35,6 +35,7 @@ select = [
     "C4",  # flake8-comprehensions
     "UP",  # pyupgrade
     "SIM", # flake8-simplify
+    "RET", # flake8-return
     "RUF", # Ruff-specific rules
     "PTH", # pathlib best practices
     "PLE", # pylint errors

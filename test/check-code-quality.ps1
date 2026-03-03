@@ -415,10 +415,11 @@ if ($ShellCheck) {
         $ShellcheckFailed = $false
         foreach ($ShellFile in $ShellFiles) {
             Write-Host "  Checking: $($ShellFile.Name)"
+            $relativePath = "test/$($ShellFile.Name)"
             $output = & docker run --rm `
                 -v "${ProjectRoot}:/workspace" `
                 --workdir /workspace `
-                koalaman/shellcheck:stable "test/$($ShellFile.Name)" 2>&1
+                koalaman/shellcheck:stable -x --severity=style "$relativePath" 2>&1
             $exitCode = $LASTEXITCODE
             if ($exitCode -ne 0) {
                 $ShellcheckFailed = $true

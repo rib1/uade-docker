@@ -599,9 +599,8 @@ def compress_to_flac(wav_path, flac_path):
                 f"({flac_path.stat().st_size / wav_path.stat().st_size:.1%} of original)"
             )
             return True
-        else:
-            logger.error(f"FLAC compression failed: {result.stderr}")
-            return False
+        logger.error(f"FLAC compression failed: {result.stderr}")
+        return False
     except Exception:
         logger.error("FLAC compression exception", exc_info=True)
         return False
@@ -2169,36 +2168,35 @@ def serve_audio_file(file_id, as_attachment=False, custom_filename=None):
             # with the 'immutable' directive, as file_id refers to content-hashed, unchanging audio.
             response.headers["Cache-Control"] = "public, max-age=2592000, immutable"
         return response
-    elif range_header:
+    if range_header:
         # Malformed or invalid range
         return Response("", 416)
-    else:
-        # For large files without range header, return minimal 206 response to prompt client to
-        # use range requests. This applies to both downloads and streaming to avoid exceeding
-        # Cloud Run's 32MB response limit.
-        # Client-side JavaScript handles downloads via range requests (see app.js)
-        if file_size > 20 * 1024 * 1024:
-            response = Response("", 206, mimetype=mimetype)
-            # Custom header to indicate only single range requests are supported
-            # (for client-side handling)
-            response.headers["X-Single-Range-Only"] = "true"
-            response.headers["Content-Range"] = f"bytes 0-0/{file_size}"
-            response.headers["Content-Length"] = "0"
-            response.headers["Accept-Ranges"] = "bytes"
-            if as_attachment:
-                response.headers["Content-Disposition"] = f'attachment; filename="{filename}"'
-            return response
-        # For small files without range header, stream the entire file
-        response = Response(stream_full_file(file_path), mimetype=mimetype)
-        response.headers["Content-Length"] = str(file_size)
+    # For large files without range header, return minimal 206 response to prompt client to
+    # use range requests. This applies to both downloads and streaming to avoid exceeding
+    # Cloud Run's 32MB response limit.
+    # Client-side JavaScript handles downloads via range requests (see app.js)
+    if file_size > 20 * 1024 * 1024:
+        response = Response("", 206, mimetype=mimetype)
+        # Custom header to indicate only single range requests are supported
+        # (for client-side handling)
+        response.headers["X-Single-Range-Only"] = "true"
+        response.headers["Content-Range"] = f"bytes 0-0/{file_size}"
+        response.headers["Content-Length"] = "0"
         response.headers["Accept-Ranges"] = "bytes"
         if as_attachment:
             response.headers["Content-Disposition"] = f'attachment; filename="{filename}"'
-        else:
-            # Set aggressive client-side cache for audio streaming: one month (2,592,000 seconds)
-            # with the 'immutable' directive, as file_id refers to content-hashed, unchanging audio.
-            response.headers["Cache-Control"] = "public, max-age=2592000, immutable"
         return response
+    # For small files without range header, stream the entire file
+    response = Response(stream_full_file(file_path), mimetype=mimetype)
+    response.headers["Content-Length"] = str(file_size)
+    response.headers["Accept-Ranges"] = "bytes"
+    if as_attachment:
+        response.headers["Content-Disposition"] = f'attachment; filename="{filename}"'
+    else:
+        # Set aggressive client-side cache for audio streaming: one month (2,592,000 seconds)
+        # with the 'immutable' directive, as file_id refers to content-hashed, unchanging audio.
+        response.headers["Cache-Control"] = "public, max-age=2592000, immutable"
+    return response
 
 
 def stream_full_file(file_path, chunk_size=8192):

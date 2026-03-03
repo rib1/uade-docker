@@ -357,7 +357,7 @@ if [ "$RUN_SHELLCHECK" = true ]; then
         FILE_COUNT=${#SHELL_FILES[@]}
         echo "Found $FILE_COUNT shell script(s). Validating..."
 
-        OUTPUT=$(shellcheck "${SHELL_FILES[@]}" 2>&1)
+        OUTPUT=$(shellcheck -x --severity=style "${SHELL_FILES[@]}" 2>&1)
         EXIT_CODE=$?
 
         if [ $EXIT_CODE -eq 0 ]; then
