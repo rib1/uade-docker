@@ -348,7 +348,7 @@ DAST scans are not automated in CI/CD and must be run manually by developers.
 
 1. Code pushed to GitHub
 2. GitHub Actions triggers on main branch
-3. **Code Quality Checks** (ESLint, Black, Hadolint, Docker Compose validation, ActionLint)
+3. **Code Quality Checks** (ESLint, Black, Ruff, Hadolint, Docker Compose validation, ActionLint, ShellCheck, Yamllint)
 4. **Security Scanning** (CodeQL, Semgrep, Bandit, Trivy, Hadolint)
 5. Build CLI base image (stage 1)
 6. Build web player image FROM CLI base (stage 2)

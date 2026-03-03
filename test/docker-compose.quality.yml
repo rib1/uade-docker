@@ -23,6 +23,7 @@ services:
       - ./Dockerfile.web:/workspace/Dockerfile.web:ro
       - ./docker-compose.yml:/workspace/docker-compose.yml:ro
       - ./.hadolint.yaml:/workspace/.hadolint.yaml:ro
+      - ./.yamllint.yml:/workspace/.yamllint.yml:ro
     working_dir: /workspace
     networks:
       - uade-net

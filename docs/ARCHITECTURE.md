@@ -157,11 +157,14 @@ architecture-beta
 ### CI/CD
 
 - **Code Quality Checks**: Automated quality checks run on every push and pull request:
-  - **ESLint 9:** JavaScript/TypeScript linting with strict rules
-  - **Black 26.1.0:** Python code formatting enforcer
-  - **Hadolint 2.12.0:** Dockerfile linting and best practices validation
+  - **ESLint:** JavaScript/TypeScript linting with strict rules
+  - **Black:** Python code formatting enforcer
+  - **Ruff:** Python linting and import/style validation
+  - **Hadolint:** Dockerfile linting and best practices validation
   - **Docker Compose Validation:** Validates all compose files including test overrides
-  - **ActionLint 1.7.4:** GitHub Actions workflow validation
+  - **ActionLint:** GitHub Actions workflow validation
+  - **ShellCheck:** Shell script validation for test and automation scripts
+  - **Yamllint:** YAML validation for workflows and compose files
   - See [docs/CODE-QUALITY.md](CODE-QUALITY.md) for detailed usage and configuration
 - **Dependabot**: Automatically monitors and updates Docker, Pip, and GitHub Actions dependencies with security patches.
 - **Dependency Review**: Scans for vulnerable dependencies in every pull request and blocks merging if issues of `moderate` severity or higher are found.
@@ -222,7 +225,7 @@ architecture-beta
 
 ### Development
 
-- **Code Quality:** ESLint 9 (JavaScript), Black 26.1.0 (Python), Ruff 0.15.4 (Python), Hadolint 2.12.0 (Docker), ActionLint 1.7.4 (GitHub Actions), Docker Compose validation
+- **Code Quality:** ESLint 9 (JavaScript), Black 26.1.0 (Python), Ruff 0.15.4 (Python), Hadolint 2.12.0 (Docker), ActionLint 1.7.4 (GitHub Actions), ShellCheck (Shell), Yamllint (YAML), Docker Compose validation
 - **Security:** Bandit, Semgrep, CodeQL, Trivy
 - **Version Control:** Git, GitHub
 - **Documentation:** Markdown, Mermaid

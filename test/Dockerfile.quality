@@ -14,6 +14,7 @@ RUN apk add --no-cache \
     findutils \
     coreutils \
     curl \
+    shellcheck \
     python3 \
     py3-pip \
     docker-cli \
@@ -30,9 +31,9 @@ RUN apk add --no-cache \
 # Install ESLint globally (version 9 for better flat config support)
 RUN npm install -g eslint@9
 
-# Install Black and Ruff via pip
+# Install Black, Ruff, and yamllint via pip
 # hadolint ignore=DL3042,DL3059
-RUN pip3 install black==26.1.0 ruff==0.15.4 --break-system-packages
+RUN pip3 install black==26.1.0 ruff==0.15.4 yamllint==1.37.1 --break-system-packages
 
 # Copy check script from test folder (context is project root)
 COPY test/check-code-quality.sh /usr/local/bin/check-code-quality.sh

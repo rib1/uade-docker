@@ -13,6 +13,8 @@
 #   ./test/check-code-quality.sh --actionlint # ActionLint only
 #   ./test/check-code-quality.sh --hadolint   # Hadolint only
 #   ./test/check-code-quality.sh --compose    # Docker Compose only
+#   ./test/check-code-quality.sh --shellcheck # ShellCheck only
+#   ./test/check-code-quality.sh --yamllint   # Yamllint only
 
 # Don't use set -e because we want to run all checks even if one fails
 # We handle errors manually and exit at the end based on FAILED_CHECKS count
@@ -44,6 +46,8 @@ RUN_RUFF=true
 RUN_ACTIONLINT=true
 RUN_HADOLINT=true
 RUN_COMPOSE=true
+RUN_SHELLCHECK=true
+RUN_YAMLLINT=true
 
 for arg in "$@"; do
     case $arg in
@@ -58,6 +62,8 @@ for arg in "$@"; do
             RUN_ACTIONLINT=false
             RUN_HADOLINT=false
             RUN_COMPOSE=false
+            RUN_SHELLCHECK=false
+            RUN_YAMLLINT=false
             shift
             ;;
         --black)
@@ -67,6 +73,8 @@ for arg in "$@"; do
             RUN_ACTIONLINT=false
             RUN_HADOLINT=false
             RUN_COMPOSE=false
+            RUN_SHELLCHECK=false
+            RUN_YAMLLINT=false
             shift
             ;;
         --ruff)
@@ -76,6 +84,8 @@ for arg in "$@"; do
             RUN_ACTIONLINT=false
             RUN_HADOLINT=false
             RUN_COMPOSE=false
+            RUN_SHELLCHECK=false
+            RUN_YAMLLINT=false
             shift
             ;;
         --actionlint)
@@ -85,6 +95,8 @@ for arg in "$@"; do
             RUN_RUFF=false
             RUN_HADOLINT=false
             RUN_COMPOSE=false
+            RUN_SHELLCHECK=false
+            RUN_YAMLLINT=false
             shift
             ;;
         --hadolint)
@@ -94,6 +106,8 @@ for arg in "$@"; do
             RUN_RUFF=false
             RUN_ACTIONLINT=false
             RUN_COMPOSE=false
+            RUN_SHELLCHECK=false
+            RUN_YAMLLINT=false
             shift
             ;;
         --compose)
@@ -103,11 +117,35 @@ for arg in "$@"; do
             RUN_RUFF=false
             RUN_ACTIONLINT=false
             RUN_HADOLINT=false
+            RUN_SHELLCHECK=false
+            RUN_YAMLLINT=false
+            shift
+            ;;
+        --shellcheck)
+            RUN_SHELLCHECK=true
+            RUN_ESLINT=false
+            RUN_BLACK=false
+            RUN_RUFF=false
+            RUN_ACTIONLINT=false
+            RUN_HADOLINT=false
+            RUN_COMPOSE=false
+            RUN_YAMLLINT=false
+            shift
+            ;;
+        --yamllint)
+            RUN_YAMLLINT=true
+            RUN_ESLINT=false
+            RUN_BLACK=false
+            RUN_RUFF=false
+            RUN_ACTIONLINT=false
+            RUN_HADOLINT=false
+            RUN_COMPOSE=false
+            RUN_SHELLCHECK=false
             shift
             ;;
         *)
             echo "Unknown option: $arg"
-            echo "Usage: $0 [--fix] [--eslint|--black|--actionlint|--hadolint|--compose]"
+            echo "Usage: $0 [--fix] [--eslint|--black|--ruff|--actionlint|--hadolint|--compose|--shellcheck|--yamllint]"
             exit 1
             ;;
     esac
@@ -128,7 +166,7 @@ print_result() {
 
     ((TOTAL_CHECKS++))
 
-    if [ $exit_code -eq 0 ]; then
+    if [ "$exit_code" -eq 0 ]; then
         echo -e "${GREEN}✓ PASSED${NC}: $test_name"
         ((PASSED_CHECKS++))
     else
@@ -168,6 +206,62 @@ if [ "$RUN_ESLINT" = true ]; then
         print_result "ESLint" 0
     else
         print_result "ESLint" $EXIT_CODE "$OUTPUT"
+    fi
+fi
+
+# ShellCheck
+if [ "$RUN_SHELLCHECK" = true ]; then
+    print_header "ShellCheck - Shell Script Linting"
+
+    mapfile -t SHELL_FILES < <(find "${PROJECT_ROOT}/test" -maxdepth 1 -type f -name "*.sh" 2>/dev/null | sort)
+
+    if [ "${#SHELL_FILES[@]}" -eq 0 ]; then
+        echo -e "${YELLOW}⚠ No shell scripts found${NC}"
+    else
+        FILE_COUNT=${#SHELL_FILES[@]}
+        echo "Found $FILE_COUNT shell script(s). Validating..."
+
+        OUTPUT=$(shellcheck "${SHELL_FILES[@]}" 2>&1)
+        EXIT_CODE=$?
+
+        if [ $EXIT_CODE -eq 0 ]; then
+            print_result "ShellCheck" 0
+        else
+            print_result "ShellCheck" $EXIT_CODE "$OUTPUT"
+        fi
+    fi
+fi
+
+# Yamllint
+if [ "$RUN_YAMLLINT" = true ]; then
+    print_header "Yamllint - YAML Validation"
+
+    mapfile -t YAML_FILES < <(
+        {
+            find "${PROJECT_ROOT}/.github" "${PROJECT_ROOT}/test" -type f \( -name "*.yml" -o -name "*.yaml" \) 2>/dev/null
+            find "${PROJECT_ROOT}" -maxdepth 1 -type f \( -name "*.yml" -o -name "*.yaml" \) 2>/dev/null
+        } | sort
+    )
+
+    if [ "${#YAML_FILES[@]}" -eq 0 ]; then
+        echo -e "${YELLOW}⚠ No YAML files found${NC}"
+    else
+        FILE_COUNT=${#YAML_FILES[@]}
+        echo "Found $FILE_COUNT YAML file(s). Validating..."
+
+        YAMLLINT_CONFIG="${PROJECT_ROOT}/.yamllint.yml"
+        if [ -f "$YAMLLINT_CONFIG" ]; then
+            OUTPUT=$(yamllint -c "$YAMLLINT_CONFIG" "${YAML_FILES[@]}" 2>&1)
+        else
+            OUTPUT=$(yamllint "${YAML_FILES[@]}" 2>&1)
+        fi
+        EXIT_CODE=$?
+
+        if [ $EXIT_CODE -eq 0 ]; then
+            print_result "Yamllint" 0
+        else
+            print_result "Yamllint" $EXIT_CODE "$OUTPUT"
+        fi
     fi
 fi
 

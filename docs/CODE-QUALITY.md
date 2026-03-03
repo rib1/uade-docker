@@ -4,7 +4,7 @@ This document explains the code quality checks and how to run them for the UADE 
 
 ## Overview
 
-The UADE Docker project uses six automated code quality tools:
+The UADE Docker project uses eight automated code quality tools:
 
 1. **ESLint** - JavaScript/CSS linting and style checking
 2. **Black** - Python code formatting and consistency
@@ -12,6 +12,8 @@ The UADE Docker project uses six automated code quality tools:
 4. **Hadolint** - Dockerfile linting and best practices
 5. **Docker Compose** - Compose file validation
 6. **ActionLint** - GitHub Actions workflow validation
+7. **ShellCheck** - Shell script linting and bug detection
+8. **Yamllint** - YAML syntax and style validation
 
 ## Tools
 
@@ -67,7 +69,7 @@ docker run --rm -v ${pwd}/web:/data cytopia/black . --line-length 100
 
 **Purpose:** Extremely fast Python linter and formatter, replacing flake8, isort, and more.
 
-**Version:** 0.1.6
+**Version:** 0.15.4
 
 **Configuration:** `pyproject.toml` (selects E, F, B, I, UP, C4 rules)
 
@@ -159,13 +161,13 @@ docker run --rm -v ${pwd}/.github/workflows:/workflows rhysd/actionlint:1.7.4 -c
 Use the Docker Compose quality-check service for consistent, isolated checks:
 
 ```bash
-# Run all available checks in Docker container (ESLint, Black, Ruff, Hadolint, ActionLint)
+# Run all available checks in Docker container (ESLint, Black, Ruff, Hadolint, ActionLint, ShellCheck, Yamllint)
 docker compose -f docker-compose.yml -f test/docker-compose.quality.yml run --rm --build quality-check
 ```
 
 This approach:
 
-- Runs ESLint, Black, Ruff, Hadolint, and ActionLint in an isolated container
+- Runs ESLint, Black, Ruff, Hadolint, ActionLint, ShellCheck, and Yamllint in an isolated container
 - No local installation required
 - Consistent results across all environments
 - Properly exits with code 1 on failures
@@ -174,7 +176,7 @@ This approach:
 
 ### Local Script Execution (All Checks Including Compose Validation)
 
-Run the scripts directly on your machine to execute all six checks:
+Run the scripts directly on your machine to execute all eight checks:
 
 **Bash (Linux/Mac/Git Bash):**
 
@@ -192,6 +194,8 @@ Run the scripts directly on your machine to execute all six checks:
 ./test/check-code-quality.sh --hadolint
 ./test/check-code-quality.sh --compose
 ./test/check-code-quality.sh --actionlint
+./test/check-code-quality.sh --shellcheck
+./test/check-code-quality.sh --yamllint
 ```
 
 **PowerShell (Windows):**
@@ -210,6 +214,8 @@ Run the scripts directly on your machine to execute all six checks:
 .\test\check-code-quality.ps1 -Hadolint
 .\test\check-code-quality.ps1 -Compose
 .\test\check-code-quality.ps1 -ActionLint
+.\test\check-code-quality.ps1 -ShellCheck
+.\test\check-code-quality.ps1 -Yamllint
 ```
 
 ### Individual Tool Commands
@@ -271,6 +277,20 @@ for file in .github/workflows/*.yml; do
 done
 ```
 
+#### ShellCheck Only
+
+```bash
+docker run --rm -v ${pwd}:/workspace --workdir /workspace \
+  koalaman/shellcheck:stable test/*.sh
+```
+
+#### Yamllint Only
+
+```bash
+docker run --rm -v ${pwd}:/workspace --workdir /workspace \
+  cytopia/yamllint:latest -c .yamllint.yml .github test docker-compose.yml
+```
+
 ## Configuration Files
 
 ### ESLint Configuration
@@ -291,7 +311,7 @@ ESLint is configured for ES2021 syntax with the following rules:
 Black is configured with:
 
 - Line length: 100 characters
-- Target Python version: 3.9+
+- Target Python version: 3.13+
 - Exclude: .git, .hg, .mypy_cache, .tox, .venv, build, dist, `__pycache__`
 
 ### Ruff Configuration
@@ -306,6 +326,13 @@ Ruff is configured with:
 ### ActionLint Configuration
 
 ActionLint uses default GitHub Actions validation rules. No configuration file needed.
+
+### Yamllint Configuration
+
+**File:** `.yamllint.yml`
+
+Yamllint is configured for pragmatic validation focused on syntax/structure checks while allowing
+existing repository formatting style.
 
 ## GitHub Actions Integration
 
@@ -328,7 +355,7 @@ The code quality checks run automatically as part of CI/CD via the [code-quality
 **Workflow behavior:**
 
 - Builds the quality-check Docker container
-- Runs all four checks (ESLint, Black, Ruff, ActionLint)
+- Runs ESLint, Black, Ruff, Hadolint, ActionLint, ShellCheck, and Yamllint
 - Fails the build if any check reports errors
 - Provides helpful error messages with fix instructions
 
@@ -339,7 +366,10 @@ The workflow will fail if:
 - ESLint finds linting issues (syntax errors, style violations)
 - Black detects formatting inconsistencies
 - Ruff identifies linting or formatting issues
+- Hadolint identifies Dockerfile best-practice violations
 - ActionLint identifies workflow validation errors
+- ShellCheck identifies shell script issues
+- Yamllint identifies YAML syntax/configuration issues
 
 **How to fix failures:**
 
@@ -464,7 +494,9 @@ Typical run times (first run includes Docker image pull):
 - **Black:** 5-10 seconds (first time: 30-45 seconds with image pull)
 - **Ruff:** 1-2 seconds (first time: 10-15 seconds with image pull)
 - **ActionLint:** 5-10 seconds per workflow (first time: 20-30 seconds)
-- **All checks:** 15-30 seconds (first time: 90-120 seconds)
+- **ShellCheck:** 1-3 seconds
+- **Yamllint:** 1-3 seconds
+- **All checks:** 20-40 seconds (first time: 90-150 seconds)
 
 Subsequent runs are much faster due to Docker image caching.
 
@@ -474,7 +506,7 @@ Subsequent runs are much faster due to Docker image caching.
 
 Both `check-code-quality.sh` (Bash) and `check-code-quality.ps1` (PowerShell) scripts:
 
-1. **Parse arguments** - Determines which checks to run (--fix, --eslint, --black, --ruff, --actionlint)
+1. **Parse arguments** - Determines which checks to run (--fix, --eslint, --black, --ruff, --hadolint, --compose, --actionlint, --shellcheck, --yamllint)
 2. **Detect environment** - Checks if tools are available locally or need Docker
 3. **Run checks** - Executes each tool (local or Docker container)
 4. **Capture output** - Stores results directly in variables (no temp files)
@@ -486,7 +518,7 @@ The scripts intelligently choose execution mode:
 
 **Quality-Check Container Mode:**
 
-- Tools (ESLint, Black, Ruff, ActionLint) are pre-installed
+- Tools (ESLint, Black, Ruff, Hadolint, ActionLint, ShellCheck, Yamllint) are pre-installed
 - Runs directly without nested Docker
 - Faster execution, simpler volume mounting
 
@@ -512,7 +544,10 @@ Tools are run with proper error handling:
 - ESLint: Non-zero exit on linting errors
 - Black: Non-zero exit on formatting inconsistencies
 - Ruff: Non-zero exit on linting or formatting issues
+- Hadolint: Non-zero exit on Dockerfile linting errors
 - ActionLint: Non-zero exit on workflow validation errors
+- ShellCheck: Non-zero exit on shell script linting errors
+- Yamllint: Non-zero exit on YAML validation errors
 
 Script aggregates all results and returns:
 
@@ -525,6 +560,8 @@ Script aggregates all results and returns:
 - [Black Documentation](https://black.readthedocs.io/)
 - [Ruff Documentation](https://ruff.rs/)
 - [ActionLint Documentation](https://rhysd.github.io/actionlint/)
+- [ShellCheck Documentation](https://www.shellcheck.net/)
+- [Yamllint Documentation](https://yamllint.readthedocs.io/)
 - [Docker Hub - cytopia/eslint](https://hub.docker.com/r/cytopia/eslint)
 - [Docker Hub - cytopia/black](https://hub.docker.com/r/cytopia/black)
 - [Docker Hub - astral-sh/ruff](https://github.com/astral-sh/ruff)

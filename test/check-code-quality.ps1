@@ -11,6 +11,8 @@
 #   .\test\check-code-quality.ps1 -ActionLint  # ActionLint only
 #   .\test\check-code-quality.ps1 -Hadolint    # Hadolint only
 #   .\test\check-code-quality.ps1 -Compose     # Docker Compose only
+#   .\test\check-code-quality.ps1 -ShellCheck  # ShellCheck only
+#   .\test\check-code-quality.ps1 -Yamllint    # Yamllint only
 #
 # Requirements:
 #   - Docker Desktop installed and running
@@ -22,7 +24,9 @@ param(
     [switch]$Ruff,
     [switch]$ActionLint,
     [switch]$Hadolint,
-    [switch]$Compose
+    [switch]$Compose,
+    [switch]$ShellCheck,
+    [switch]$Yamllint
 )
 
 # Color codes
@@ -47,13 +51,15 @@ $PassedChecks = 0
 $FailedChecks = 0
 
 # Default to run all if no specific tool selected
-if (-not $ESLint -and -not $Black -and -not $Ruff -and -not $ActionLint -and -not $Hadolint -and -not $Compose) {
+if (-not $ESLint -and -not $Black -and -not $Ruff -and -not $ActionLint -and -not $Hadolint -and -not $Compose -and -not $ShellCheck -and -not $Yamllint) {
     $ESLint = $true
     $Black = $true
     $Ruff = $true
     $ActionLint = $true
     $Hadolint = $true
     $Compose = $true
+    $ShellCheck = $true
+    $Yamllint = $true
 }
 
 # Helper function to print headers
@@ -296,6 +302,78 @@ if ($ActionLint) {
         }
     } else {
         Write-Host "Workflow directory not found at: $WorkflowDir" @Yellow
+    }
+}
+
+# ShellCheck Check
+if ($ShellCheck) {
+    Write-Header "ShellCheck - Shell Script Linting"
+
+    $ShellFiles = Get-ChildItem -Path (Join-Path $ProjectRoot "test") -Filter "*.sh" -File -ErrorAction SilentlyContinue
+
+    if ($null -eq $ShellFiles -or $ShellFiles.Count -eq 0) {
+        Write-Host "No shell scripts found" @Yellow
+    } else {
+        Write-Host "Found $($ShellFiles.Count) shell script(s). Validating..."
+
+        $ShellcheckFailed = $false
+        foreach ($ShellFile in $ShellFiles) {
+            Write-Host "  Checking: $($ShellFile.Name)"
+            $output = & docker run --rm `
+                -v "${ProjectRoot}:/workspace" `
+                --workdir /workspace `
+                koalaman/shellcheck:stable "test/$($ShellFile.Name)" 2>&1
+            $exitCode = $LASTEXITCODE
+            if ($exitCode -ne 0) {
+                $ShellcheckFailed = $true
+            }
+        }
+
+        if ($ShellcheckFailed) {
+            Write-Result "ShellCheck" 1 $output
+        } else {
+            Write-Result "ShellCheck" 0
+        }
+    }
+}
+
+# Yamllint Check
+if ($Yamllint) {
+    Write-Header "Yamllint - YAML Validation"
+
+    $YamlFiles = @()
+    $YamlFiles += Get-ChildItem -Path (Join-Path $ProjectRoot ".github") -Recurse -Include "*.yml","*.yaml" -File -ErrorAction SilentlyContinue
+    $YamlFiles += Get-ChildItem -Path (Join-Path $ProjectRoot "test") -Recurse -Include "*.yml","*.yaml" -File -ErrorAction SilentlyContinue
+    $YamlFiles += Get-ChildItem -Path $ProjectRoot -File -Include "*.yml","*.yaml" -ErrorAction SilentlyContinue
+
+    if ($null -eq $YamlFiles -or $YamlFiles.Count -eq 0) {
+        Write-Host "No YAML files found" @Yellow
+    } else {
+        Write-Host "Found $($YamlFiles.Count) YAML file(s). Validating..."
+
+        $YamllintConfig = Join-Path $ProjectRoot ".yamllint.yml"
+        $yamllintArgs = @()
+        if (Test-Path $YamllintConfig) {
+            $yamllintArgs += "-c"
+            $yamllintArgs += "/workspace/.yamllint.yml"
+        }
+
+        foreach ($YamlFile in $YamlFiles) {
+            $relativePath = $YamlFile.FullName.Replace($ProjectRoot, "").TrimStart('\').Replace('\', '/')
+            $yamllintArgs += $relativePath
+        }
+
+        $output = & docker run --rm `
+            -v "${ProjectRoot}:/workspace" `
+            --workdir /workspace `
+            cytopia/yamllint:latest @yamllintArgs 2>&1
+        $exitCode = $LASTEXITCODE
+
+        if ($exitCode -eq 0) {
+            Write-Result "Yamllint" 0
+        } else {
+            Write-Result "Yamllint" 1 $output
+        }
     }
 }
 
