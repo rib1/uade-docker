@@ -41,6 +41,17 @@ $Red = @{ ForegroundColor = "Red" }
 $Yellow = @{ ForegroundColor = "Yellow" }
 $Cyan = @{ ForegroundColor = "Cyan" }
 
+# Tool versions (keep in sync with test/Dockerfile.quality and docs)
+$ESLINT_VERSION = "10"
+$STYLELINT_VERSION = "16.26.0"
+$HTMLHINT_VERSION = "1.9.1"
+$BLACK_VERSION = "26.1.0"
+$RUFF_VERSION = "0.15.4"
+$MYPY_VERSION = "1.19.0"
+$HADOLINT_VERSION = "2.14.0"
+$ACTIONLINT_VERSION = "1.7.11"
+$YAMLLINT_VERSION = "1.38.0"
+
 # Get project root
 $ScriptDir = $PSScriptRoot
 if (-not $ScriptDir) {
@@ -125,8 +136,9 @@ if ($ESLint) {
     }
 
     $output = & docker run --rm `
-        -v "${ProjectRoot}/web/static:/data" `
-        cytopia/eslint @eslintArgs 2>&1
+        -v "${ProjectRoot}:/workspace" `
+        --workdir /workspace/web/static `
+        node:24-alpine sh -lc "npm install -g eslint@$ESLINT_VERSION >/dev/null && eslint $($eslintArgs -join ' ')" 2>&1
 
     $exitCode = $LASTEXITCODE
 
@@ -149,8 +161,9 @@ if ($Black) {
     }
 
     $output = & docker run --rm `
-        -v "${ProjectRoot}/web:/data" `
-        cytopia/black @blackArgs 2>&1
+        -v "${ProjectRoot}:/workspace" `
+        --workdir /workspace/web `
+        pyfound/black:$BLACK_VERSION black @blackArgs 2>&1
 
     $exitCode = $LASTEXITCODE
 
@@ -175,7 +188,7 @@ if ($Stylelint) {
     $output = & docker run --rm `
         -v "${ProjectRoot}:/workspace" `
         --workdir /workspace `
-        node:24-alpine sh -lc "npm install -g stylelint@16.26.0 >/dev/null && stylelint $($stylelintArgs -join ' ')" 2>&1
+        node:24-alpine sh -lc "npm install -g stylelint@$STYLELINT_VERSION >/dev/null && stylelint $($stylelintArgs -join ' ')" 2>&1
 
     $exitCode = $LASTEXITCODE
 
@@ -195,7 +208,7 @@ if ($HTMLHint) {
     $output = & docker run --rm `
         -v "${ProjectRoot}:/workspace" `
         --workdir /workspace `
-        node:24-alpine sh -lc "npm install -g htmlhint@1.9.1 >/dev/null && htmlhint --config .htmlhintrc web/static/index.html" 2>&1
+        node:24-alpine sh -lc "npm install -g htmlhint@$HTMLHINT_VERSION >/dev/null && htmlhint --config .htmlhintrc web/static/index.html" 2>&1
 
     $exitCode = $LASTEXITCODE
 
@@ -220,7 +233,7 @@ if ($Ruff) {
     $output = & docker run --rm `
         -v "${ProjectRoot}:/workspace" `
         --workdir /workspace/web `
-        ghcr.io/astral-sh/ruff:latest @ruffArgs 2>&1
+        ghcr.io/astral-sh/ruff:$RUFF_VERSION @ruffArgs 2>&1
 
     $exitCode = $LASTEXITCODE
 
@@ -240,7 +253,7 @@ if ($MyPy) {
     $output = & docker run --rm `
         -v "${ProjectRoot}:/workspace" `
         --workdir /workspace `
-        python:3.13-slim sh -lc "pip install --no-cache-dir mypy==1.19.0 >/dev/null && mypy --config-file pyproject.toml --no-error-summary" 2>&1
+        python:3.13-slim sh -lc "pip install --no-cache-dir mypy==$MYPY_VERSION >/dev/null && mypy --config-file pyproject.toml --no-error-summary" 2>&1
 
     $exitCode = $LASTEXITCODE
 
@@ -270,7 +283,7 @@ if ($Hadolint) {
 
             $output = Get-Content $Dockerfile.FullName -Raw | docker run --rm -i `
                 -v "${ProjectRoot}/.hadolint.yaml:/.hadolint.yaml:ro" `
-                hadolint/hadolint:v2.12.0 hadolint --config /.hadolint.yaml - 2>&1
+                hadolint/hadolint:v$HADOLINT_VERSION hadolint --config /.hadolint.yaml - 2>&1
             $exitCode = $LASTEXITCODE
 
             if ($exitCode -eq 0) {
@@ -365,7 +378,7 @@ if ($ActionLint) {
                 $output = & docker run --rm `
                     -v "${ProjectRoot}:/workspace" `
                     --workdir /workspace `
-                    rhysd/actionlint -color ".github/workflows/$WorkflowName" 2>&1
+                    rhysd/actionlint:$ACTIONLINT_VERSION -color ".github/workflows/$WorkflowName" 2>&1
 
                 $exitCode = $LASTEXITCODE
 
@@ -449,7 +462,7 @@ if ($Yamllint) {
         $output = & docker run --rm `
             -v "${ProjectRoot}:/workspace" `
             --workdir /workspace `
-            cytopia/yamllint:latest @yamllintArgs 2>&1
+            python:3.13-slim sh -lc "pip install --no-cache-dir yamllint==$YAMLLINT_VERSION >/dev/null && yamllint $($yamllintArgs -join ' ')" 2>&1
         $exitCode = $LASTEXITCODE
 
         if ($exitCode -eq 0) {

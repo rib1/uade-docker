@@ -18,6 +18,8 @@ services:
       - ./.github:/workspace/.github:ro
       - ./test:/workspace/test:ro
       - ./pyproject.toml:/workspace/pyproject.toml:ro
+      - ./.stylelintrc.json:/workspace/.stylelintrc.json:ro
+      - ./.htmlhintrc:/workspace/.htmlhintrc:ro
       # Mount root-level files for Hadolint and Docker Compose validation
       - ./Dockerfile:/workspace/Dockerfile:ro
       - ./Dockerfile.web:/workspace/Dockerfile.web:ro

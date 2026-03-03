@@ -29,6 +29,16 @@ YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
 NC='\033[0m' # No Color
 
+# Tool versions (keep in sync with test/Dockerfile.quality and docs)
+ESLINT_VERSION="10"
+STYLELINT_VERSION="16.26.0"
+HTMLHINT_VERSION="1.9.1"
+BLACK_VERSION="26.1.0"
+RUFF_VERSION="0.15.4"
+MYPY_VERSION="1.19.0"
+HADOLINT_VERSION="2.14.0"
+ACTIONLINT_VERSION="1.7.11"
+
 # Script directory
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # Allow PROJECT_ROOT to be overridden (useful for Docker containers)
@@ -269,8 +279,9 @@ if [ "$RUN_ESLINT" = true ]; then
     else
         # Fall back to Docker (for local dev environments)
         OUTPUT=$(docker run --rm \
-               -v "${PROJECT_ROOT}/web/static:/data" \
-               cytopia/eslint . $FIX_MODE_ARG 2>&1)
+               -v "${PROJECT_ROOT}:/workspace" \
+               --workdir /workspace/web/static \
+               node:24-alpine sh -lc "npm install -g eslint@${ESLINT_VERSION} >/dev/null && eslint . $FIX_MODE_ARG" 2>&1)
         EXIT_CODE=$?
     fi
 
@@ -299,7 +310,7 @@ if [ "$RUN_STYLELINT" = true ]; then
         OUTPUT=$(docker run --rm \
                -v "${PROJECT_ROOT}:/workspace" \
                --workdir /workspace \
-               node:24-alpine sh -lc "npm install -g stylelint@16.26.0 >/dev/null && stylelint ${STYLELINT_ARGS[*]}" 2>&1)
+               node:24-alpine sh -lc "npm install -g stylelint@${STYLELINT_VERSION} >/dev/null && stylelint ${STYLELINT_ARGS[*]}" 2>&1)
         EXIT_CODE=$?
     fi
 
@@ -323,7 +334,7 @@ if [ "$RUN_HTMLHINT" = true ]; then
         OUTPUT=$(docker run --rm \
                -v "${PROJECT_ROOT}:/workspace" \
                --workdir /workspace \
-               node:24-alpine sh -lc "npm install -g htmlhint@1.9.1 >/dev/null && htmlhint --config .htmlhintrc web/static/index.html" 2>&1)
+               node:24-alpine sh -lc "npm install -g htmlhint@${HTMLHINT_VERSION} >/dev/null && htmlhint --config .htmlhintrc web/static/index.html" 2>&1)
         EXIT_CODE=$?
     fi
 
@@ -401,16 +412,17 @@ if [ "$RUN_BLACK" = true ]; then
         FIX_MODE_ARG=""
     fi
 
-    # Check if black is available locally (in Docker container)
+    # Check if black is available locally (in quality-check container)
     if command -v black >/dev/null 2>&1; then
-        # Use local black
+        # Use local black (version pinned in test/Dockerfile.quality)
         OUTPUT=$(cd "${PROJECT_ROOT}/web" && black . --line-length 100 $FIX_MODE_ARG 2>&1)
         EXIT_CODE=$?
     else
-        # Fall back to Docker (for local dev environments)
+        # Fall back to pinned Black image for consistent results across environments
         OUTPUT=$(docker run --rm \
-               -v "${PROJECT_ROOT}/web:/data" \
-               cytopia/black . --line-length 100 $FIX_MODE_ARG 2>&1)
+               -v "${PROJECT_ROOT}:/workspace" \
+               --workdir /workspace/web \
+               pyfound/black:${BLACK_VERSION} black . --line-length 100 $FIX_MODE_ARG 2>&1)
         EXIT_CODE=$?
     fi
 
@@ -442,7 +454,7 @@ if [ "$RUN_RUFF" = true ]; then
         OUTPUT=$(docker run --rm \
                -v "${PROJECT_ROOT}:/workspace" \
                --workdir /workspace/web \
-               ghcr.io/astral-sh/ruff:latest check . $FIX_MODE_ARG 2>&1)
+               ghcr.io/astral-sh/ruff:${RUFF_VERSION} check . $FIX_MODE_ARG 2>&1)
         EXIT_CODE=$?
     fi
 
@@ -470,7 +482,7 @@ if [ "$RUN_MYPY" = true ]; then
         OUTPUT=$(docker run --rm \
                -v "${PROJECT_ROOT}:/workspace" \
                --workdir /workspace \
-               python:3.13-slim sh -lc "pip install --no-cache-dir mypy==1.19.0 >/dev/null && mypy --config-file pyproject.toml --no-error-summary" 2>&1)
+               python:3.13-slim sh -lc "pip install --no-cache-dir mypy==${MYPY_VERSION} >/dev/null && mypy --config-file pyproject.toml --no-error-summary" 2>&1)
         EXIT_CODE=$?
     fi
 
@@ -509,7 +521,7 @@ if [ "$RUN_HADOLINT" = true ]; then
                 # Fall back to Docker (for local dev environments)
                 OUTPUT=$(docker run --rm -i \
                     -v "${PROJECT_ROOT}/.hadolint.yaml:/.hadolint.yaml:ro" \
-                    hadolint/hadolint:v2.12.0 hadolint --config /.hadolint.yaml - < "$dockerfile" 2>&1)
+                    hadolint/hadolint:v${HADOLINT_VERSION} hadolint --config /.hadolint.yaml - < "$dockerfile" 2>&1)
                 EXIT_CODE=$?
             fi
 
@@ -609,7 +621,7 @@ if [ "$RUN_ACTIONLINT" = true ]; then
                     OUTPUT=$(docker run --rm \
                            -v "${PROJECT_ROOT}:/workspace" \
                            --workdir /workspace \
-                           rhysd/actionlint -color ".github/workflows/$workflow_name" 2>&1)
+                           rhysd/actionlint:${ACTIONLINT_VERSION} -color ".github/workflows/$workflow_name" 2>&1)
                     EXIT_CODE=$?
                 fi
 
