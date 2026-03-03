@@ -183,10 +183,42 @@ jobs:
             --quiet || echo "  -> Skip: Revision in use or already deleted."
         done
 
-        # Delete untagged images to save costs.
-        # Note: Images pinned by active or inactive Cloud Run revisions will return 400 error and are skipped.
         IMAGE_NAME="gcr.io/${{ env.PROJECT_ID }}/${{ env.SERVICE_NAME }}"
 
+        # Then prune old commit SHA tags to keep tagged image storage small.
+        # Keep latest 20 SHA tags for traceability/rollback.
+        KEEP_SHA_TAGS=20
+        echo "Pruning old SHA tags (keeping newest ${KEEP_SHA_TAGS})..."
+        SHA_TAG_LINES=$(gcloud container images list-tags "$IMAGE_NAME" \
+          --filter="tags~'^[0-9a-f]{40}$'" \
+          --sort-by="~timestamp" \
+          --format="get(tags)" 2>/dev/null || echo "")
+
+        declare -A seen_sha
+        SHA_TAGS_ORDERED=()
+        while IFS= read -r line; do
+          [ -z "$line" ] && continue
+          for tag in $(echo "$line" | tr ',' ' '); do
+            if [[ "$tag" =~ ^[0-9a-f]{40}$ ]] && [[ -z "${seen_sha[$tag]}" ]]; then
+              seen_sha[$tag]=1
+              SHA_TAGS_ORDERED+=("$tag")
+            fi
+          done
+        done <<< "$SHA_TAG_LINES"
+
+        idx=0
+        for tag in "${SHA_TAGS_ORDERED[@]}"; do
+          idx=$((idx + 1))
+          if [ "$idx" -le "$KEEP_SHA_TAGS" ]; then
+            echo "Keeping SHA tag: $tag"
+            continue
+          fi
+          echo "Removing old SHA tag: $tag"
+          gcloud container images untag "${IMAGE_NAME}:${tag}" --quiet || echo "  -> Skip: Could not untag ${tag}."
+        done
+
+        # Delete untagged images to save costs.
+        # Note: Images pinned by active or inactive Cloud Run revisions will return 400 error and are skipped.
         echo "Fetching untagged images for $IMAGE_NAME..."
         UNTAGGED_DIGESTS=$(gcloud container images list-tags "$IMAGE_NAME" --filter="NOT tags:*" --format="get(digest)" 2>/dev/null || echo "")
 
