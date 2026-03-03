@@ -113,11 +113,14 @@ if ($ESLint) {
 
     Write-Host "Running ESLint on /web/static..."
 
-    $FixArg = if ($Fix) { "--fix" } else { "" }
+    $eslintArgs = @(".")
+    if ($Fix) {
+        $eslintArgs += "--fix"
+    }
 
     $output = & docker run --rm `
         -v "${ProjectRoot}/web/static:/data" `
-        cytopia/eslint . $FixArg 2>&1
+        cytopia/eslint @eslintArgs 2>&1
 
     $exitCode = $LASTEXITCODE
 
@@ -134,11 +137,14 @@ if ($Black) {
 
     Write-Host "Running Black on /web..."
 
-    $CheckArg = if ($Fix) { "" } else { "--check" }
+    $blackArgs = @(".", "--line-length", "100")
+    if (-not $Fix) {
+        $blackArgs += "--check"
+    }
 
     $output = & docker run --rm `
         -v "${ProjectRoot}/web:/data" `
-        cytopia/black . --line-length 100 $CheckArg 2>&1
+        cytopia/black @blackArgs 2>&1
 
     $exitCode = $LASTEXITCODE
 
@@ -155,12 +161,15 @@ if ($Ruff) {
 
     Write-Host "Running Ruff on /web..."
 
-    $FixArg = if ($Fix) { "--fix" } else { "" }
+    $ruffArgs = @("check", ".")
+    if ($Fix) {
+        $ruffArgs += "--fix"
+    }
 
     $output = & docker run --rm `
         -v "${ProjectRoot}:/workspace" `
         --workdir /workspace/web `
-        ghcr.io/astral-sh/ruff:latest check . $FixArg 2>&1
+        ghcr.io/astral-sh/ruff:latest @ruffArgs 2>&1
 
     $exitCode = $LASTEXITCODE
 

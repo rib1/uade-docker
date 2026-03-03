@@ -224,9 +224,9 @@ def add_security_headers(response):
     response.headers["X-Content-Type-Options"] = "nosniff"
     response.headers["X-Frame-Options"] = "SAMEORIGIN"
     # A more complete CSP.
-    response.headers["Content-Security-Policy"] = (
-        "default-src 'self'; base-uri 'self'; form-action 'self'; frame-ancestors 'self'"
-    )
+    response.headers[
+        "Content-Security-Policy"
+    ] = "default-src 'self'; base-uri 'self'; form-action 'self'; frame-ancestors 'self'"
     return response
 
 
