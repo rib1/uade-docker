@@ -28,8 +28,8 @@ RUN apk add --no-cache \
     && curl -fsSL "https://github.com/hadolint/hadolint/releases/download/v${HADOLINT_VERSION}/hadolint-Linux-x86_64" -o /usr/local/bin/hadolint \
     && chmod +x /usr/local/bin/hadolint
 
-# Install ESLint globally (version 10 for better flat config support)
-RUN npm install -g eslint@10
+# Install frontend quality tools globally
+RUN npm install -g eslint@10 stylelint@16.26.0 htmlhint@1.9.1
 
 # Install Black, Ruff, mypy, and yamllint via pip
 # hadolint ignore=DL3042,DL3059

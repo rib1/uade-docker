@@ -158,6 +158,8 @@ architecture-beta
 
 - **Code Quality Checks**: Automated quality checks run on every push and pull request:
   - **ESLint:** JavaScript/TypeScript linting with strict rules
+  - **Stylelint:** CSS linting and style validation
+  - **HTMLHint:** HTML validation and structural checks
   - **Black:** Python code formatting enforcer
   - **Ruff:** Python linting and import/style validation
   - **Hadolint:** Dockerfile linting and best practices validation
@@ -225,7 +227,7 @@ architecture-beta
 
 ### Development
 
-- **Code Quality:** ESLint 10 (JavaScript), Black 26.1.0 (Python), Ruff 0.15.4 (Python), Hadolint 2.14.0 (Docker), ActionLint 1.7.11 (GitHub Actions), ShellCheck (Shell), Yamllint (YAML), Docker Compose validation
+- **Code Quality:** ESLint 10 (JavaScript), Stylelint 16.26.0 (CSS), HTMLHint 1.9.1 (HTML), Black 26.1.0 (Python), Ruff 0.15.4 (Python), Hadolint 2.14.0 (Docker), ActionLint 1.7.11 (GitHub Actions), ShellCheck (Shell), Yamllint (YAML), Docker Compose validation
 - **Security:** Bandit, Semgrep, CodeQL, Trivy
 - **Version Control:** Git, GitHub
 - **Documentation:** Markdown, Mermaid

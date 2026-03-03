@@ -1,4 +1,4 @@
-﻿# UADE Docker - Code Quality Check (Windows PowerShell)
+# UADE Docker - Code Quality Check (Windows PowerShell)
 #
 # This script runs code quality checks on Windows without needing bash
 #
@@ -13,6 +13,8 @@
 #   .\test\check-code-quality.ps1 -Compose     # Docker Compose only
 #   .\test\check-code-quality.ps1 -ShellCheck  # ShellCheck only
 #   .\test\check-code-quality.ps1 -Yamllint    # Yamllint only
+#   .\test\check-code-quality.ps1 -Stylelint   # Stylelint only
+#   .\test\check-code-quality.ps1 -HTMLHint    # HTMLHint only
 #   .\test\check-code-quality.ps1 -MyPy        # mypy only
 #
 # Requirements:
@@ -28,6 +30,8 @@ param(
     [switch]$Compose,
     [switch]$ShellCheck,
     [switch]$Yamllint,
+    [switch]$Stylelint,
+    [switch]$HTMLHint,
     [switch]$MyPy
 )
 
@@ -53,8 +57,10 @@ $PassedChecks = 0
 $FailedChecks = 0
 
 # Default to run all if no specific tool selected
-if (-not $ESLint -and -not $Black -and -not $Ruff -and -not $ActionLint -and -not $Hadolint -and -not $Compose -and -not $ShellCheck -and -not $Yamllint -and -not $MyPy) {
+if (-not $ESLint -and -not $Black -and -not $Ruff -and -not $ActionLint -and -not $Hadolint -and -not $Compose -and -not $ShellCheck -and -not $Yamllint -and -not $Stylelint -and -not $HTMLHint -and -not $MyPy) {
     $ESLint = $true
+    $Stylelint = $true
+    $HTMLHint = $true
     $Black = $true
     $Ruff = $true
     $ActionLint = $true
@@ -152,6 +158,51 @@ if ($Black) {
         Write-Result "Black" 0
     } else {
         Write-Result "Black" 1 $output
+    }
+}
+
+# Stylelint Check
+if ($Stylelint) {
+    Write-Header "Stylelint - CSS Linting"
+
+    Write-Host "Running Stylelint on /web/static/*.css..."
+
+    $stylelintArgs = @("--config", ".stylelintrc.json", "web/static/*.css")
+    if ($Fix) {
+        $stylelintArgs = @("--config", ".stylelintrc.json", "--fix", "web/static/*.css")
+    }
+
+    $output = & docker run --rm `
+        -v "${ProjectRoot}:/workspace" `
+        --workdir /workspace `
+        node:24-alpine sh -lc "npm install -g stylelint@16.26.0 >/dev/null && stylelint $($stylelintArgs -join ' ')" 2>&1
+
+    $exitCode = $LASTEXITCODE
+
+    if ($exitCode -eq 0) {
+        Write-Result "Stylelint" 0
+    } else {
+        Write-Result "Stylelint" 1 $output
+    }
+}
+
+# HTMLHint Check
+if ($HTMLHint) {
+    Write-Header "HTMLHint - HTML Validation"
+
+    Write-Host "Running HTMLHint on /web/static/index.html..."
+
+    $output = & docker run --rm `
+        -v "${ProjectRoot}:/workspace" `
+        --workdir /workspace `
+        node:24-alpine sh -lc "npm install -g htmlhint@1.9.1 >/dev/null && htmlhint --config .htmlhintrc web/static/index.html" 2>&1
+
+    $exitCode = $LASTEXITCODE
+
+    if ($exitCode -eq 0) {
+        Write-Result "HTMLHint" 0
+    } else {
+        Write-Result "HTMLHint" 1 $output
     }
 }
 

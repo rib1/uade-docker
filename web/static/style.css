@@ -434,12 +434,16 @@ audio::-webkit-media-controls-enclosure {
   justify-content: center;
 }
 
-/* Hide player section and custom info by default */
+/* Hide player section, custom info, and share button by default (shown when available). */
 #player-section {
   display: none;
 }
 
 #custom-info {
+  display: none;
+}
+
+#share-btn {
   display: none;
 }
 

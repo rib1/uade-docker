@@ -15,6 +15,8 @@
 #   ./test/check-code-quality.sh --compose    # Docker Compose only
 #   ./test/check-code-quality.sh --shellcheck # ShellCheck only
 #   ./test/check-code-quality.sh --yamllint   # Yamllint only
+#   ./test/check-code-quality.sh --stylelint  # Stylelint only
+#   ./test/check-code-quality.sh --htmlhint   # HTMLHint only
 #   ./test/check-code-quality.sh --mypy       # mypy only
 
 # Don't use set -e because we want to run all checks even if one fails
@@ -49,6 +51,8 @@ RUN_HADOLINT=true
 RUN_COMPOSE=true
 RUN_SHELLCHECK=true
 RUN_YAMLLINT=true
+RUN_STYLELINT=true
+RUN_HTMLHINT=true
 RUN_MYPY=true
 
 for arg in "$@"; do
@@ -66,6 +70,8 @@ for arg in "$@"; do
             RUN_COMPOSE=false
             RUN_SHELLCHECK=false
             RUN_YAMLLINT=false
+            RUN_STYLELINT=false
+            RUN_HTMLHINT=false
             RUN_MYPY=false
             shift
             ;;
@@ -78,6 +84,8 @@ for arg in "$@"; do
             RUN_COMPOSE=false
             RUN_SHELLCHECK=false
             RUN_YAMLLINT=false
+            RUN_STYLELINT=false
+            RUN_HTMLHINT=false
             RUN_MYPY=false
             shift
             ;;
@@ -90,6 +98,8 @@ for arg in "$@"; do
             RUN_COMPOSE=false
             RUN_SHELLCHECK=false
             RUN_YAMLLINT=false
+            RUN_STYLELINT=false
+            RUN_HTMLHINT=false
             RUN_MYPY=false
             shift
             ;;
@@ -102,6 +112,8 @@ for arg in "$@"; do
             RUN_COMPOSE=false
             RUN_SHELLCHECK=false
             RUN_YAMLLINT=false
+            RUN_STYLELINT=false
+            RUN_HTMLHINT=false
             RUN_MYPY=false
             shift
             ;;
@@ -114,6 +126,8 @@ for arg in "$@"; do
             RUN_COMPOSE=false
             RUN_SHELLCHECK=false
             RUN_YAMLLINT=false
+            RUN_STYLELINT=false
+            RUN_HTMLHINT=false
             RUN_MYPY=false
             shift
             ;;
@@ -126,6 +140,8 @@ for arg in "$@"; do
             RUN_HADOLINT=false
             RUN_SHELLCHECK=false
             RUN_YAMLLINT=false
+            RUN_STYLELINT=false
+            RUN_HTMLHINT=false
             RUN_MYPY=false
             shift
             ;;
@@ -138,6 +154,8 @@ for arg in "$@"; do
             RUN_HADOLINT=false
             RUN_COMPOSE=false
             RUN_YAMLLINT=false
+            RUN_STYLELINT=false
+            RUN_HTMLHINT=false
             RUN_MYPY=false
             shift
             ;;
@@ -150,6 +168,36 @@ for arg in "$@"; do
             RUN_HADOLINT=false
             RUN_COMPOSE=false
             RUN_SHELLCHECK=false
+            RUN_STYLELINT=false
+            RUN_HTMLHINT=false
+            RUN_MYPY=false
+            shift
+            ;;
+        --stylelint)
+            RUN_STYLELINT=true
+            RUN_ESLINT=false
+            RUN_BLACK=false
+            RUN_RUFF=false
+            RUN_ACTIONLINT=false
+            RUN_HADOLINT=false
+            RUN_COMPOSE=false
+            RUN_SHELLCHECK=false
+            RUN_YAMLLINT=false
+            RUN_HTMLHINT=false
+            RUN_MYPY=false
+            shift
+            ;;
+        --htmlhint)
+            RUN_HTMLHINT=true
+            RUN_ESLINT=false
+            RUN_BLACK=false
+            RUN_RUFF=false
+            RUN_ACTIONLINT=false
+            RUN_HADOLINT=false
+            RUN_COMPOSE=false
+            RUN_SHELLCHECK=false
+            RUN_YAMLLINT=false
+            RUN_STYLELINT=false
             RUN_MYPY=false
             shift
             ;;
@@ -163,11 +211,13 @@ for arg in "$@"; do
             RUN_COMPOSE=false
             RUN_SHELLCHECK=false
             RUN_YAMLLINT=false
+            RUN_STYLELINT=false
+            RUN_HTMLHINT=false
             shift
             ;;
         *)
             echo "Unknown option: $arg"
-            echo "Usage: $0 [--fix] [--eslint|--black|--ruff|--mypy|--actionlint|--hadolint|--compose|--shellcheck|--yamllint]"
+            echo "Usage: $0 [--fix] [--eslint|--stylelint|--htmlhint|--black|--ruff|--mypy|--actionlint|--hadolint|--compose|--shellcheck|--yamllint]"
             exit 1
             ;;
     esac
@@ -228,6 +278,59 @@ if [ "$RUN_ESLINT" = true ]; then
         print_result "ESLint" 0
     else
         print_result "ESLint" $EXIT_CODE "$OUTPUT"
+    fi
+fi
+
+# Stylelint
+if [ "$RUN_STYLELINT" = true ]; then
+    print_header "Stylelint - CSS Linting"
+
+    echo "Running Stylelint on /web/static/*.css..."
+
+    STYLELINT_ARGS=(--config .stylelintrc.json "web/static/*.css")
+    if [ "$FIX_MODE" = true ]; then
+        STYLELINT_ARGS=(--config .stylelintrc.json --fix "web/static/*.css")
+    fi
+
+    if command -v stylelint >/dev/null 2>&1; then
+        OUTPUT=$(cd "${PROJECT_ROOT}" && stylelint "${STYLELINT_ARGS[@]}" 2>&1)
+        EXIT_CODE=$?
+    else
+        OUTPUT=$(docker run --rm \
+               -v "${PROJECT_ROOT}:/workspace" \
+               --workdir /workspace \
+               node:24-alpine sh -lc "npm install -g stylelint@16.26.0 >/dev/null && stylelint ${STYLELINT_ARGS[*]}" 2>&1)
+        EXIT_CODE=$?
+    fi
+
+    if [ $EXIT_CODE -eq 0 ]; then
+        print_result "Stylelint" 0
+    else
+        print_result "Stylelint" $EXIT_CODE "$OUTPUT"
+    fi
+fi
+
+# HTMLHint
+if [ "$RUN_HTMLHINT" = true ]; then
+    print_header "HTMLHint - HTML Validation"
+
+    echo "Running HTMLHint on /web/static/index.html..."
+
+    if command -v htmlhint >/dev/null 2>&1; then
+        OUTPUT=$(cd "${PROJECT_ROOT}" && htmlhint --config .htmlhintrc web/static/index.html 2>&1)
+        EXIT_CODE=$?
+    else
+        OUTPUT=$(docker run --rm \
+               -v "${PROJECT_ROOT}:/workspace" \
+               --workdir /workspace \
+               node:24-alpine sh -lc "npm install -g htmlhint@1.9.1 >/dev/null && htmlhint --config .htmlhintrc web/static/index.html" 2>&1)
+        EXIT_CODE=$?
+    fi
+
+    if [ $EXIT_CODE -eq 0 ]; then
+        print_result "HTMLHint" 0
+    else
+        print_result "HTMLHint" $EXIT_CODE "$OUTPUT"
     fi
 fi
 
