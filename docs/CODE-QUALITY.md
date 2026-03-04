@@ -38,13 +38,15 @@ The UADE Docker project uses eleven automated code quality tools:
 **Direct Docker command:**
 
 ```bash
-docker run -it --rm -v ${pwd}/web/static:/data cytopia/eslint .
+docker run --rm -v ${pwd}:/workspace --workdir /workspace/web/static \
+  node:24-alpine sh -lc "npm install -g eslint@10 >/dev/null && eslint ."
 ```
 
 **With auto-fix:**
 
 ```bash
-docker run -it --rm -v ${pwd}/web/static:/data cytopia/eslint . --fix
+docker run --rm -v ${pwd}:/workspace --workdir /workspace/web/static \
+  node:24-alpine sh -lc "npm install -g eslint@10 >/dev/null && eslint . --fix"
 ```
 
 ### Stylelint (CSS)
@@ -97,7 +99,8 @@ docker run --rm -v ${pwd}:/workspace --workdir /workspace node:24-alpine sh -lc 
 **Direct Docker command:**
 
 ```bash
-docker run --rm -v ${pwd}/web:/data cytopia/black . --line-length 100
+docker run --rm -v ${pwd}:/workspace --workdir /workspace/web \
+  pyfound/black:26.1.0 black . --line-length 100
 ```
 
 ### Ruff (Python)
@@ -106,7 +109,7 @@ docker run --rm -v ${pwd}/web:/data cytopia/black . --line-length 100
 
 **Version:** 0.15.4
 
-**Configuration:** `pyproject.toml` (selects E, F, B, I, UP, C4 rules)
+**Configuration:** `pyproject.toml` (`[tool.ruff.lint]` rule selection and ignores)
 
 **Files checked:** `/web/**/*.py`
 
@@ -118,13 +121,13 @@ docker run --rm -v ${pwd}/web:/data cytopia/black . --line-length 100
 **Direct Docker command:**
 
 ```bash
-docker run --rm -v ${pwd}:/workspace --workdir /workspace/web ghcr.io/astral-sh/ruff:latest check .
+docker run --rm -v ${pwd}:/workspace --workdir /workspace/web ghcr.io/astral-sh/ruff:0.15.4 check .
 ```
 
 **With auto-fix:**
 
 ```bash
-docker run --rm -v ${pwd}:/workspace --workdir /workspace/web ghcr.io/astral-sh/ruff:latest check . --fix
+docker run --rm -v ${pwd}:/workspace --workdir /workspace/web ghcr.io/astral-sh/ruff:0.15.4 check . --fix
 ```
 
 ### mypy (Python Type Checking)
@@ -190,7 +193,7 @@ docker compose -f docker-compose.yml -f test/docker-compose.quality.yml config -
 
 **Purpose:** Validate GitHub Actions workflow syntax and best practices.
 
-**Version:** 1.9.11
+**Version:** 1.7.11
 
 **Files checked:** `.github/workflows/**/*.yml`
 
@@ -281,10 +284,12 @@ Run the scripts directly on your machine to execute all eleven checks:
 
 ```bash
 # Check only
-docker run -it --rm -v ${pwd}/web/static:/data cytopia/eslint .
+docker run --rm -v ${pwd}:/workspace --workdir /workspace/web/static \
+  node:24-alpine sh -lc "npm install -g eslint@10 >/dev/null && eslint ."
 
 # Fix issues automatically
-docker run -it --rm -v ${pwd}/web/static:/data cytopia/eslint . --fix
+docker run --rm -v ${pwd}:/workspace --workdir /workspace/web/static \
+  node:24-alpine sh -lc "npm install -g eslint@10 >/dev/null && eslint . --fix"
 ```
 
 #### Stylelint Only
@@ -305,20 +310,22 @@ docker run --rm -v ${pwd}:/workspace --workdir /workspace \
 
 ```bash
 # Check formatting (no changes)
-docker run --rm -v ${pwd}/web:/data cytopia/black . --line-length 100 --check
+docker run --rm -v ${pwd}:/workspace --workdir /workspace/web \
+  pyfound/black:26.1.0 black . --line-length 100 --check
 
 # Auto-format code
-docker run --rm -v ${pwd}/web:/data cytopia/black . --line-length 100
+docker run --rm -v ${pwd}:/workspace --workdir /workspace/web \
+  pyfound/black:26.1.0 black . --line-length 100
 ```
 
 #### Ruff Only
 
 ```bash
 # Check only
-docker run --rm -v ${pwd}:/workspace --workdir /workspace/web ghcr.io/astral-sh/ruff:latest check .
+docker run --rm -v ${pwd}:/workspace --workdir /workspace/web ghcr.io/astral-sh/ruff:0.15.4 check .
 
 # Fix issues automatically
-docker run --rm -v ${pwd}:/workspace --workdir /workspace/web ghcr.io/astral-sh/ruff:latest check . --fix
+docker run --rm -v ${pwd}:/workspace --workdir /workspace/web ghcr.io/astral-sh/ruff:0.15.4 check . --fix
 ```
 
 #### Hadolint Only
@@ -344,7 +351,7 @@ docker compose -f docker-compose.yml config --quiet
 # Validate all workflows
 for file in .github/workflows/*.yml; do
   docker run --rm -v ${pwd}:/workspace --workdir /workspace \
-    rhysd/actionlint -color "/workspace/$file"
+    rhysd/actionlint:1.7.11 -color "/workspace/$file"
 done
 ```
 
@@ -352,14 +359,14 @@ done
 
 ```bash
 docker run --rm -v ${pwd}:/workspace --workdir /workspace \
-  koalaman/shellcheck:stable test/*.sh
+  koalaman/shellcheck:stable -x --severity=style test/*.sh
 ```
 
 #### Yamllint Only
 
 ```bash
 docker run --rm -v ${pwd}:/workspace --workdir /workspace \
-  cytopia/yamllint:latest -c .yamllint.yml .github test docker-compose.yml
+  python:3.13-slim sh -lc "pip install --no-cache-dir yamllint==1.38.0 >/dev/null && yamllint -c .yamllint.yml .github test docker-compose.yml"
 ```
 
 ## Configuration Files
@@ -540,7 +547,7 @@ For direct Docker commands in PowerShell:
 
 ```powershell
 $pwd_path = (Get-Location).Path
-docker run --rm -v "${pwd_path}/web/static:/data" cytopia/eslint .
+docker run --rm -v "${pwd_path}:/workspace" --workdir /workspace/web/static node:24-alpine sh -lc "npm install -g eslint@10 >/dev/null && eslint ."
 ```
 
 ### ESLint "No files matching" Error
@@ -645,7 +652,7 @@ Script aggregates all results and returns:
 - [ActionLint Documentation](https://rhysd.github.io/actionlint/)
 - [ShellCheck Documentation](https://www.shellcheck.net/)
 - [Yamllint Documentation](https://yamllint.readthedocs.io/)
-- [Docker Hub - cytopia/eslint](https://hub.docker.com/r/cytopia/eslint)
-- [Docker Hub - cytopia/black](https://hub.docker.com/r/cytopia/black)
-- [Docker Hub - astral-sh/ruff](https://github.com/astral-sh/ruff)
+- [Docker Hub - node](https://hub.docker.com/_/node)
+- [Docker Hub - pyfound/black](https://hub.docker.com/r/pyfound/black)
+- [Ruff Container Image](https://github.com/astral-sh/ruff/pkgs/container/ruff)
 - [Docker Hub - rhysd/actionlint](https://hub.docker.com/r/rhysd/actionlint)
