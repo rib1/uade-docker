@@ -4,7 +4,7 @@
   "description": "Pinned frontend quality tool versions for Dependabot",
   "devDependencies": {
     "eslint": "10",
-    "stylelint": "16.26.0",
+    "stylelint": "17.4.0",
     "htmlhint": "1.9.1"
   }
 }
