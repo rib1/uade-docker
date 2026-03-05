@@ -89,7 +89,7 @@ This file tracks all published versions of the `uade-cli` base Docker image and 
 
 1. Check upstream releases
 2. Build new base image: `3.06-base.1`
-3. Run full E2E test suite
+3. Run full integration and server regression test suite
 4. Update Dockerfile.web pin to `uade-cli:3.06-base.1`
 5. Commit and tag release
 
@@ -124,13 +124,13 @@ docker push ghcr.io/rib1/uade-cli:3.05-base.2
 # 1. Update Dockerfile to clone --branch uade-3.06
 # 2. Build:
 docker build -f Dockerfile -t ghcr.io/rib1/uade-cli:3.06-base.1 .
-# 3. Test (full E2E suite)
+# 3. Test (full integration and server regression suite)
 # 4. Push:
 docker push ghcr.io/rib1/uade-cli:3.06-base.1
 docker tag ghcr.io/rib1/uade-cli:3.06-base.1 ghcr.io/rib1/uade-cli:latest
 docker push ghcr.io/rib1/uade-cli:latest
 # 5. Update docs/UADE_VERSIONS.md
-# 6. Update Dockerfile.web (after E2E passes)
+# 6. Update Dockerfile.web (after integration/regression tests pass)
 ```
 
 ---
@@ -181,8 +181,10 @@ FROM ghcr.io/rib1/uade-cli:3.05-base.1
 
 ```bash
 docker build -f Dockerfile.web -t uade-web:test .
-# Run E2E tests
-npm test
+# Run integration and server regression tests
+docker compose -f docker-compose.yml -f test/docker-compose.endpoints.yml run --rm --build uade-test-runner
+docker compose -f docker-compose.yml -f test/docker-compose.ratelimit.yml up --build uade-test-ratelimit-runner
+docker compose up --build uade-test-race-condition-runner
 ```
 
 ### Step 3: Commit and redeploy

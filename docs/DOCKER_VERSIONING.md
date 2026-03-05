@@ -8,7 +8,7 @@ This document defines a versioning strategy for the UADE CLI Docker base image (
 
 - ✅ Stable base image that's tested and verified
 - ✅ Controlled updates to `Dockerfile.web` with explicit pinning
-- ✅ Regression detection via comprehensive E2E tests
+- ✅ Regression detection via comprehensive integration and server regression tests
 - ✅ Quick rollback to stable versions if breaking changes occur
 - ✅ Upstream UADE changes don't automatically cascade to stable version
 
@@ -117,7 +117,7 @@ FROM uade-cli:3.05-base.1
 2. **Minor Update** (new UADE version)
    - E.g., `3.05-base.1` → `3.06-base.1`
    - When: UADE upstream releases new version
-   - Testing: Full E2E test suite (API, UI, integration, format detection)
+   - Testing: Full integration and server regression test suite (API integration, rate limiting, race conditions, format detection)
 
 3. **Never Auto-Update**
    - Always require explicit `FROM` change + validation tests
@@ -241,7 +241,7 @@ Example: `3.05-base.1` → `3.05-base.2`
 - [ ] Run health check: `docker run --rm uade-cli:3.05-base.2 --version`
 - [ ] Push to registry: `docker push uade-cli:3.05-base.2`
 - [ ] Update `deployment/UADE_VERSIONS.md` with changes
-- [ ] Run quick E2E regression test (health, basic conversion)
+- [ ] Run quick integration regression test (health, basic conversion)
 - [ ] Optionally update `Dockerfile.web` if critical fix
 - [ ] Commit and push changelog
 
@@ -256,7 +256,7 @@ Example: `3.05-base.1` → `3.06-base.1`
 - [ ] Run health check: `docker run --rm uade-cli:3.06-base.1 --version`
 - [ ] Push to registry: `docker push uade-cli:3.06-base.1`
 - [ ] Update `deployment/UADE_VERSIONS.md` with upstream changes
-- [ ] **Run full E2E test suite** against new base image
+- [ ] **Run full integration and server regression suite** against new base image
 - [ ] Create GitHub Discussion or PR for feedback
 - [ ] Once tests pass, update `Dockerfile.web` to new version
 - [ ] Commit, tag release, and push to main
@@ -291,7 +291,7 @@ docker push uade-cli:3.05-base.1
 |---------|-------------------|
 | **Stability** | Explicit versioning with UADE version + build number |
 | **Predictability** | Pinned versions in Dockerfile.web, not auto-updated |
-| **Testability** | Each version has defined E2E test requirements before stable version |
+| **Testability** | Each version has defined integration/regression test requirements before stable version |
 | **Rollback** | Quick revert to previous stable version in Dockerfile.web |
 | **Isolation** | UADE upstream breaking changes don't auto-cascade to web player |
 | **Traceability** | Clear changelog linking versions to release notes |
@@ -304,4 +304,4 @@ docker push uade-cli:3.05-base.1
 - **Review UADE Releases:** Check [UADE GitLab](https://gitlab.com/uade-music-player/uade/-/releases) monthly
 - **Security Updates:** Monitor Debian security advisories and rebuild base image with updated packages
 - **Document Changes:** Always update `deployment/UADE_VERSIONS.md` when publishing a new version
-- **Test Before Deploy:** Never skip the full E2E test suite before pinning a new version in `Dockerfile.web`
+- **Test Before Deploy:** Never skip the full integration and server regression suite before pinning a new version in `Dockerfile.web`
