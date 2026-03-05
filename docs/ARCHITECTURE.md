@@ -227,7 +227,7 @@ architecture-beta
 
 ### Development
 
-- **Code Quality:** ESLint, Stylelint, HTMLHint (versions managed in `test/package.json`), Black, Ruff, mypy, Yamllint (versions managed in `test/requirements-quality.txt`), Hadolint 2.14.0 (Docker), ActionLint 1.7.11 (GitHub Actions), ShellCheck (Shell), and Docker Compose validation
+- **Code Quality:** ESLint, Stylelint, HTMLHint (versions managed in `test/package.json`), Black, Ruff, mypy, Yamllint (versions managed in `test/requirements-quality.txt`), Hadolint and ActionLint Docker tags (managed in `test/docker-compose.tooling.yml`), ShellCheck (Shell), and Docker Compose validation
 - **Security:** Bandit, Semgrep, CodeQL, Trivy
 - **Version Control:** Git, GitHub
 - **Documentation:** Markdown, Mermaid

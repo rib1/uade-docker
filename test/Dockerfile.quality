@@ -17,20 +17,24 @@ RUN apk add --no-cache \
     shellcheck \
     python3 \
     py3-pip \
-    docker-cli \
-    && ACTIONLINT_VERSION=1.7.11 \
-    && curl -fsSL "https://github.com/rhysd/actionlint/releases/download/v${ACTIONLINT_VERSION}/actionlint_${ACTIONLINT_VERSION}_linux_amd64.tar.gz" -o /tmp/actionlint.tar.gz \
-    && tar xzf /tmp/actionlint.tar.gz -C /tmp \
-    && mv /tmp/actionlint /usr/local/bin/actionlint \
-    && chmod +x /usr/local/bin/actionlint \
-    && rm -f /tmp/actionlint.tar.gz \
-    && HADOLINT_VERSION=2.14.0 \
-    && curl -fsSL "https://github.com/hadolint/hadolint/releases/download/v${HADOLINT_VERSION}/hadolint-Linux-x86_64" -o /usr/local/bin/hadolint \
-    && chmod +x /usr/local/bin/hadolint
+    docker-cli
 
 # Copy quality dependency manifests for reproducible installs
 COPY test/package.json /tmp/quality/package.json
 COPY test/requirements-quality.txt /tmp/quality/requirements-quality.txt
+COPY test/docker-compose.tooling.yml /tmp/quality/docker-compose.tooling.yml
+
+# Install hadolint and actionlint from tooling manifest tags
+RUN ACTIONLINT_TAG="$(sed -n 's|^    image: rhysd/actionlint:||p' /tmp/quality/docker-compose.tooling.yml)" \
+    && HADOLINT_TAG="$(sed -n 's|^    image: hadolint/hadolint:||p' /tmp/quality/docker-compose.tooling.yml)" \
+    && HADOLINT_VERSION="${HADOLINT_TAG#v}" \
+    && curl -fsSL "https://github.com/rhysd/actionlint/releases/download/v${ACTIONLINT_TAG}/actionlint_${ACTIONLINT_TAG}_linux_amd64.tar.gz" -o /tmp/actionlint.tar.gz \
+    && tar xzf /tmp/actionlint.tar.gz -C /tmp \
+    && mv /tmp/actionlint /usr/local/bin/actionlint \
+    && chmod +x /usr/local/bin/actionlint \
+    && rm -f /tmp/actionlint.tar.gz \
+    && curl -fsSL "https://github.com/hadolint/hadolint/releases/download/v${HADOLINT_VERSION}/hadolint-Linux-x86_64" -o /usr/local/bin/hadolint \
+    && chmod +x /usr/local/bin/hadolint
 
 # Install frontend quality tools globally from manifest pins
 RUN npm install -g \

@@ -17,6 +17,7 @@ on:
       - 'test/check-code-quality.ps1'
       - 'test/Dockerfile.quality'
       - 'test/docker-compose.quality.yml'
+      - 'test/docker-compose.tooling.yml'
       - 'test/package.json'
       - 'test/requirements-quality.txt'
   pull_request:
@@ -35,6 +36,7 @@ on:
       - 'test/check-code-quality.ps1'
       - 'test/Dockerfile.quality'
       - 'test/docker-compose.quality.yml'
+      - 'test/docker-compose.tooling.yml'
       - 'test/package.json'
       - 'test/requirements-quality.txt'
   workflow_dispatch:

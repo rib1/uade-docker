@@ -36,9 +36,20 @@ if [ -z "$PROJECT_ROOT" ]; then
     PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
 fi
 
+# Git Bash (MSYS2) rewrites POSIX paths in docker args by default.
+# Disable conversion so /workspace paths are passed to Docker unchanged.
+if [ -n "${MSYSTEM:-}" ] || uname -s | grep -Eq 'MINGW|MSYS'; then
+    GIT_BASH=true
+    export MSYS_NO_PATHCONV="${MSYS_NO_PATHCONV:-1}"
+    export MSYS2_ARG_CONV_EXCL="${MSYS2_ARG_CONV_EXCL:-*}"
+else
+    GIT_BASH=false
+fi
+
 # Tool versions from manifests (managed by Dependabot)
 NPM_QUALITY_MANIFEST="${PROJECT_ROOT}/test/package.json"
 PY_QUALITY_MANIFEST="${PROJECT_ROOT}/test/requirements-quality.txt"
+TOOLING_IMAGE_MANIFEST="${PROJECT_ROOT}/test/docker-compose.tooling.yml"
 
 read_npm_tool_version() {
     local tool="$1"
@@ -62,12 +73,39 @@ read_pip_tool_version() {
     echo "$version"
 }
 
+read_tool_image() {
+    local service="$1"
+    local image
+    image=$(awk -v svc="$service" '
+        $0 ~ /^services:[[:space:]]*$/ {in_services=1; next}
+        in_services && $0 ~ ("^  " svc ":[[:space:]]*$") {in_target=1; next}
+        in_target && $0 ~ /^    image:[[:space:]]*/ {
+            line=$0
+            sub(/^    image:[[:space:]]*/, "", line)
+            gsub(/"/, "", line)
+            gsub(/[[:space:]]+$/, "", line)
+            print line
+            exit
+        }
+        in_target && $0 ~ /^  [A-Za-z0-9_-]+:[[:space:]]*$/ {in_target=0}
+    ' "$TOOLING_IMAGE_MANIFEST")
+    if [ -z "$image" ]; then
+        echo "ERROR: Could not read image for service '${service}' from ${TOOLING_IMAGE_MANIFEST}" >&2
+        exit 1
+    fi
+    echo "$image"
+}
+
 if [ ! -f "$NPM_QUALITY_MANIFEST" ]; then
     echo "ERROR: Missing quality manifest: ${NPM_QUALITY_MANIFEST}" >&2
     exit 1
 fi
 if [ ! -f "$PY_QUALITY_MANIFEST" ]; then
     echo "ERROR: Missing quality manifest: ${PY_QUALITY_MANIFEST}" >&2
+    exit 1
+fi
+if [ ! -f "$TOOLING_IMAGE_MANIFEST" ]; then
+    echo "ERROR: Missing tooling image manifest: ${TOOLING_IMAGE_MANIFEST}" >&2
     exit 1
 fi
 
@@ -77,8 +115,9 @@ HTMLHINT_VERSION="$(read_npm_tool_version htmlhint)"
 BLACK_VERSION="$(read_pip_tool_version black)"
 RUFF_VERSION="$(read_pip_tool_version ruff)"
 MYPY_VERSION="$(read_pip_tool_version mypy)"
-HADOLINT_VERSION="2.14.0"
-ACTIONLINT_VERSION="1.7.11"
+YAMLLINT_VERSION="$(read_pip_tool_version yamllint)"
+HADOLINT_IMAGE="$(read_tool_image hadolint)"
+ACTIONLINT_IMAGE="$(read_tool_image actionlint)"
 
 # Counters
 TOTAL_CHECKS=0
@@ -391,8 +430,16 @@ if [ "$RUN_SHELLCHECK" = true ]; then
         FILE_COUNT=${#SHELL_FILES[@]}
         echo "Found $FILE_COUNT shell script(s). Validating..."
 
-        OUTPUT=$(shellcheck -x --severity=style "${SHELL_FILES[@]}" 2>&1)
-        EXIT_CODE=$?
+        if command -v shellcheck >/dev/null 2>&1; then
+            OUTPUT=$(shellcheck -x --severity=style "${SHELL_FILES[@]}" 2>&1)
+            EXIT_CODE=$?
+        else
+            OUTPUT=$(docker run --rm \
+                -v "${PROJECT_ROOT}:/workspace" \
+                --workdir /workspace \
+                koalaman/shellcheck:stable -x --severity=style test/*.sh 2>&1)
+            EXIT_CODE=$?
+        fi
 
         if [ $EXIT_CODE -eq 0 ]; then
             print_result "ShellCheck" 0
@@ -419,11 +466,18 @@ if [ "$RUN_YAMLLINT" = true ]; then
         FILE_COUNT=${#YAML_FILES[@]}
         echo "Found $FILE_COUNT YAML file(s). Validating..."
 
-        YAMLLINT_CONFIG="${PROJECT_ROOT}/.yamllint.yml"
-        if [ -f "$YAMLLINT_CONFIG" ]; then
-            OUTPUT=$(yamllint -c "$YAMLLINT_CONFIG" "${YAML_FILES[@]}" 2>&1)
+        if command -v yamllint >/dev/null 2>&1; then
+            YAMLLINT_CONFIG="${PROJECT_ROOT}/.yamllint.yml"
+            if [ -f "$YAMLLINT_CONFIG" ]; then
+                OUTPUT=$(yamllint -c "$YAMLLINT_CONFIG" "${YAML_FILES[@]}" 2>&1)
+            else
+                OUTPUT=$(yamllint "${YAML_FILES[@]}" 2>&1)
+            fi
         else
-            OUTPUT=$(yamllint "${YAML_FILES[@]}" 2>&1)
+            OUTPUT=$(docker run --rm \
+                -v "${PROJECT_ROOT}:/workspace" \
+                --workdir /workspace \
+                python:3.13-slim sh -lc "pip install --no-cache-dir yamllint==${YAMLLINT_VERSION} >/dev/null && yamllint -c .yamllint.yml .github test docker-compose.yml" 2>&1)
         fi
         EXIT_CODE=$?
 
@@ -546,16 +600,13 @@ if [ "$RUN_HADOLINT" = true ]; then
             dockerfile_name=$(basename "$dockerfile")
             echo "  Checking: $dockerfile_name"
 
-            # Check if hadolint is available locally (in Docker container)
             if command -v hadolint >/dev/null 2>&1; then
-                # Use local hadolint
                 OUTPUT=$(hadolint "$dockerfile" 2>&1)
                 EXIT_CODE=$?
             else
-                # Fall back to Docker (for local dev environments)
                 OUTPUT=$(docker run --rm -i \
                     -v "${PROJECT_ROOT}/.hadolint.yaml:/.hadolint.yaml:ro" \
-                    hadolint/hadolint:v${HADOLINT_VERSION} hadolint --config /.hadolint.yaml - < "$dockerfile" 2>&1)
+                    "${HADOLINT_IMAGE}" hadolint --config /.hadolint.yaml - < "$dockerfile" 2>&1)
                 EXIT_CODE=$?
             fi
 
@@ -600,7 +651,11 @@ if [ "$RUN_COMPOSE" = true ]; then
                 echo "  Checking: $composefile_name"
 
                 # Use docker compose config to validate
-                OUTPUT=$(docker compose -f "$composefile" config --quiet 2>&1)
+                if [ "$GIT_BASH" = true ]; then
+                    OUTPUT=$(cd "${PROJECT_ROOT}" && MSYS_NO_PATHCONV=1 MSYS2_ARG_CONV_EXCL="*" docker compose -f "$composefile_name" config --quiet 2>&1)
+                else
+                    OUTPUT=$(cd "${PROJECT_ROOT}" && docker compose -f "$composefile_name" config --quiet 2>&1)
+                fi
                 EXIT_CODE=$?
 
                 if [ $EXIT_CODE -eq 0 ]; then
@@ -645,17 +700,14 @@ if [ "$RUN_ACTIONLINT" = true ]; then
                 workflow_name=$(basename "$workflow")
                 echo "  Checking: $workflow_name"
 
-                # Check if actionlint is available locally (in Docker container)
                 if command -v actionlint >/dev/null 2>&1; then
-                    # Use local actionlint
                     OUTPUT=$(actionlint -color "$workflow" 2>&1)
                     EXIT_CODE=$?
                 else
-                    # Fall back to Docker (for local dev environments)
                     OUTPUT=$(docker run --rm \
                            -v "${PROJECT_ROOT}:/workspace" \
                            --workdir /workspace \
-                           rhysd/actionlint:${ACTIONLINT_VERSION} -color ".github/workflows/$workflow_name" 2>&1)
+                           "${ACTIONLINT_IMAGE}" -color ".github/workflows/$workflow_name" 2>&1)
                     EXIT_CODE=$?
                 fi
 

@@ -54,6 +54,7 @@ $ProjectRoot = Split-Path -Parent $ScriptDir
 # Tool versions from manifests (managed by Dependabot)
 $NpmQualityManifest = Join-Path $ProjectRoot "test/package.json"
 $PyQualityManifest = Join-Path $ProjectRoot "test/requirements-quality.txt"
+$ToolingImageManifest = Join-Path $ProjectRoot "test/docker-compose.tooling.yml"
 
 if (-not (Test-Path $NpmQualityManifest)) {
     Write-Host "ERROR: Missing quality manifest: $NpmQualityManifest" @Red
@@ -61,6 +62,10 @@ if (-not (Test-Path $NpmQualityManifest)) {
 }
 if (-not (Test-Path $PyQualityManifest)) {
     Write-Host "ERROR: Missing quality manifest: $PyQualityManifest" @Red
+    exit 1
+}
+if (-not (Test-Path $ToolingImageManifest)) {
+    Write-Host "ERROR: Missing tooling image manifest: $ToolingImageManifest" @Red
     exit 1
 }
 
@@ -80,8 +85,12 @@ $BLACK_VERSION = $PyPins["black"]
 $RUFF_VERSION = $PyPins["ruff"]
 $MYPY_VERSION = $PyPins["mypy"]
 $YAMLLINT_VERSION = $PyPins["yamllint"]
-$HADOLINT_VERSION = "2.14.0"
-$ACTIONLINT_VERSION = "1.7.11"
+
+$ToolingCompose = Get-Content -Path $ToolingImageManifest -Raw
+$HadolintImageMatch = [regex]::Match($ToolingCompose, "(?ms)^  hadolint:\s*$.*?^    image:\s*([^\r\n]+)")
+$ActionlintImageMatch = [regex]::Match($ToolingCompose, "(?ms)^  actionlint:\s*$.*?^    image:\s*([^\r\n]+)")
+$HADOLINT_IMAGE = $HadolintImageMatch.Groups[1].Value.Trim().Trim('"')
+$ACTIONLINT_IMAGE = $ActionlintImageMatch.Groups[1].Value.Trim().Trim('"')
 
 foreach ($Required in @(
     @{ Name = "eslint"; Value = $ESLINT_VERSION },
@@ -90,7 +99,9 @@ foreach ($Required in @(
     @{ Name = "black"; Value = $BLACK_VERSION },
     @{ Name = "ruff"; Value = $RUFF_VERSION },
     @{ Name = "mypy"; Value = $MYPY_VERSION },
-    @{ Name = "yamllint"; Value = $YAMLLINT_VERSION }
+    @{ Name = "yamllint"; Value = $YAMLLINT_VERSION },
+    @{ Name = "hadolint image"; Value = $HADOLINT_IMAGE },
+    @{ Name = "actionlint image"; Value = $ACTIONLINT_IMAGE }
 )) {
     if (-not $Required.Value) {
         Write-Host "ERROR: Missing $($Required.Name) pin in quality manifests" @Red
@@ -319,7 +330,7 @@ if ($Hadolint) {
 
             $output = Get-Content $Dockerfile.FullName -Raw | docker run --rm -i `
                 -v "${ProjectRoot}/.hadolint.yaml:/.hadolint.yaml:ro" `
-                hadolint/hadolint:v$HADOLINT_VERSION hadolint --config /.hadolint.yaml - 2>&1
+                $HADOLINT_IMAGE hadolint --config /.hadolint.yaml - 2>&1
             $exitCode = $LASTEXITCODE
 
             if ($exitCode -eq 0) {
@@ -414,7 +425,7 @@ if ($ActionLint) {
                 $output = & docker run --rm `
                     -v "${ProjectRoot}:/workspace" `
                     --workdir /workspace `
-                    rhysd/actionlint:$ACTIONLINT_VERSION -color ".github/workflows/$WorkflowName" 2>&1
+                    $ACTIONLINT_IMAGE -color ".github/workflows/$WorkflowName" 2>&1
 
                 $exitCode = $LASTEXITCODE
 

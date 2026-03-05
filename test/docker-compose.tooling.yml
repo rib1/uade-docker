@@ -1,0 +1,7 @@
+# Tool image version manifest for code quality checks.
+# Dependabot tracks these `image` tags via the Docker ecosystem in `/test`.
+services:
+  hadolint:
+    image: hadolint/hadolint:v2.14.0
+  actionlint:
+    image: rhysd/actionlint:1.7.11
