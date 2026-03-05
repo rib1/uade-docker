@@ -6,6 +6,11 @@ updates:
     schedule:
       interval: "weekly"
     open-pull-requests-limit: 5
+  - package-ecosystem: "docker"
+    directory: "/test"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 5
 
   # Monitor Python dependencies
   - package-ecosystem: "pip"
@@ -19,6 +24,18 @@ updates:
           - "fsspec"
           - "gcsfs"
           - "s3fs"
+  - package-ecosystem: "pip"
+    directory: "/test"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 5
+
+  # Monitor Node.js quality tooling
+  - package-ecosystem: "npm"
+    directory: "/test"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 5
 
   # Monitor GitHub Actions
   - package-ecosystem: "github-actions"

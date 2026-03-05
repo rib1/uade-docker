@@ -28,12 +28,19 @@ RUN apk add --no-cache \
     && curl -fsSL "https://github.com/hadolint/hadolint/releases/download/v${HADOLINT_VERSION}/hadolint-Linux-x86_64" -o /usr/local/bin/hadolint \
     && chmod +x /usr/local/bin/hadolint
 
-# Install frontend quality tools globally
-RUN npm install -g eslint@10 stylelint@16.26.0 htmlhint@1.9.1
+# Copy quality dependency manifests for reproducible installs
+COPY test/package.json /tmp/quality/package.json
+COPY test/requirements-quality.txt /tmp/quality/requirements-quality.txt
+
+# Install frontend quality tools globally from manifest pins
+RUN npm install -g \
+    "eslint@$(node -p 'require("/tmp/quality/package.json").devDependencies.eslint')" \
+    "stylelint@$(node -p 'require("/tmp/quality/package.json").devDependencies.stylelint')" \
+    "htmlhint@$(node -p 'require("/tmp/quality/package.json").devDependencies.htmlhint')"
 
 # Install Black, Ruff, mypy, and yamllint via pip
 # hadolint ignore=DL3042,DL3059
-RUN pip3 install black==26.1.0 ruff==0.15.4 mypy==1.19.0 yamllint==1.38.0 --break-system-packages
+RUN pip3 install --no-cache-dir --break-system-packages -r /tmp/quality/requirements-quality.txt
 
 # Copy check script from test folder (context is project root)
 COPY test/check-code-quality.sh /usr/local/bin/check-code-quality.sh

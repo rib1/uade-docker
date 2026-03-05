@@ -29,22 +29,56 @@ YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
 NC='\033[0m' # No Color
 
-# Tool versions (keep in sync with test/Dockerfile.quality and docs)
-ESLINT_VERSION="10"
-STYLELINT_VERSION="16.26.0"
-HTMLHINT_VERSION="1.9.1"
-BLACK_VERSION="26.1.0"
-RUFF_VERSION="0.15.4"
-MYPY_VERSION="1.19.0"
-HADOLINT_VERSION="2.14.0"
-ACTIONLINT_VERSION="1.7.11"
-
 # Script directory
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # Allow PROJECT_ROOT to be overridden (useful for Docker containers)
 if [ -z "$PROJECT_ROOT" ]; then
     PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
 fi
+
+# Tool versions from manifests (managed by Dependabot)
+NPM_QUALITY_MANIFEST="${PROJECT_ROOT}/test/package.json"
+PY_QUALITY_MANIFEST="${PROJECT_ROOT}/test/requirements-quality.txt"
+
+read_npm_tool_version() {
+    local tool="$1"
+    local version
+    version=$(sed -nE "s/^[[:space:]]*\"${tool}\"[[:space:]]*:[[:space:]]*\"([^\"]+)\".*/\\1/p" "$NPM_QUALITY_MANIFEST" | head -n1)
+    if [ -z "$version" ]; then
+        echo "ERROR: Could not read ${tool} version from ${NPM_QUALITY_MANIFEST}" >&2
+        exit 1
+    fi
+    echo "$version"
+}
+
+read_pip_tool_version() {
+    local tool="$1"
+    local version
+    version=$(sed -nE "s/^${tool}==([^[:space:]]+).*$/\\1/p" "$PY_QUALITY_MANIFEST" | head -n1)
+    if [ -z "$version" ]; then
+        echo "ERROR: Could not read ${tool} version from ${PY_QUALITY_MANIFEST}" >&2
+        exit 1
+    fi
+    echo "$version"
+}
+
+if [ ! -f "$NPM_QUALITY_MANIFEST" ]; then
+    echo "ERROR: Missing quality manifest: ${NPM_QUALITY_MANIFEST}" >&2
+    exit 1
+fi
+if [ ! -f "$PY_QUALITY_MANIFEST" ]; then
+    echo "ERROR: Missing quality manifest: ${PY_QUALITY_MANIFEST}" >&2
+    exit 1
+fi
+
+ESLINT_VERSION="$(read_npm_tool_version eslint)"
+STYLELINT_VERSION="$(read_npm_tool_version stylelint)"
+HTMLHINT_VERSION="$(read_npm_tool_version htmlhint)"
+BLACK_VERSION="$(read_pip_tool_version black)"
+RUFF_VERSION="$(read_pip_tool_version ruff)"
+MYPY_VERSION="$(read_pip_tool_version mypy)"
+HADOLINT_VERSION="2.14.0"
+ACTIONLINT_VERSION="1.7.11"
 
 # Counters
 TOTAL_CHECKS=0
@@ -422,7 +456,7 @@ if [ "$RUN_BLACK" = true ]; then
         OUTPUT=$(docker run --rm \
                -v "${PROJECT_ROOT}:/workspace" \
                --workdir /workspace/web \
-               pyfound/black:${BLACK_VERSION} black . --line-length 100 $FIX_MODE_ARG 2>&1)
+               "pyfound/black:${BLACK_VERSION}" black . --line-length 100 $FIX_MODE_ARG 2>&1)
         EXIT_CODE=$?
     fi
 
@@ -454,7 +488,7 @@ if [ "$RUN_RUFF" = true ]; then
         OUTPUT=$(docker run --rm \
                -v "${PROJECT_ROOT}:/workspace" \
                --workdir /workspace/web \
-               ghcr.io/astral-sh/ruff:${RUFF_VERSION} check . $FIX_MODE_ARG 2>&1)
+               "ghcr.io/astral-sh/ruff:${RUFF_VERSION}" check . $FIX_MODE_ARG 2>&1)
         EXIT_CODE=$?
     fi
 

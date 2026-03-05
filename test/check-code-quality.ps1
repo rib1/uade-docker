@@ -41,17 +41,6 @@ $Red = @{ ForegroundColor = "Red" }
 $Yellow = @{ ForegroundColor = "Yellow" }
 $Cyan = @{ ForegroundColor = "Cyan" }
 
-# Tool versions (keep in sync with test/Dockerfile.quality and docs)
-$ESLINT_VERSION = "10"
-$STYLELINT_VERSION = "16.26.0"
-$HTMLHINT_VERSION = "1.9.1"
-$BLACK_VERSION = "26.1.0"
-$RUFF_VERSION = "0.15.4"
-$MYPY_VERSION = "1.19.0"
-$HADOLINT_VERSION = "2.14.0"
-$ACTIONLINT_VERSION = "1.7.11"
-$YAMLLINT_VERSION = "1.38.0"
-
 # Get project root
 $ScriptDir = $PSScriptRoot
 if (-not $ScriptDir) {
@@ -61,6 +50,53 @@ if (-not $ScriptDir) {
     $ScriptDir = Get-Location
 }
 $ProjectRoot = Split-Path -Parent $ScriptDir
+
+# Tool versions from manifests (managed by Dependabot)
+$NpmQualityManifest = Join-Path $ProjectRoot "test/package.json"
+$PyQualityManifest = Join-Path $ProjectRoot "test/requirements-quality.txt"
+
+if (-not (Test-Path $NpmQualityManifest)) {
+    Write-Host "ERROR: Missing quality manifest: $NpmQualityManifest" @Red
+    exit 1
+}
+if (-not (Test-Path $PyQualityManifest)) {
+    Write-Host "ERROR: Missing quality manifest: $PyQualityManifest" @Red
+    exit 1
+}
+
+$NpmQuality = Get-Content -Path $NpmQualityManifest -Raw | ConvertFrom-Json
+$ESLINT_VERSION = $NpmQuality.devDependencies.eslint
+$STYLELINT_VERSION = $NpmQuality.devDependencies.stylelint
+$HTMLHINT_VERSION = $NpmQuality.devDependencies.htmlhint
+
+$PyPins = @{}
+Get-Content -Path $PyQualityManifest | ForEach-Object {
+    if ($_ -match '^([A-Za-z0-9._-]+)==(.+)$') {
+        $PyPins[$matches[1]] = $matches[2]
+    }
+}
+
+$BLACK_VERSION = $PyPins["black"]
+$RUFF_VERSION = $PyPins["ruff"]
+$MYPY_VERSION = $PyPins["mypy"]
+$YAMLLINT_VERSION = $PyPins["yamllint"]
+$HADOLINT_VERSION = "2.14.0"
+$ACTIONLINT_VERSION = "1.7.11"
+
+foreach ($Required in @(
+    @{ Name = "eslint"; Value = $ESLINT_VERSION },
+    @{ Name = "stylelint"; Value = $STYLELINT_VERSION },
+    @{ Name = "htmlhint"; Value = $HTMLHINT_VERSION },
+    @{ Name = "black"; Value = $BLACK_VERSION },
+    @{ Name = "ruff"; Value = $RUFF_VERSION },
+    @{ Name = "mypy"; Value = $MYPY_VERSION },
+    @{ Name = "yamllint"; Value = $YAMLLINT_VERSION }
+)) {
+    if (-not $Required.Value) {
+        Write-Host "ERROR: Missing $($Required.Name) pin in quality manifests" @Red
+        exit 1
+    }
+}
 
 # Counters
 $TotalChecks = 0

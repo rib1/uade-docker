@@ -18,13 +18,20 @@ The UADE Docker project uses eleven automated code quality tools:
 10. **ShellCheck** - Shell script linting and bug detection
 11. **Yamllint** - YAML syntax and style validation
 
+## Version Management
+
+- JavaScript/CSS/HTML tool versions are pinned in `test/package.json`.
+- Python quality tool versions are pinned in `test/requirements-quality.txt`.
+- Dependabot monitors both manifests and opens update PRs.
+- `Hadolint` and `ActionLint` are currently pinned directly in scripts/Dockerfile.
+
 ## Tools
 
 ### ESLint (JavaScript)
 
 **Purpose:** Enforce code style, detect errors, ensure consistency in JavaScript files.
 
-**Version:** ESLint 10 (with flat config support)
+**Version source:** `test/package.json` (`eslint`, flat config support)
 
 **Configuration:** `/web/static/eslint.config.js`
 
@@ -32,28 +39,28 @@ The UADE Docker project uses eleven automated code quality tools:
 
 **Dual-Mode Execution:**
 
-- In quality-check container: Uses locally installed ESLint 10
+- In quality-check container: Uses locally installed ESLint (version from `test/package.json`)
 - Local development: Falls back to Docker container
 
 **Direct Docker command:**
 
 ```bash
 docker run --rm -v ${pwd}:/workspace --workdir /workspace/web/static \
-  node:24-alpine sh -lc "npm install -g eslint@10 >/dev/null && eslint ."
+  node:24-alpine sh -lc "npm install -g \"eslint@$(node -p 'require(\"/workspace/test/package.json\").devDependencies.eslint')\" >/dev/null && eslint ."
 ```
 
 **With auto-fix:**
 
 ```bash
 docker run --rm -v ${pwd}:/workspace --workdir /workspace/web/static \
-  node:24-alpine sh -lc "npm install -g eslint@10 >/dev/null && eslint . --fix"
+  node:24-alpine sh -lc "npm install -g \"eslint@$(node -p 'require(\"/workspace/test/package.json\").devDependencies.eslint')\" >/dev/null && eslint . --fix"
 ```
 
 ### Stylelint (CSS)
 
 **Purpose:** Enforce CSS quality and detect invalid/duplicate declarations.
 
-**Version:** 16.26.0
+**Version source:** `test/package.json` (`stylelint`)
 
 **Configuration:** `.stylelintrc.json`
 
@@ -62,14 +69,14 @@ docker run --rm -v ${pwd}:/workspace --workdir /workspace/web/static \
 **Direct Docker command:**
 
 ```bash
-docker run --rm -v ${pwd}:/workspace --workdir /workspace node:24-alpine sh -lc "npm install -g stylelint@16.26.0 >/dev/null && stylelint --config .stylelintrc.json web/static/*.css"
+docker run --rm -v ${pwd}:/workspace --workdir /workspace node:24-alpine sh -lc "npm install -g \"stylelint@$(node -p 'require(\"/workspace/test/package.json\").devDependencies.stylelint')\" >/dev/null && stylelint --config .stylelintrc.json web/static/*.css"
 ```
 
 ### HTMLHint (HTML)
 
 **Purpose:** Validate HTML structure and common correctness rules.
 
-**Version:** 1.9.1
+**Version source:** `test/package.json` (`htmlhint`)
 
 **Configuration:** `.htmlhintrc`
 
@@ -78,14 +85,14 @@ docker run --rm -v ${pwd}:/workspace --workdir /workspace node:24-alpine sh -lc 
 **Direct Docker command:**
 
 ```bash
-docker run --rm -v ${pwd}:/workspace --workdir /workspace node:24-alpine sh -lc "npm install -g htmlhint@1.9.1 >/dev/null && htmlhint --config .htmlhintrc web/static/index.html"
+docker run --rm -v ${pwd}:/workspace --workdir /workspace node:24-alpine sh -lc "npm install -g \"htmlhint@$(node -p 'require(\"/workspace/test/package.json\").devDependencies.htmlhint')\" >/dev/null && htmlhint --config .htmlhintrc web/static/index.html"
 ```
 
 ### Black (Python)
 
 **Purpose:** Enforce consistent Python code formatting (PEP 8 compliant).
 
-**Version:** Black 26.1.0
+**Version source:** `test/requirements-quality.txt` (`black`)
 
 **Configuration:** `pyproject.toml` (line length: 100 characters)
 
@@ -96,18 +103,17 @@ docker run --rm -v ${pwd}:/workspace --workdir /workspace node:24-alpine sh -lc 
 - In quality-check container: Uses locally installed Black
 - Local development: Falls back to Docker container
 
-**Direct Docker command:**
+**Recommended command:**
 
 ```bash
-docker run --rm -v ${pwd}:/workspace --workdir /workspace/web \
-  pyfound/black:26.1.0 black . --line-length 100
+./test/check-code-quality.sh --black
 ```
 
 ### Ruff (Python)
 
 **Purpose:** Extremely fast Python linter and formatter, replacing flake8, isort, and more.
 
-**Version:** 0.15.4
+**Version source:** `test/requirements-quality.txt` (`ruff`)
 
 **Configuration:** `pyproject.toml` (`[tool.ruff.lint]` rule selection and ignores)
 
@@ -118,32 +124,32 @@ docker run --rm -v ${pwd}:/workspace --workdir /workspace/web \
 - In quality-check container: Uses locally installed Ruff binary
 - Local development: Falls back to Docker container
 
-**Direct Docker command:**
+**Recommended command:**
 
 ```bash
-docker run --rm -v ${pwd}:/workspace --workdir /workspace/web ghcr.io/astral-sh/ruff:0.15.4 check .
+./test/check-code-quality.sh --ruff
 ```
 
 **With auto-fix:**
 
 ```bash
-docker run --rm -v ${pwd}:/workspace --workdir /workspace/web ghcr.io/astral-sh/ruff:0.15.4 check . --fix
+./test/check-code-quality.sh --ruff --fix
 ```
 
 ### mypy (Python Type Checking)
 
 **Purpose:** Add a lightweight static type check pass for core Python server code.
 
-**Version:** 1.19.0
+**Version source:** `test/requirements-quality.txt` (`mypy`)
 
 **Configuration:** `pyproject.toml` (`[tool.mypy]`)
 
 **Files checked:** `web/server.py`
 
-**Direct Docker command:**
+**Recommended command:**
 
 ```bash
-docker run --rm -v ${pwd}:/workspace --workdir /workspace python:3.13-slim sh -lc "pip install --no-cache-dir mypy==1.19.0 >/dev/null && mypy --config-file pyproject.toml --no-error-summary"
+./test/check-code-quality.sh --mypy
 ```
 
 ### Hadolint (Dockerfiles)
@@ -280,93 +286,34 @@ Run the scripts directly on your machine to execute all eleven checks:
 
 ### Individual Tool Commands
 
-#### ESLint Only
-
 ```bash
-# Check only
-docker run --rm -v ${pwd}:/workspace --workdir /workspace/web/static \
-  node:24-alpine sh -lc "npm install -g eslint@10 >/dev/null && eslint ."
-
-# Fix issues automatically
-docker run --rm -v ${pwd}:/workspace --workdir /workspace/web/static \
-  node:24-alpine sh -lc "npm install -g eslint@10 >/dev/null && eslint . --fix"
-```
-
-#### Stylelint Only
-
-```bash
-docker run --rm -v ${pwd}:/workspace --workdir /workspace \
-  node:24-alpine sh -lc "npm install -g stylelint@16.26.0 >/dev/null && stylelint --config .stylelintrc.json web/static/*.css"
-```
-
-#### HTMLHint Only
-
-```bash
-docker run --rm -v ${pwd}:/workspace --workdir /workspace \
-  node:24-alpine sh -lc "npm install -g htmlhint@1.9.1 >/dev/null && htmlhint --config .htmlhintrc web/static/index.html"
-```
-
-#### Black Only
-
-```bash
-# Check formatting (no changes)
-docker run --rm -v ${pwd}:/workspace --workdir /workspace/web \
-  pyfound/black:26.1.0 black . --line-length 100 --check
-
-# Auto-format code
-docker run --rm -v ${pwd}:/workspace --workdir /workspace/web \
-  pyfound/black:26.1.0 black . --line-length 100
-```
-
-#### Ruff Only
-
-```bash
-# Check only
-docker run --rm -v ${pwd}:/workspace --workdir /workspace/web ghcr.io/astral-sh/ruff:0.15.4 check .
-
-# Fix issues automatically
-docker run --rm -v ${pwd}:/workspace --workdir /workspace/web ghcr.io/astral-sh/ruff:0.15.4 check . --fix
-```
-
-#### Hadolint Only
-
-```bash
-# PowerShell
-Get-Content Dockerfile | docker run --rm -i -v "${pwd}/.hadolint.yaml:/.hadolint.yaml:ro" hadolint/hadolint:v2.14.0 hadolint --config /.hadolint.yaml -
-
 # Bash
-docker run --rm -i -v "${PWD}/.hadolint.yaml:/.hadolint.yaml:ro" hadolint/hadolint:v2.14.0 hadolint --config /.hadolint.yaml - < Dockerfile
+./test/check-code-quality.sh --eslint
+./test/check-code-quality.sh --stylelint
+./test/check-code-quality.sh --htmlhint
+./test/check-code-quality.sh --black
+./test/check-code-quality.sh --ruff
+./test/check-code-quality.sh --mypy
+./test/check-code-quality.sh --hadolint
+./test/check-code-quality.sh --compose
+./test/check-code-quality.sh --actionlint
+./test/check-code-quality.sh --shellcheck
+./test/check-code-quality.sh --yamllint
 ```
 
-#### Docker Compose Only
-
-```bash
-# Validate main compose file
-docker compose -f docker-compose.yml config --quiet
-```
-
-#### ActionLint Only
-
-```bash
-# Validate all workflows
-for file in .github/workflows/*.yml; do
-  docker run --rm -v ${pwd}:/workspace --workdir /workspace \
-    rhysd/actionlint:1.7.11 -color "/workspace/$file"
-done
-```
-
-#### ShellCheck Only
-
-```bash
-docker run --rm -v ${pwd}:/workspace --workdir /workspace \
-  koalaman/shellcheck:stable -x --severity=style test/*.sh
-```
-
-#### Yamllint Only
-
-```bash
-docker run --rm -v ${pwd}:/workspace --workdir /workspace \
-  python:3.13-slim sh -lc "pip install --no-cache-dir yamllint==1.38.0 >/dev/null && yamllint -c .yamllint.yml .github test docker-compose.yml"
+```powershell
+# PowerShell
+.\test\check-code-quality.ps1 -ESLint
+.\test\check-code-quality.ps1 -Stylelint
+.\test\check-code-quality.ps1 -HTMLHint
+.\test\check-code-quality.ps1 -Black
+.\test\check-code-quality.ps1 -Ruff
+.\test\check-code-quality.ps1 -MyPy
+.\test\check-code-quality.ps1 -Hadolint
+.\test\check-code-quality.ps1 -Compose
+.\test\check-code-quality.ps1 -ActionLint
+.\test\check-code-quality.ps1 -ShellCheck
+.\test\check-code-quality.ps1 -Yamllint
 ```
 
 ## Configuration Files
@@ -547,7 +494,7 @@ For direct Docker commands in PowerShell:
 
 ```powershell
 $pwd_path = (Get-Location).Path
-docker run --rm -v "${pwd_path}:/workspace" --workdir /workspace/web/static node:24-alpine sh -lc "npm install -g eslint@10 >/dev/null && eslint ."
+docker run --rm -v "${pwd_path}:/workspace" --workdir /workspace/web/static node:24-alpine sh -lc "npm install -g \"eslint@$(node -p 'require(\"/workspace/test/package.json\").devDependencies.eslint')\" >/dev/null && eslint ."
 ```
 
 ### ESLint "No files matching" Error

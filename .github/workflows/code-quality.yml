@@ -14,8 +14,11 @@ on:
       - 'test/Dockerfile*'
       - 'test/docker-compose*.yml'
       - 'test/check-code-quality.sh'
+      - 'test/check-code-quality.ps1'
       - 'test/Dockerfile.quality'
       - 'test/docker-compose.quality.yml'
+      - 'test/package.json'
+      - 'test/requirements-quality.txt'
   pull_request:
     branches:
       - main
@@ -29,8 +32,11 @@ on:
       - 'test/Dockerfile*'
       - 'test/docker-compose*.yml'
       - 'test/check-code-quality.sh'
+      - 'test/check-code-quality.ps1'
       - 'test/Dockerfile.quality'
       - 'test/docker-compose.quality.yml'
+      - 'test/package.json'
+      - 'test/requirements-quality.txt'
   workflow_dispatch:
 
 permissions:
