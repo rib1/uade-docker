@@ -5,7 +5,7 @@
 #
 # This allows developers to run: docker compose up quality-check
 
-FROM node:24-alpine
+FROM node:25-alpine
 
 # Install bash, Python, Docker CLI, and other utilities
 RUN apk add --no-cache \
