@@ -486,9 +486,13 @@ if ($Yamllint) {
     Write-Header "Yamllint - YAML Validation"
 
     $YamlFiles = @()
-    $YamlFiles += Get-ChildItem -Path (Join-Path $ProjectRoot ".github") -Recurse -Include "*.yml","*.yaml" -File -ErrorAction SilentlyContinue
-    $YamlFiles += Get-ChildItem -Path (Join-Path $ProjectRoot "test") -Recurse -Include "*.yml","*.yaml" -File -ErrorAction SilentlyContinue
-    $YamlFiles += Get-ChildItem -Path $ProjectRoot -File -Include "*.yml","*.yaml" -ErrorAction SilentlyContinue
+    $YamlFiles += Get-ChildItem -Path (Join-Path $ProjectRoot ".github") -Recurse -File -ErrorAction SilentlyContinue |
+        Where-Object { $_.Extension -in @(".yml", ".yaml") }
+    $YamlFiles += Get-ChildItem -Path (Join-Path $ProjectRoot "test") -Recurse -File -ErrorAction SilentlyContinue |
+        Where-Object { $_.Extension -in @(".yml", ".yaml") }
+    $YamlFiles += Get-ChildItem -Path $ProjectRoot -File -ErrorAction SilentlyContinue |
+        Where-Object { $_.Extension -in @(".yml", ".yaml") }
+    $YamlFiles = $YamlFiles | Sort-Object FullName -Unique
 
     if ($null -eq $YamlFiles -or $YamlFiles.Count -eq 0) {
         Write-Host "No YAML files found" @Yellow

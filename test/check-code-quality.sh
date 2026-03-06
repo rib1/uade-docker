@@ -434,10 +434,14 @@ if [ "$RUN_SHELLCHECK" = true ]; then
             OUTPUT=$(shellcheck -x --severity=style "${SHELL_FILES[@]}" 2>&1)
             EXIT_CODE=$?
         else
+            SHELL_FILES_REL=()
+            for file in "${SHELL_FILES[@]}"; do
+                SHELL_FILES_REL+=("${file#"${PROJECT_ROOT}"/}")
+            done
             OUTPUT=$(docker run --rm \
                 -v "${PROJECT_ROOT}:/workspace" \
                 --workdir /workspace \
-                koalaman/shellcheck:stable -x --severity=style test/*.sh 2>&1)
+                koalaman/shellcheck:stable -x --severity=style "${SHELL_FILES_REL[@]}" 2>&1)
             EXIT_CODE=$?
         fi
 
@@ -474,10 +478,16 @@ if [ "$RUN_YAMLLINT" = true ]; then
                 OUTPUT=$(yamllint "${YAML_FILES[@]}" 2>&1)
             fi
         else
+            YAML_FILES_REL=()
+            for file in "${YAML_FILES[@]}"; do
+                YAML_FILES_REL+=("${file#"${PROJECT_ROOT}"/}")
+            done
             OUTPUT=$(docker run --rm \
                 -v "${PROJECT_ROOT}:/workspace" \
                 --workdir /workspace \
-                python:3.13-slim sh -lc "pip install --no-cache-dir yamllint==${YAMLLINT_VERSION} >/dev/null && yamllint -c .yamllint.yml .github test docker-compose.yml" 2>&1)
+                python:3.13-slim sh -lc \
+                "pip install --no-cache-dir yamllint==${YAMLLINT_VERSION} >/dev/null && if [ -f .yamllint.yml ]; then yamllint -c .yamllint.yml \"\$@\"; else yamllint \"\$@\"; fi" \
+                sh "${YAML_FILES_REL[@]}" 2>&1)
         fi
         EXIT_CODE=$?
 
