@@ -768,7 +768,13 @@ test_download_filename_sanitization() {
         exit 1
     fi
 
-    DOWNLOAD_URL_WITH_HOSTILE_FILENAME=$(echo "$DOWNLOAD_URL" | sed "s/filename=[^&]*/filename=$MALICIOUS_FILENAME/")
+    DOWNLOAD_URL_PREFIX=${DOWNLOAD_URL%%filename=*}
+    DOWNLOAD_URL_FILENAME_AND_SUFFIX=${DOWNLOAD_URL#*filename=}
+    DOWNLOAD_URL_SUFFIX=""
+    case "$DOWNLOAD_URL_FILENAME_AND_SUFFIX" in
+        *"&"*) DOWNLOAD_URL_SUFFIX="&${DOWNLOAD_URL_FILENAME_AND_SUFFIX#*&}" ;;
+    esac
+    DOWNLOAD_URL_WITH_HOSTILE_FILENAME="${DOWNLOAD_URL_PREFIX}filename=${MALICIOUS_FILENAME}${DOWNLOAD_URL_SUFFIX}"
 
     RESPONSE_HEADERS=$(curl -s -D - -o /dev/null \
         "$BASE_URL$DOWNLOAD_URL_WITH_HOSTILE_FILENAME")
