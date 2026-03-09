@@ -7,6 +7,7 @@ Play Amiga music modules directly in your web browser! No desktop software requi
 - 🎵 **Play in Browser** - Upload or download modules, hear them instantly
 - 🕹️ **Example Modules** - Try famous Amiga classics with one click
 - 🌐 **URL Support** - Download directly from Modland, ModArchive, etc.
+- 📋 **Queue Support** - Build a temporary queue from examples, URLs, and the currently playing track
 - 🔗 **Shareable URLs** - Share direct links to modules that auto-play for recipients
 - 📦 **LHA & ZIP Archive Support** - Automatically extracts classic Amiga LHA archives (and ZIP)
 - 🗂️ **Dual-File Module Support** - Handles dual-file modules (e.g., TFMX, RJP) automatically
@@ -197,6 +198,31 @@ https://your-uade-instance.com/?url=https://modland.com/.../mdat.turrican&sample
 
 > **Note:** File uploads cannot be shared (no public URL). Only URL-based conversions and examples have shareable links.
 
+## Queue
+
+The web player includes a lightweight in-memory queue for URL-based and example tracks.
+
+- Add tracks from **Try These Classics**
+- Add tracks from **Download from URL**
+- Add the currently playing URL/example track back into the queue
+- Play queue items directly
+- Auto-advance to the next queued item
+- Reorder items with `↑` and `↓`
+- Remove individual items or clear the whole queue
+
+Current queue limitations:
+
+- No persistence across reloads
+- No playlist sharing
+- No uploaded-file queue items yet
+- Only one queue exists at a time
+
+Behavior notes:
+
+- The queue starts collapsed by default
+- The first queued track auto-plays only when the queue was empty and no track is currently loaded/playing
+- Adding a URL to the queue clears the URL and sample URL fields on success
+
 ## API Reference
 
 The web player provides a REST API for programmatic access:
@@ -235,6 +261,34 @@ Content-Type: application/json
   "sample_url": "https://..." // Optional
 }
 ```
+
+### Probe URL Metadata
+
+Validate a remote module and return lightweight metadata without converting audio.
+
+```http
+POST /probe-url
+Content-Type: application/json
+
+{
+  "url": "https://modland.com/pub/modules/...",
+  "sample_url": "https://..." // Optional
+}
+```
+
+Typical response:
+
+```json
+{
+  "ok": true,
+  "playable": true,
+  "module_name": "space debris.mod",
+  "module_format": "Protracker",
+  "player_format": "Protracker"
+}
+```
+
+This endpoint is used by the queue UI to confirm that a remote module is playable before adding it.
 
 ### Play Example
 
