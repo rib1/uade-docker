@@ -389,6 +389,46 @@ test_probe_malformed_json() {
     echo ""
 }
 
+_assert_convert_url_invalid_json_request() {
+    TEST_NAME=$1
+    CONTENT_TYPE=$2
+    REQUEST_BODY=$3
+
+    echo "--- Testing Convert URL Error: $TEST_NAME ---"
+
+    RESPONSE_ALL=$(curl -s -w "\n%{http_code}" -X POST \
+        -H "Content-Type: $CONTENT_TYPE" \
+        -d "$REQUEST_BODY" \
+        "$BASE_URL/convert-url")
+
+    HTTP_CODE=$(echo "$RESPONSE_ALL" | tail -n1)
+    BODY=$(echo "$RESPONSE_ALL" | sed '$d')
+
+    if [ "$HTTP_CODE" -ne 400 ]; then
+        echo "ERROR: Convert URL returned HTTP $HTTP_CODE (expected 400) for $TEST_NAME"
+        echo "Response body: $BODY"
+        exit 1
+    fi
+
+    if ! echo "$BODY" | grep -q "Invalid JSON body"; then
+        echo "ERROR: Convert URL $TEST_NAME returned unexpected error message"
+        echo "Response body: $BODY"
+        exit 1
+    fi
+
+    echo "SUCCESS: Convert URL rejected invalid request payload."
+    echo "Response body: $BODY"
+    echo ""
+}
+
+test_convert_url_malformed_json() {
+    _assert_convert_url_invalid_json_request "malformed JSON" "application/json" '{"url":'
+}
+
+test_convert_url_wrong_content_type() {
+    _assert_convert_url_invalid_json_request "wrong content type" "text/plain" 'not json'
+}
+
 # Function to test rejecting malformed range requests
 # Arguments:
 # 1. Test name (string)
@@ -1085,7 +1125,7 @@ test_upload_negative_case() {
 test_health_endpoint() {
     echo "--- Testing Health Endpoint ---"
     RESPONSE=$(curl -s "$BASE_URL/health")
-    
+
     # Check for basic status
     STATUS=$(echo "$RESPONSE" | jq -r .status)
     if [ "$STATUS" != "healthy" ]; then
@@ -1137,6 +1177,8 @@ test_probe_has_no_conversion_fields "Probe metadata only response" "https://modl
 test_probe_error "Probe reject localhost URL" "http://localhost:5000/health" "" 400 "Unsafe or disallowed URL provided"
 test_probe_missing_url
 test_probe_malformed_json
+test_probe_error "Probe reject mutated module URL" "https://modland.com/pub/modules/Protracker/Captain/space%20debris.mod;get-help" "" 400 "URL could not be fetched"
+test_probe_error "Probe reject mutated sample URL" "https://modland.com/pub/modules/TFMX/Chris%20Huelsbeck/mdat.turrican%202%20level%200-intro" "https://modland.com/pub/modules/TFMX/Chris%20Huelsbeck/smpl.turrican%202%20level%200-intro;sleep%2015.0;" 400 "URL could not be fetched"
 test_probe_oversized_remote_file "Probe oversized remote file" "$LOCAL_TEST_SERVER_URL/fixtures/invalid/too-large.bin"
 test_probe_error "Probe unsupported remote file" "https://www.gutenberg.org/files/1342/1342-0.txt" "" 500 "Could not detect module metadata. The file may be corrupt or not a supported module."
 
@@ -1167,6 +1209,12 @@ test_security_url "Reject path traversal in URL" "https://example.com/../../etc/
 test_security_url "Reject encoded localhost IP" "http://2130706433:5000/health"
 # SSRF with IPv6 localhost (should be rejected)
 test_security_url "Reject IPv6 localhost" "http://[::1]/admin"
+test_security_url "Reject convert-url with quoted module URL" "https://modland.com/pub/modules/Protracker/Captain/space%20debris.mod'"
+test_security_url "Reject convert-url with quoted sample URL" "https://modland.com/pub/modules/TFMX/Chris%20Huelsbeck/mdat.turrican%202%20level%200-intro" "https://modland.com/pub/modules/TFMX/Chris%20Huelsbeck/smpl.turrican%202%20level%200-intro'"
+test_security_url "Reject convert-url with mutated module URL" "https://modland.com/pub/modules/Protracker/Captain/space%20debris.mod;get-help"
+test_security_url "Reject convert-url with mutated sample URL" "https://modland.com/pub/modules/TFMX/Chris%20Huelsbeck/mdat.turrican%202%20level%200-intro" "https://modland.com/pub/modules/TFMX/Chris%20Huelsbeck/smpl.turrican%202%20level%200-intro;sleep%2015.0;"
+test_convert_url_malformed_json
+test_convert_url_wrong_content_type
 
 # XSS in filename/module name (should not be reflected unsanitized)
 test_xss_filename "https://example.com/<script>alert('xss')</script>.mod"

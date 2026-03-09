@@ -157,6 +157,9 @@ RATE_LIMIT: Final = int(os.getenv("RATE_LIMIT", "200"))  # requests per hour
 DOWNLOAD_RATE_LIMIT: Final = int(os.getenv("DOWNLOAD_RATE_LIMIT", "6"))  # downloads per minute
 PORT: Final = int(os.getenv("PORT", "5000"))
 DISABLE_SSL_VERIFY: Final = os.getenv("DISABLE_SSL_VERIFY", "0") == "1"  # For corporate proxies
+HTTP_CLIENT_ERROR_MIN: Final = 400
+HTTP_SERVER_ERROR_MIN: Final = 500
+HTTP_BAD_GATEWAY: Final = 502
 
 # Local directories for processing
 TEMP_BASE: Final = tempfile.gettempdir()
@@ -1747,16 +1750,42 @@ def is_safe_url(u):
         # Unquote path and query before checking
         unquoted_path = urllib.parse.unquote(parsed.path)
         unquoted_query = urllib.parse.unquote(parsed.query)
+        unquoted_fragment = urllib.parse.unquote(parsed.fragment)
 
         # Explicitly check for problematic characters that might cause shell injection
-        problematic_chars = ["`", "\n", "\r", ";", "&", "|", "<", ">", "[", "]", "{", "}", "\\"]
+        problematic_chars = [
+            "`",
+            "\n",
+            "\r",
+            ";",
+            "&",
+            "|",
+            "<",
+            ">",
+            "[",
+            "]",
+            "{",
+            "}",
+            "\\",
+        ]
         for char in problematic_chars:
-            if char in unquoted_path or char in unquoted_query:
+            if char in unquoted_path or char in unquoted_query or char in unquoted_fragment:
                 logger.warning(
                     f"is_safe_url: rejected URL due to problematic character '{char}' "
-                    f"in path/query for URL: {sanitized_url_for_log}"
+                    f"in path/query/fragment for URL: {sanitized_url_for_log}"
                 )
                 return False
+
+        if (
+            unquoted_path.endswith(("'", '"'))
+            or unquoted_query.endswith(("'", '"'))
+            or unquoted_fragment.endswith(("'", '"'))
+        ):
+            logger.warning(
+                "is_safe_url: rejected URL due to dangling quote in path/query/fragment "
+                f"for URL: {sanitized_url_for_log}"
+            )
+            return False
 
         # Path traversal check in path and query
         # Normalize backslashes to slashes and check for ".." segments
@@ -1954,8 +1983,10 @@ def convert_url():
     """
     cleanup_old_files()
 
-    data = request.get_json()
-    if not data or "url" not in data:
+    data = request.get_json(silent=True)
+    if not isinstance(data, dict):
+        return json_response({"error": "Invalid JSON body"}, 400)
+    if "url" not in data:
         return json_response({"error": "No URL provided"}, 400)
 
     url = data["url"]
@@ -2146,12 +2177,33 @@ def download_and_limit_size(url, temp_file_path, error_context=""):
 
         return True, None
 
+    except requests.HTTPError as exc:
+        status_code = exc.response.status_code if exc.response is not None else None
+        if temp_file_path.exists():
+            temp_file_path.unlink(missing_ok=True)
+
+        if status_code is not None and HTTP_CLIENT_ERROR_MIN <= status_code < HTTP_SERVER_ERROR_MIN:
+            logger.warning(
+                f"Remote fetch rejected for {sanitized_url(url)} ({error_context}) "
+                f"with HTTP {status_code}"
+            )
+            return False, json_response(
+                {"error": f"{error_context} URL could not be fetched"},
+                HTTP_CLIENT_ERROR_MIN,
+            )
+
+        logger.error(f"Download failed for {sanitized_url(url)} ({error_context})", exc_info=True)
+        return False, json_response(
+            {"error": f"Download failed for {error_context}"}, HTTP_BAD_GATEWAY
+        )
     except requests.RequestException:
         logger.error(f"Download failed for {sanitized_url(url)} ({error_context})", exc_info=True)
         # Clean up partial file
         if temp_file_path.exists():
             temp_file_path.unlink(missing_ok=True)
-        return False, json_response({"error": f"Download failed for {error_context}"}, 500)
+        return False, json_response(
+            {"error": f"Download failed for {error_context}"}, HTTP_BAD_GATEWAY
+        )
     except Exception:
         logger.error(
             f"Unexpected error during download for {sanitized_url(url)} ({error_context})",
@@ -2205,7 +2257,7 @@ def play_example(example_id):
     # Directly call convert_url with the payload
     # Save and restore request._cached_json to avoid side effects
     old_json = getattr(request, "_cached_json", None)
-    request._cached_json = (payload, None)
+    request._cached_json = (payload, payload)
     result = convert_url()
     request._cached_json = old_json
     return result
