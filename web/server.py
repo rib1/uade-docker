@@ -1554,7 +1554,7 @@ def detect_cached_module_metadata(input_path, sample_files=None):
     cache_hash = get_file_hash(input_path)
     module_name = None
     module_format = None
-    player_format = "Module"
+    player_format = None
     subsongs = 0
 
     cached_metadata = load_metadata_cache(cache_hash)
@@ -1876,7 +1876,7 @@ def prepare_remote_module_source(url, sample_url=None):
 
         sample_path = MODULES_DIR / f"{sample_filename}_{url_hash}{sample_suffix}"
         cached_sample_path = MODULES_DIR / f"{sample_filename}_{sample_url_hash}{sample_suffix}"
-        sample_lock_path = module_path.with_suffix(f"{cached_sample_path.suffix}.lock")
+        sample_lock_path = cached_sample_path.with_suffix(f"{cached_sample_path.suffix}.lock")
         sample_files = [sample_path, cached_sample_path]
 
         if cached_sample_path.exists():

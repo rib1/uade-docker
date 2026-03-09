@@ -228,12 +228,18 @@ function resetButtonAfterDelay(button, originalText, delay = 2000) {
   }, delay);
 }
 
+function setButtonLoadingState(button, loadingText) {
+  const spinner = document.createElement("span");
+  spinner.className = "loading";
+  button.replaceChildren(spinner, document.createTextNode(` ${loadingText}`));
+}
+
 /**
  * Shows loading spinner on a button and returns its original text content.
  */
 function showButtonLoadingAndGetOriginal(button, loadingText = "Converting...") {
   const originalText = button.textContent;
-  button.innerHTML = `<span class="loading"></span> ${loadingText}`;
+  setButtonLoadingState(button, loadingText);
   return originalText;
 }
 
@@ -710,7 +716,7 @@ function renderPlaylist() {
   playlistNextBtn.disabled = !hasPlaylist;
   playlistClearBtn.disabled = !hasPlaylist;
 
-  playlistList.innerHTML = "";
+  playlistList.replaceChildren();
   playlistEmptyState.hidden = playlistTracks.length > 0;
 
   playlistTracks.forEach((track, index) => {
@@ -994,7 +1000,7 @@ function updateSubsongNavigation() {
   if (!container) return;
 
   // Clear existing content
-  container.innerHTML = "";
+  container.replaceChildren();
 
   // Only show navigation if there are multiple subsongs with duration data
   if (currentSubsongs <= 1 || currentSubsongDurations.length === 0) {
@@ -1110,7 +1116,7 @@ function setupDownloadButton() {
       // Lock button and show spinner
       downloadBtn.disabled = true;
       const originalText = downloadBtn.textContent;
-      downloadBtn.innerHTML = "<span class=\"loading\"></span> Preparing download...";
+      setButtonLoadingState(downloadBtn, "Preparing download...");
 
       try {
         const response = await fetch(currentDownloadUrl);
@@ -1140,7 +1146,7 @@ function setupDownloadButton() {
             filename = disposition.split("filename=")[1].replace(/["']/g, "").trim();
           }
 
-          downloadBtn.innerHTML = "<span class=\"loading\"></span> Downloading...";
+          setButtonLoadingState(downloadBtn, "Downloading...");
           showStatus("Downloading large file...", "info");
 
           try {
@@ -1231,7 +1237,9 @@ function createAutoplayOverlay() {
   overlay.id = "autoplay-overlay";
   overlay.setAttribute("aria-label", "Play"); // Added aria-label
   overlay.tabIndex = 0; // Added tabIndex for keyboard accessibility
-  overlay.innerHTML = "<div class=\"play-button-overlay-icon\"></div>";
+  const overlayIcon = document.createElement("div");
+  overlayIcon.className = "play-button-overlay-icon";
+  overlay.appendChild(overlayIcon);
 
   playerContainer.appendChild(overlay);
 
