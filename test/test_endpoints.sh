@@ -361,6 +361,34 @@ test_probe_missing_url() {
     echo ""
 }
 
+test_probe_malformed_json() {
+    echo "--- Testing Probe Error: malformed JSON ---"
+
+    RESPONSE_ALL=$(curl -s -w "\n%{http_code}" -X POST \
+        -H "Content-Type: application/json" \
+        -d '{"url":' \
+        "$BASE_URL/probe-url")
+
+    HTTP_CODE=$(echo "$RESPONSE_ALL" | tail -n1)
+    BODY=$(echo "$RESPONSE_ALL" | sed '$d')
+
+    if [ "$HTTP_CODE" -ne 400 ]; then
+        echo "ERROR: Probe returned HTTP $HTTP_CODE (expected 400) for malformed JSON"
+        echo "Response body: $BODY"
+        exit 1
+    fi
+
+    if ! echo "$BODY" | grep -q "Invalid JSON body"; then
+        echo "ERROR: Probe malformed JSON returned unexpected error message"
+        echo "Response body: $BODY"
+        exit 1
+    fi
+
+    echo "SUCCESS: Probe rejected malformed JSON payload."
+    echo "Response body: $BODY"
+    echo ""
+}
+
 # Function to test rejecting malformed range requests
 # Arguments:
 # 1. Test name (string)
@@ -1108,6 +1136,7 @@ test_probe_url "Probe TFMX module" "https://modland.com/pub/modules/TFMX/Chris%2
 test_probe_has_no_conversion_fields "Probe metadata only response" "https://modland.com/pub/modules/Protracker/Captain/space%20debris.mod"
 test_probe_error "Probe reject localhost URL" "http://localhost:5000/health" "" 400 "Unsafe or disallowed URL provided"
 test_probe_missing_url
+test_probe_malformed_json
 test_probe_oversized_remote_file "Probe oversized remote file" "$LOCAL_TEST_SERVER_URL/fixtures/invalid/too-large.bin"
 test_probe_error "Probe unsupported remote file" "https://www.gutenberg.org/files/1342/1342-0.txt" "" 500 "Could not detect module metadata. The file may be corrupt or not a supported module."
 
