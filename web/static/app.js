@@ -32,6 +32,7 @@ const addCurrentToPlaylistBtn = document.getElementById("add-current-to-playlist
 const examplesGrid = document.getElementById("examples-grid");
 const statusContainer = document.getElementById("status-container");
 const playlistLauncher = document.getElementById("playlist-launcher");
+const playlistLauncherBar = document.querySelector(".playlist-launcher-bar");
 const playlistLauncherLabel = document.getElementById("playlist-launcher-label");
 const playlistLauncherNext = document.getElementById("playlist-launcher-next");
 const playlistToggleBtn = document.getElementById("playlist-toggle-btn");
@@ -435,9 +436,24 @@ function setupUrlForm() {
 }
 
 function setupPlaylistControls() {
+  playlistLauncherBar.addEventListener("click", (event) => {
+    if (event.target.closest("button")) {
+      return;
+    }
+    togglePlaylistPanel();
+  });
+  playlistLauncherBar.addEventListener("keydown", (event) => {
+    if (event.key === "Enter" || event.key === " ") {
+      event.preventDefault();
+      togglePlaylistPanel();
+    }
+  });
   playlistToggleBtn.addEventListener("click", togglePlaylistPanel);
   playlistClearBtn.addEventListener("click", clearPlaylist);
-  playlistNextBtn.addEventListener("click", playNextPlaylistTrack);
+  playlistNextBtn.addEventListener("click", (event) => {
+    event.stopPropagation();
+    playNextPlaylistTrack();
+  });
   addCurrentToPlaylistBtn.addEventListener("click", handleAddCurrentToPlaylist);
 }
 
