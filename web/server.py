@@ -2287,7 +2287,7 @@ def download_file(file_id):
     custom_filename = request.args.get("filename")
     if custom_filename:
         custom_filename = unicodedata.normalize("NFKC", custom_filename)
-        custom_filename = secure_filename(custom_filename)
+        custom_filename = secure_filename(custom_filename)[:100] or None
     return serve_audio_file(file_id, as_attachment=True, custom_filename=custom_filename)
 
 

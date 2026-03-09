@@ -742,6 +742,60 @@ test_download_functionality() {
     echo ""
 }
 
+test_download_filename_sanitization() {
+    TEST_NAME=$1
+    URL=$2
+    SAMPLE_URL=$3
+    MALICIOUS_FILENAME=$4
+    EXPECTED_FILENAME_FRAGMENT=$5
+
+    echo "--- Testing Download Filename Sanitization: $TEST_NAME ---"
+
+    HTTP_CODE_BODY=$(_perform_convert_url_call "$URL" "$SAMPLE_URL")
+    HTTP_CODE=$(echo "$HTTP_CODE_BODY" | head -n1)
+    RESPONSE=$(echo "$HTTP_CODE_BODY" | tail -n1)
+
+    if [ "$HTTP_CODE" -ne 200 ]; then
+        echo "ERROR: Initial convert-url call failed with HTTP $HTTP_CODE for test '$TEST_NAME'"
+        echo "Response body: $RESPONSE"
+        exit 1
+    fi
+
+    DOWNLOAD_URL=$(echo "$RESPONSE" | jq -r .download_url)
+    if [ -z "$DOWNLOAD_URL" ] || [ "$DOWNLOAD_URL" == "null" ]; then
+        echo "ERROR: download_url not found in response for test '$TEST_NAME'"
+        echo "Response body: $RESPONSE"
+        exit 1
+    fi
+
+    DOWNLOAD_URL_WITH_HOSTILE_FILENAME=$(echo "$DOWNLOAD_URL" | sed "s/filename=[^&]*/filename=$MALICIOUS_FILENAME/")
+
+    RESPONSE_HEADERS=$(curl -s -D - -o /dev/null \
+        "$BASE_URL$DOWNLOAD_URL_WITH_HOSTILE_FILENAME")
+
+    if ! echo "$RESPONSE_HEADERS" | grep -qi "Content-Disposition: attachment; filename="; then
+        echo "ERROR: Missing Content-Disposition header for test '$TEST_NAME'"
+        echo "$RESPONSE_HEADERS"
+        exit 1
+    fi
+
+    if echo "$RESPONSE_HEADERS" | grep -q "<img"; then
+        echo "ERROR: Unsanitized HTML payload found in Content-Disposition header"
+        echo "$RESPONSE_HEADERS"
+        exit 1
+    fi
+
+    if ! echo "$RESPONSE_HEADERS" | grep -q "$EXPECTED_FILENAME_FRAGMENT"; then
+        echo "ERROR: Sanitized filename fragment not found for test '$TEST_NAME'"
+        echo "Expected fragment: $EXPECTED_FILENAME_FRAGMENT"
+        echo "$RESPONSE_HEADERS"
+        exit 1
+    fi
+
+    echo "SUCCESS: Download filename is sanitized in Content-Disposition."
+    echo ""
+}
+
 # Function to test server-side cache hits for /convert-url
 # Arguments:
 # 1. Test name (string)
@@ -1190,6 +1244,7 @@ test_url "LHA archive" "http://files.exotica.org.uk/?file=exotica/media%2Faudio%
 test_url "ZIP archive" "https://files.scene.org/get:fi-https/music/artists/4-mat/chip_shop.zip"
 test_url "RJP module" "https://modland.com/pub/modules/Richard%20Joseph/Richard%20Joseph/cannon%20fodder%20(intro).sng" "https://modland.com/pub/modules/Richard%20Joseph/Richard%20Joseph/cannon%20fodder%20(intro).ins"
 test_url "Negative case (non-module)" "https://www.gutenberg.org/files/1342/1342-0.txt"
+test_download_filename_sanitization "Sanitize hostile download filename" "https://modland.com/pub/modules/Protracker/Lizardking/l.k%27s%20doskpop.mod" "" "%3Cimg%20src%3Dx%20onerror%3Dalert(1)%3E" "filename=\"uade_img_srcx_onerroralert1"
 
 test_play_example "Play Example (Romeo Knight)" "romeo-knight-beat"
 test_play_example "Play Example (Turrican 2)" "huelsbeck-turrican2"

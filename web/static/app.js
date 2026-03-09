@@ -57,6 +57,26 @@ const elementsToDisable = [
   playlistAddUrlBtn,
 ];
 
+function extractDownloadFilename(contentDisposition, fallback = "downloaded_file") {
+  if (!contentDisposition) {
+    return fallback;
+  }
+
+  const filenameStarMatch = contentDisposition.match(/filename\*\s*=\s*UTF-8''([^;]+)/i);
+  if (filenameStarMatch) {
+    try {
+      return decodeURIComponent(filenameStarMatch[1]).replace(/[/\\]/g, "_").trim() || fallback;
+    } catch {
+      return fallback;
+    }
+  }
+
+  const filenameMatch = contentDisposition.match(/filename\s*=\s*"([^"]+)"|filename\s*=\s*([^;]+)/i);
+  const rawFilename = filenameMatch ? (filenameMatch[1] || filenameMatch[2]) : "";
+  const sanitizedFilename = rawFilename.replace(/["']/g, "").replace(/[/\\]/g, "_").trim();
+  return sanitizedFilename || fallback;
+}
+
 // Helper function to download large files using range requests
 async function downloadWithRangeRequests(url, filename, fileSize) {
   const chunkSize = 10 * 1024 * 1024; // 10MB chunks (well under 32MB limit)
@@ -1434,11 +1454,9 @@ function setupDownloadButton() {
           }
 
           // Extract filename from Content-Disposition header
-          let filename = "downloaded_file";
-          const disposition = response.headers.get("content-disposition");
-          if (disposition && disposition.includes("filename=")) {
-            filename = disposition.split("filename=")[1].replace(/["']/g, "").trim();
-          }
+          const filename = extractDownloadFilename(
+            response.headers.get("content-disposition")
+          );
 
           setButtonLoadingState(downloadBtn, "Downloading...");
           showStatus("Downloading large file...", "info");
@@ -1459,11 +1477,9 @@ function setupDownloadButton() {
         } else if (response.ok) {
           // Standard download for small files
           // Extract filename from Content-Disposition header
-          let filename = "downloaded_file";
-          const disposition = response.headers.get("content-disposition");
-          if (disposition && disposition.includes("filename=")) {
-            filename = disposition.split("filename=")[1].replace(/["']/g, "").trim();
-          }
+          const filename = extractDownloadFilename(
+            response.headers.get("content-disposition")
+          );
           // Create a temporary anchor and trigger download
           const a = document.createElement("a");
           a.href = currentDownloadUrl;
