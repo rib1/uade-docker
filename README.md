@@ -25,7 +25,7 @@ Browser-based player with drag-and-drop interface.
 
 **Live:** <https://uade-web-player-675650150969.us-central1.run.app>
 
-Features: Drag & drop files, download from URLs, **LHA archive extraction**, dual-file module support (e.g., TFMX, RJP), convert to WAV/FLAC, format auto-detection
+Features: Drag & drop files, download from URLs, temporary queue support, **LHA archive extraction**, dual-file module support (e.g., TFMX, RJP), convert to WAV/FLAC, format auto-detection
 
 **[📖 Full Documentation](docs/WEB-PLAYER.md)**
 

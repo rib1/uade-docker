@@ -12,6 +12,7 @@ let currentPlayableTrackFormat = null;
 let playlistTracks = [];
 let currentPlaylistTrackId = null;
 let isPlaylistPanelOpen = false;
+let isUiLocked = false;
 
 // DOM Elements
 const dropZone = document.getElementById("drop-zone");
@@ -36,7 +37,6 @@ const playlistLauncherNext = document.getElementById("playlist-launcher-next");
 const playlistToggleBtn = document.getElementById("playlist-toggle-btn");
 const playlistNextBtn = document.getElementById("playlist-next-btn");
 const playlistPanel = document.getElementById("playlist-panel");
-const playlistCloseBtn = document.getElementById("playlist-close-btn");
 const playlistClearBtn = document.getElementById("playlist-clear-btn");
 const playlistList = document.getElementById("playlist-list");
 const playlistEmptyState = document.getElementById("playlist-empty-state");
@@ -153,8 +153,9 @@ function updatePlayerSectionVisibility() {
 }
 
 function updatePrimaryPlayerActions() {
-  downloadBtn.disabled = !currentDownloadUrl;
-  addCurrentToPlaylistBtn.disabled = !currentShareableUrl;
+  downloadBtn.disabled = isUiLocked || !currentDownloadUrl;
+  shareBtn.disabled = isUiLocked || !currentShareableUrl;
+  addCurrentToPlaylistBtn.disabled = isUiLocked || !currentShareableUrl;
 }
 
 async function loadSupportedExtensions() {
@@ -173,6 +174,7 @@ async function loadSupportedExtensions() {
  * Disables all interactive elements to prevent simultaneous conversions.
  */
 function setUiLock() {
+  isUiLocked = true;
   const dynamicElements = document.querySelectorAll(
     ".play-btn, .add-playlist-btn, .playlist-play-btn, .playlist-remove-btn, .playlist-move-btn, .playlist-toggle-btn, .playlist-next-btn, .playlist-clear-btn",
   );
@@ -185,6 +187,10 @@ function setUiLock() {
   });
   addCurrentToPlaylistBtn.disabled = true;
   addCurrentToPlaylistBtn.setAttribute("aria-busy", "true");
+  downloadBtn.disabled = true;
+  downloadBtn.setAttribute("aria-busy", "true");
+  shareBtn.disabled = true;
+  shareBtn.setAttribute("aria-busy", "true");
   if (uploadLabel) {
     uploadLabel.classList.add("disabled");
     uploadLabel.setAttribute("aria-busy", "true");
@@ -195,6 +201,7 @@ function setUiLock() {
  * Re-enables all interactive elements after a conversion is complete.
  */
 function releaseUiLock() {
+  isUiLocked = false;
   const dynamicElements = document.querySelectorAll(
     ".play-btn, .add-playlist-btn, .playlist-play-btn, .playlist-remove-btn, .playlist-move-btn, .playlist-toggle-btn, .playlist-next-btn, .playlist-clear-btn",
   );
@@ -206,6 +213,8 @@ function releaseUiLock() {
     el.setAttribute("aria-busy", "false");
   });
   addCurrentToPlaylistBtn.setAttribute("aria-busy", "false");
+  downloadBtn.setAttribute("aria-busy", "false");
+  shareBtn.setAttribute("aria-busy", "false");
   if (uploadLabel) {
     uploadLabel.classList.remove("disabled");
     uploadLabel.setAttribute("aria-busy", "false");
@@ -215,6 +224,7 @@ function releaseUiLock() {
   if (playlistTracks.length > 0) {
     renderPlaylist();
   }
+  updatePrimaryPlayerActions();
 }
 
 /**
@@ -413,7 +423,6 @@ function setupUrlForm() {
 
 function setupPlaylistControls() {
   playlistToggleBtn.addEventListener("click", togglePlaylistPanel);
-  playlistCloseBtn.addEventListener("click", () => setPlaylistPanelOpen(false));
   playlistClearBtn.addEventListener("click", clearPlaylist);
   playlistNextBtn.addEventListener("click", playNextPlaylistTrack);
   addCurrentToPlaylistBtn.addEventListener("click", handleAddCurrentToPlaylist);
@@ -480,7 +489,6 @@ function handleAddCurrentToPlaylist() {
     source: "current",
   });
   showStatus(`✓ Added ${name} to queue`, "success");
-  setPlaylistPanelOpen(true);
 }
 
 async function handleUrlConvert() {
@@ -541,15 +549,21 @@ async function handleAddUrlToPlaylist() {
     return;
   }
 
-  addTrackToPlaylist({
+  const shouldAutoPlay = playlistTracks.length === 0 && !audioPlayer.getAttribute("src");
+  const track = {
     id: createPlaylistTrackId(),
     name: probeData.module_name || probeData.filename || "Module",
     url,
     sample_url: sampleUrl || null,
     format: probeData.module_format || probeData.player_format || "Module",
     source: "url",
-  });
-  setPlaylistPanelOpen(true);
+  };
+  addTrackToPlaylist(track);
+  urlInput.value = "";
+  sampleUrlInput.value = "";
+  if (shouldAutoPlay) {
+    void playPlaylistTrack(track.id, playlistAddUrlBtn);
+  }
 }
 
 // Load Examples
@@ -600,7 +614,7 @@ async function loadExamples() {
       addBtn.className = "play-btn add-playlist-btn";
       addBtn.setAttribute("type", "button");
       addBtn.textContent = "+ Add To Queue";
-      addBtn.addEventListener("click", () => handleExampleAddToPlaylist(example));
+      addBtn.addEventListener("click", () => handleExampleAddToPlaylist(example, addBtn));
       actions.appendChild(addBtn);
 
       card.appendChild(actions);
@@ -632,17 +646,21 @@ async function handleExamplePlay(example, button) {
   );
 }
 
-function handleExampleAddToPlaylist(example) {
-  addTrackToPlaylist({
+function handleExampleAddToPlaylist(example, button) {
+  const shouldAutoPlay = playlistTracks.length === 0 && !audioPlayer.getAttribute("src");
+  const track = {
     id: createPlaylistTrackId(),
     name: example.name,
     url: example.url,
     sample_url: example.sample_url || null,
     format: example.format || example.type || "Module",
     source: "example",
-  });
+  };
+  addTrackToPlaylist(track);
   showStatus(`✓ Added ${example.name} to queue`, "success");
-  setPlaylistPanelOpen(true);
+  if (shouldAutoPlay) {
+    void playPlaylistTrack(track.id, button);
+  }
 }
 
 function createPlaylistTrackId() {
@@ -708,13 +726,17 @@ function movePlaylistTrack(trackId, direction) {
 function renderPlaylist() {
   const hasPlaylist = playlistTracks.length > 0;
   playlistLauncher.hidden = !hasPlaylist;
+  playlistLauncher.classList.toggle("expanded", isPlaylistPanelOpen && hasPlaylist);
   playlistPanelSummary.textContent = `${playlistTracks.length} track${playlistTracks.length === 1 ? "" : "s"}`;
-  playlistLauncherLabel.textContent = `Queue (${playlistTracks.length})`;
+  playlistLauncherLabel.replaceChildren(
+    Object.assign(document.createElement("strong"), { textContent: "Queue" }),
+    document.createTextNode(` (${playlistTracks.length})`),
+  );
   playlistLauncherNext.textContent = getPlaylistNextLabel();
   playlistToggleBtn.textContent = isPlaylistPanelOpen ? "Hide" : "Open";
-  playlistToggleBtn.disabled = !hasPlaylist;
-  playlistNextBtn.disabled = !hasPlaylist;
-  playlistClearBtn.disabled = !hasPlaylist;
+  playlistToggleBtn.disabled = isUiLocked || !hasPlaylist;
+  playlistNextBtn.disabled = isUiLocked || !hasPlaylist;
+  playlistClearBtn.disabled = isUiLocked || !hasPlaylist;
 
   playlistList.replaceChildren();
   playlistEmptyState.hidden = playlistTracks.length > 0;
@@ -746,6 +768,7 @@ function renderPlaylist() {
     playBtn.type = "button";
     playBtn.className = "btn btn-secondary btn-small playlist-play-btn";
     playBtn.textContent = "Play";
+    playBtn.disabled = isUiLocked;
     playBtn.addEventListener("click", () => playPlaylistTrack(track.id, playBtn));
     actions.appendChild(playBtn);
 
@@ -753,12 +776,13 @@ function renderPlaylist() {
     removeBtn.type = "button";
     removeBtn.className = "btn btn-secondary btn-small playlist-remove-btn";
     removeBtn.textContent = "Remove";
+    removeBtn.disabled = isUiLocked;
     removeBtn.addEventListener("click", () => removeTrackFromPlaylist(track.id));
     const moveUpBtn = document.createElement("button");
     moveUpBtn.type = "button";
     moveUpBtn.className = "btn btn-secondary btn-small playlist-move-btn";
     moveUpBtn.textContent = "↑";
-    moveUpBtn.disabled = index === 0;
+    moveUpBtn.disabled = isUiLocked || index === 0;
     moveUpBtn.addEventListener("click", () => movePlaylistTrack(track.id, -1));
     actions.appendChild(moveUpBtn);
 
@@ -766,7 +790,7 @@ function renderPlaylist() {
     moveDownBtn.type = "button";
     moveDownBtn.className = "btn btn-secondary btn-small playlist-move-btn";
     moveDownBtn.textContent = "↓";
-    moveDownBtn.disabled = index === playlistTracks.length - 1;
+    moveDownBtn.disabled = isUiLocked || index === playlistTracks.length - 1;
     moveDownBtn.addEventListener("click", () => movePlaylistTrack(track.id, 1));
     actions.appendChild(moveDownBtn);
 
@@ -807,10 +831,6 @@ async function playPlaylistTrack(trackId, button) {
     return;
   }
 
-  currentPlaylistTrackId = trackId;
-  currentShareableUrl = track.url;
-  currentShareableSampleUrl = track.sample_url;
-
   const body = { url: track.url };
   if (track.sample_url) {
     body.sample_url = track.sample_url;
@@ -828,6 +848,9 @@ async function playPlaylistTrack(trackId, button) {
     "✓ {moduleName} converted and ready to play",
     track.name,
     () => {
+      currentPlaylistTrackId = trackId;
+      currentShareableUrl = track.url;
+      currentShareableSampleUrl = track.sample_url;
       updateShareButton(true);
       renderPlaylist();
     },
