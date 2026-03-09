@@ -7,12 +7,18 @@ let currentSubsongs = 1;
 let currentSubsongIndex = 0;
 let currentShareableUrl = null; // For shareable URLs feature
 let currentShareableSampleUrl = null;
+let currentPlayableTrackName = null;
+let currentPlayableTrackFormat = null;
+let playlistTracks = [];
+let currentPlaylistTrackId = null;
+let isPlaylistPanelOpen = false;
 
 // DOM Elements
 const dropZone = document.getElementById("drop-zone");
 const fileInput = document.getElementById("module-file-input");
 const urlInput = document.getElementById("url-input");
 const urlSubmit = document.getElementById("url-submit");
+const playlistAddUrlBtn = document.getElementById("playlist-add-url-btn");
 const sampleUrlInput = document.getElementById("sample-url-input");
 const uploadLabel = document.getElementById("upload-btn"); // The label acts as the button
 const audioPlayer = document.getElementById("audio-player");
@@ -21,15 +27,28 @@ const currentTrack = document.getElementById("current-track");
 const trackFormat = document.getElementById("track-format");
 const downloadBtn = document.getElementById("download-btn");
 const shareBtn = document.getElementById("share-btn");
+const addCurrentToPlaylistBtn = document.getElementById("add-current-to-playlist-btn");
 const examplesGrid = document.getElementById("examples-grid");
 const statusContainer = document.getElementById("status-container");
+const playlistLauncher = document.getElementById("playlist-launcher");
+const playlistLauncherLabel = document.getElementById("playlist-launcher-label");
+const playlistLauncherNext = document.getElementById("playlist-launcher-next");
+const playlistToggleBtn = document.getElementById("playlist-toggle-btn");
+const playlistNextBtn = document.getElementById("playlist-next-btn");
+const playlistPanel = document.getElementById("playlist-panel");
+const playlistCloseBtn = document.getElementById("playlist-close-btn");
+const playlistClearBtn = document.getElementById("playlist-clear-btn");
+const playlistList = document.getElementById("playlist-list");
+const playlistEmptyState = document.getElementById("playlist-empty-state");
+const playlistPanelSummary = document.getElementById("playlist-panel-summary");
 
 const elementsToDisable = [
   fileInput,
   urlInput,
   urlSubmit,
   sampleUrlInput,
- ];
+  playlistAddUrlBtn,
+];
 
 // Helper function to download large files using range requests
 async function downloadWithRangeRequests(url, filename, fileSize) {
@@ -71,6 +90,7 @@ document.addEventListener("DOMContentLoaded", () => {
   setupDragAndDrop();
   setupFileInput();
   setupUrlForm();
+  setupPlaylistControls();
   setupShareButton();
   setupDownloadButton();
   loadExamples();
@@ -87,8 +107,12 @@ document.addEventListener("DOMContentLoaded", () => {
     }
   });
 
+  audioPlayer.addEventListener("ended", handlePlaylistEnded);
+
   // Check for shared URL parameter and auto-convert
   checkSharedUrlParameter();
+  updatePlayerSectionVisibility();
+  updatePrimaryPlayerActions();
 });
 
 // Check for ?url= parameter for shareable URLs
@@ -122,6 +146,17 @@ function clearUrlParameters() {
   window.history.replaceState({}, document.title, cleanUrl);
 }
 
+function updatePlayerSectionVisibility() {
+  const hasPlaylist = playlistTracks.length > 0;
+  const hasPlayableTrack = Boolean(audioPlayer.getAttribute("src"));
+  playerSection.style.display = hasPlaylist || hasPlayableTrack ? "block" : "none";
+}
+
+function updatePrimaryPlayerActions() {
+  downloadBtn.disabled = !currentDownloadUrl;
+  addCurrentToPlaylistBtn.disabled = !currentShareableUrl;
+}
+
 async function loadSupportedExtensions() {
   try {
     const response = await fetch("/supported-extensions");
@@ -138,11 +173,18 @@ async function loadSupportedExtensions() {
  * Disables all interactive elements to prevent simultaneous conversions.
  */
 function setUiLock() {
-  const dynamicElements = document.querySelectorAll(".play-btn");
+  const dynamicElements = document.querySelectorAll(
+    ".play-btn, .add-playlist-btn, .playlist-play-btn, .playlist-remove-btn, .playlist-move-btn, .playlist-toggle-btn, .playlist-next-btn, .playlist-clear-btn",
+  );
   [...elementsToDisable, ...dynamicElements].forEach((el) => {
+    if (!el) {
+      return;
+    }
     el.disabled = true;
     el.setAttribute("aria-busy", "true");
   });
+  addCurrentToPlaylistBtn.disabled = true;
+  addCurrentToPlaylistBtn.setAttribute("aria-busy", "true");
   if (uploadLabel) {
     uploadLabel.classList.add("disabled");
     uploadLabel.setAttribute("aria-busy", "true");
@@ -153,14 +195,25 @@ function setUiLock() {
  * Re-enables all interactive elements after a conversion is complete.
  */
 function releaseUiLock() {
-  const dynamicElements = document.querySelectorAll(".play-btn");
+  const dynamicElements = document.querySelectorAll(
+    ".play-btn, .add-playlist-btn, .playlist-play-btn, .playlist-remove-btn, .playlist-move-btn, .playlist-toggle-btn, .playlist-next-btn, .playlist-clear-btn",
+  );
   [...elementsToDisable, ...dynamicElements].forEach((el) => {
+    if (!el) {
+      return;
+    }
     el.disabled = false;
     el.setAttribute("aria-busy", "false");
   });
+  addCurrentToPlaylistBtn.setAttribute("aria-busy", "false");
   if (uploadLabel) {
     uploadLabel.classList.remove("disabled");
     uploadLabel.setAttribute("aria-busy", "false");
+  }
+
+  // Re-apply queue boundary button states after the general UI unlock.
+  if (playlistTracks.length > 0) {
+    renderPlaylist();
   }
 }
 
@@ -178,9 +231,9 @@ function resetButtonAfterDelay(button, originalText, delay = 2000) {
 /**
  * Shows loading spinner on a button and returns its original text content.
  */
-function showButtonLoadingAndGetOriginal(button) {
+function showButtonLoadingAndGetOriginal(button, loadingText = "Converting...") {
   const originalText = button.textContent;
-  button.innerHTML = "<span class=\"loading\"></span> Converting...";
+  button.innerHTML = `<span class="loading"></span> ${loadingText}`;
   return originalText;
 }
 
@@ -302,9 +355,44 @@ async function performConversion(endpoint, options, button, initialStatusMessage
   releaseUiLock();
 }
 
+async function performProbe(url, sampleUrl, button) {
+  setUiLock();
+  const originalBtnText = showButtonLoadingAndGetOriginal(button, "Checking...");
+  showStatus("Checking module metadata...", "info");
+
+  try {
+    const payload = { url };
+    if (sampleUrl) {
+      payload.sample_url = sampleUrl;
+    }
+
+    const response = await fetch("/probe-url", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    const data = await response.json();
+
+    if (!response.ok) {
+      showStatus(`✗ Error: ${data.error}`, "error");
+      return null;
+    }
+
+    showStatus(`✓ ${data.module_name || data.filename} is ready to add`, "success");
+    return data;
+  } catch (error) {
+    showStatus(`✗ Probe failed: ${error.message}`, "error");
+    return null;
+  } finally {
+    button.textContent = originalBtnText;
+    releaseUiLock();
+  }
+}
+
 // URL Form
 function setupUrlForm() {
   urlSubmit.addEventListener("click", handleUrlConvert);
+  playlistAddUrlBtn.addEventListener("click", handleAddUrlToPlaylist);
   urlInput.addEventListener("keypress", (e) => {
     if (e.key === "Enter") {
       handleUrlConvert();
@@ -315,6 +403,14 @@ function setupUrlForm() {
       handleUrlConvert();
     }
   });
+}
+
+function setupPlaylistControls() {
+  playlistToggleBtn.addEventListener("click", togglePlaylistPanel);
+  playlistCloseBtn.addEventListener("click", () => setPlaylistPanelOpen(false));
+  playlistClearBtn.addEventListener("click", clearPlaylist);
+  playlistNextBtn.addEventListener("click", playNextPlaylistTrack);
+  addCurrentToPlaylistBtn.addEventListener("click", handleAddCurrentToPlaylist);
 }
 
 // Share Button
@@ -356,7 +452,29 @@ function updateShareButton(show) {
     shareBtn.style.display = "none";
     currentShareableUrl = null;
     currentShareableSampleUrl = null;
+    currentPlayableTrackName = null;
+    currentPlayableTrackFormat = null;
   }
+  updatePrimaryPlayerActions();
+}
+
+function handleAddCurrentToPlaylist() {
+  if (!currentShareableUrl) {
+    showStatus("Current track cannot be added to queue", "warning");
+    return;
+  }
+
+  const name = currentPlayableTrackName || currentTrack.textContent.trim() || "Module";
+  addTrackToPlaylist({
+    id: createPlaylistTrackId(),
+    name,
+    url: currentShareableUrl,
+    sample_url: currentShareableSampleUrl || null,
+    format: currentPlayableTrackFormat || "Module",
+    source: "current",
+  });
+  showStatus(`✓ Added ${name} to queue`, "success");
+  setPlaylistPanelOpen(true);
 }
 
 async function handleUrlConvert() {
@@ -403,6 +521,31 @@ async function handleUrlConvert() {
   );
 }
 
+async function handleAddUrlToPlaylist() {
+  const url = urlInput.value.trim();
+  const sampleUrl = sampleUrlInput.value.trim();
+
+  if (!url) {
+    showStatus("Please enter a URL", "warning");
+    return;
+  }
+
+  const probeData = await performProbe(url, sampleUrl, playlistAddUrlBtn);
+  if (!probeData) {
+    return;
+  }
+
+  addTrackToPlaylist({
+    id: createPlaylistTrackId(),
+    name: probeData.module_name || probeData.filename || "Module",
+    url,
+    sample_url: sampleUrl || null,
+    format: probeData.module_format || probeData.player_format || "Module",
+    source: "url",
+  });
+  setPlaylistPanelOpen(true);
+}
+
 // Load Examples
 async function loadExamples() {
   try {
@@ -434,6 +577,9 @@ async function loadExamples() {
       card.appendChild(metaDiv);
 
       // Play button
+      const actions = document.createElement("div");
+      actions.className = "example-actions";
+
       const playBtn = document.createElement("button");
       playBtn.className = "play-btn";
       playBtn.setAttribute("type", "button");
@@ -442,7 +588,16 @@ async function loadExamples() {
       playBtn.addEventListener("click", () =>
         handleExamplePlay(example, playBtn),
       );
-      card.appendChild(playBtn);
+      actions.appendChild(playBtn);
+
+      const addBtn = document.createElement("button");
+      addBtn.className = "play-btn add-playlist-btn";
+      addBtn.setAttribute("type", "button");
+      addBtn.textContent = "+ Add To Queue";
+      addBtn.addEventListener("click", () => handleExampleAddToPlaylist(example));
+      actions.appendChild(addBtn);
+
+      card.appendChild(actions);
 
       examplesGrid.appendChild(card);
     });
@@ -471,6 +626,233 @@ async function handleExamplePlay(example, button) {
   );
 }
 
+function handleExampleAddToPlaylist(example) {
+  addTrackToPlaylist({
+    id: createPlaylistTrackId(),
+    name: example.name,
+    url: example.url,
+    sample_url: example.sample_url || null,
+    format: example.format || example.type || "Module",
+    source: "example",
+  });
+  showStatus(`✓ Added ${example.name} to queue`, "success");
+  setPlaylistPanelOpen(true);
+}
+
+function createPlaylistTrackId() {
+  if (window.crypto && "randomUUID" in window.crypto) {
+    return window.crypto.randomUUID();
+  }
+  return `playlist-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+}
+
+function addTrackToPlaylist(track) {
+  playlistTracks.push(track);
+  renderPlaylist();
+}
+
+function removeTrackFromPlaylist(trackId) {
+  const removedIndex = playlistTracks.findIndex((track) => track.id === trackId);
+  if (removedIndex === -1) {
+    return;
+  }
+
+  playlistTracks = playlistTracks.filter((track) => track.id !== trackId);
+  if (currentPlaylistTrackId === trackId) {
+    currentPlaylistTrackId = null;
+  }
+
+  if (playlistTracks.length === 0) {
+    setPlaylistPanelOpen(false);
+  }
+
+  renderPlaylist();
+}
+
+function clearPlaylist() {
+  if (playlistTracks.length === 0) {
+    return;
+  }
+
+  playlistTracks = [];
+  currentPlaylistTrackId = null;
+  isPlaylistPanelOpen = false;
+  renderPlaylist();
+  showStatus("✓ Queue cleared", "success");
+}
+
+function movePlaylistTrack(trackId, direction) {
+  const currentIndex = playlistTracks.findIndex((track) => track.id === trackId);
+  if (currentIndex === -1) {
+    return;
+  }
+
+  const targetIndex = currentIndex + direction;
+  if (targetIndex < 0 || targetIndex >= playlistTracks.length) {
+    return;
+  }
+
+  const updatedTracks = [...playlistTracks];
+  const [movedTrack] = updatedTracks.splice(currentIndex, 1);
+  updatedTracks.splice(targetIndex, 0, movedTrack);
+  playlistTracks = updatedTracks;
+  renderPlaylist();
+}
+
+function renderPlaylist() {
+  const hasPlaylist = playlistTracks.length > 0;
+  playlistLauncher.hidden = !hasPlaylist;
+  playlistPanelSummary.textContent = `${playlistTracks.length} track${playlistTracks.length === 1 ? "" : "s"}`;
+  playlistLauncherLabel.textContent = `Queue (${playlistTracks.length})`;
+  playlistLauncherNext.textContent = getPlaylistNextLabel();
+  playlistToggleBtn.textContent = isPlaylistPanelOpen ? "Hide" : "Open";
+  playlistToggleBtn.disabled = !hasPlaylist;
+  playlistNextBtn.disabled = !hasPlaylist;
+  playlistClearBtn.disabled = !hasPlaylist;
+
+  playlistList.innerHTML = "";
+  playlistEmptyState.hidden = playlistTracks.length > 0;
+
+  playlistTracks.forEach((track, index) => {
+    const item = document.createElement("div");
+    item.className = "playlist-item";
+    if (track.id === currentPlaylistTrackId) {
+      item.classList.add("active");
+    }
+
+    const main = document.createElement("div");
+    main.className = "playlist-item-main";
+
+    const title = document.createElement("div");
+    title.className = "playlist-item-title";
+    title.textContent = track.name;
+    main.appendChild(title);
+
+    const meta = document.createElement("div");
+    meta.className = "playlist-item-meta";
+    meta.textContent = track.format || "Module";
+    main.appendChild(meta);
+
+    const actions = document.createElement("div");
+    actions.className = "playlist-item-actions";
+
+    const playBtn = document.createElement("button");
+    playBtn.type = "button";
+    playBtn.className = "btn btn-secondary btn-small playlist-play-btn";
+    playBtn.textContent = "Play";
+    playBtn.addEventListener("click", () => playPlaylistTrack(track.id, playBtn));
+    actions.appendChild(playBtn);
+
+    const removeBtn = document.createElement("button");
+    removeBtn.type = "button";
+    removeBtn.className = "btn btn-secondary btn-small playlist-remove-btn";
+    removeBtn.textContent = "Remove";
+    removeBtn.addEventListener("click", () => removeTrackFromPlaylist(track.id));
+    const moveUpBtn = document.createElement("button");
+    moveUpBtn.type = "button";
+    moveUpBtn.className = "btn btn-secondary btn-small playlist-move-btn";
+    moveUpBtn.textContent = "↑";
+    moveUpBtn.disabled = index === 0;
+    moveUpBtn.addEventListener("click", () => movePlaylistTrack(track.id, -1));
+    actions.appendChild(moveUpBtn);
+
+    const moveDownBtn = document.createElement("button");
+    moveDownBtn.type = "button";
+    moveDownBtn.className = "btn btn-secondary btn-small playlist-move-btn";
+    moveDownBtn.textContent = "↓";
+    moveDownBtn.disabled = index === playlistTracks.length - 1;
+    moveDownBtn.addEventListener("click", () => movePlaylistTrack(track.id, 1));
+    actions.appendChild(moveDownBtn);
+
+    actions.appendChild(removeBtn);
+
+    item.appendChild(main);
+    item.appendChild(actions);
+    playlistList.appendChild(item);
+  });
+
+  playlistPanel.hidden = !isPlaylistPanelOpen || playlistTracks.length === 0;
+  updatePlayerSectionVisibility();
+  updatePrimaryPlayerActions();
+}
+
+function setPlaylistPanelOpen(isOpen) {
+  isPlaylistPanelOpen = isOpen && playlistTracks.length > 0;
+  renderPlaylist();
+}
+
+function togglePlaylistPanel() {
+  setPlaylistPanelOpen(!isPlaylistPanelOpen);
+}
+
+function getPlaylistNextLabel() {
+  if (playlistTracks.length === 0) {
+    return "";
+  }
+
+  const currentIndex = playlistTracks.findIndex((track) => track.id === currentPlaylistTrackId);
+  const nextTrack = currentIndex >= 0 ? playlistTracks[currentIndex + 1] : playlistTracks[0];
+  return nextTrack ? `Next: ${nextTrack.name}` : "End of playlist";
+}
+
+async function playPlaylistTrack(trackId, button) {
+  const track = playlistTracks.find((candidate) => candidate.id === trackId);
+  if (!track) {
+    return;
+  }
+
+  currentPlaylistTrackId = trackId;
+  currentShareableUrl = track.url;
+  currentShareableSampleUrl = track.sample_url;
+
+  const body = { url: track.url };
+  if (track.sample_url) {
+    body.sample_url = track.sample_url;
+  }
+
+  await performConversion(
+    "/convert-url",
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    },
+    button,
+    `Converting ${track.name}...`,
+    "✓ {moduleName} converted and ready to play",
+    track.name,
+    () => {
+      updateShareButton(true);
+      renderPlaylist();
+    },
+  );
+}
+
+function playNextPlaylistTrack() {
+  if (playlistTracks.length === 0) {
+    return;
+  }
+
+  const currentIndex = playlistTracks.findIndex((track) => track.id === currentPlaylistTrackId);
+  const nextTrack = currentIndex >= 0 ? playlistTracks[currentIndex + 1] : playlistTracks[0];
+  if (!nextTrack) {
+    showStatus("Queue finished", "info");
+    return;
+  }
+
+  const tempButton = document.createElement("button");
+  tempButton.textContent = "Play";
+  void playPlaylistTrack(nextTrack.id, tempButton);
+}
+
+function handlePlaylistEnded() {
+  const currentIndex = playlistTracks.findIndex((track) => track.id === currentPlaylistTrackId);
+  if (currentIndex === -1 || currentIndex >= playlistTracks.length - 1) {
+    return;
+  }
+  playNextPlaylistTrack();
+}
+
 // Play File
 function playFile(
   fileId,
@@ -484,6 +866,8 @@ function playFile(
   subsongDurations = []
 ) {
   currentDownloadUrl = downloadUrl;
+  currentPlayableTrackName = moduleName || "Module";
+  currentPlayableTrackFormat = moduleFormat || playerFormat || "Module";
   currentSubsongs = parseInt(subsongs) || 1;
   currentSubsongDurations = subsongDurations || [];
 
@@ -528,6 +912,8 @@ function playFile(
     audioFormat === "flac" ? "⬇ Download FLAC" : "⬇ Download WAV";
 
   playerSection.style.display = "block";
+  updatePlayerSectionVisibility();
+  updatePrimaryPlayerActions();
   playerSection.scrollIntoView({ behavior: "smooth", block: "nearest" });
 
   const autoplayOverlay = document.getElementById("autoplay-overlay");

@@ -56,6 +56,9 @@
           <button type="button" id="url-submit" class="btn btn-primary">
             Convert &amp; Play
           </button>
+          <button type="button" id="playlist-add-url-btn" class="btn btn-secondary">
+            + Add To Queue
+          </button>
           <p class="file-info">Max size: 10MB • LHA and ZIP archives auto-extracted</p>
         </div>
         <details class="url-help">
@@ -117,6 +120,39 @@
             <button type="button" id="share-btn" class="btn btn-secondary">
               🔗 Share
             </button>
+            <button type="button" id="add-current-to-playlist-btn" class="btn btn-secondary">
+              + Add To Queue
+            </button>
+            <div id="playlist-launcher" class="playlist-launcher" hidden>
+              <span id="playlist-launcher-label">Queue (0)</span>
+              <span id="playlist-launcher-next" class="playlist-launcher-next"></span>
+              <button type="button" id="playlist-toggle-btn" class="btn btn-secondary btn-small playlist-toggle-btn">
+                Open
+              </button>
+              <button type="button" id="playlist-next-btn" class="btn btn-secondary btn-small playlist-next-btn">
+                ⏭
+              </button>
+            </div>
+          </div>
+          <div id="playlist-panel" class="playlist-panel" hidden>
+            <div class="playlist-panel-header">
+              <div>
+                <strong>Queue</strong>
+                <p id="playlist-panel-summary" class="playlist-panel-summary">0 tracks</p>
+              </div>
+              <div class="playlist-panel-header-actions">
+                <button type="button" id="playlist-clear-btn" class="btn btn-secondary btn-small">
+                  Clear
+                </button>
+                <button type="button" id="playlist-close-btn" class="btn btn-secondary btn-small">
+                  Hide
+                </button>
+              </div>
+            </div>
+            <div id="playlist-empty-state" class="playlist-empty-state">
+              Add tracks from Examples or Download from URL.
+            </div>
+            <div id="playlist-list" class="playlist-list"></div>
           </div>
         </div>
       </section>
