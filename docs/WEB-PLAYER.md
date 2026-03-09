@@ -200,7 +200,7 @@ https://your-uade-instance.com/?url=https://modland.com/.../mdat.turrican&sample
 
 ## Queue
 
-The web player includes a lightweight in-memory queue for URL-based and example tracks.
+The web player includes a lightweight queue for URL-based and example tracks.
 
 - Add tracks from **Try These Classics**
 - Add tracks from **Download from URL**
@@ -208,20 +208,24 @@ The web player includes a lightweight in-memory queue for URL-based and example 
 - Play queue items directly
 - Auto-advance to the next queued item
 - Reorder items with `↑` and `↓`
+- Save the current queue locally in the browser
+- Restore a previously saved queue on reload
+- Copy a shareable queue link with `?queue=...`
 - Remove individual items or clear the whole queue
 
 Current queue limitations:
 
-- No persistence across reloads
-- No playlist sharing
 - No uploaded-file queue items yet
 - Only one queue exists at a time
+- Saved queues are browser-local only (no account/server sync)
+- Shared queue links include URL/example/current-source tracks only
 
 Behavior notes:
 
 - The queue starts collapsed by default
 - The first queued track auto-plays only when the queue was empty and no track is currently loaded/playing
 - Adding a URL to the queue clears the URL and sample URL fields on success
+- A shared `?queue=...` link is loaded before any single-track `?url=...` link
 
 ## API Reference
 
