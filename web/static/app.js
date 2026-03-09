@@ -573,6 +573,37 @@ function warnIfQueueUrlIsLong(queueUrl) {
   return true;
 }
 
+function getStoredQueue() {
+  try {
+    return window.localStorage.getItem(SAVED_QUEUE_STORAGE_KEY);
+  } catch (_error) {
+    showStatus("Browser storage is unavailable; saved queue restore was skipped", "warning");
+    return null;
+  }
+}
+
+function setStoredQueue(serializedQueue) {
+  try {
+    window.localStorage.setItem(SAVED_QUEUE_STORAGE_KEY, serializedQueue);
+    return true;
+  } catch (_error) {
+    showStatus("Browser storage is unavailable; queue was not saved locally", "warning");
+    return false;
+  }
+}
+
+function clearStoredQueue(options = {}) {
+  try {
+    window.localStorage.removeItem(SAVED_QUEUE_STORAGE_KEY);
+    return true;
+  } catch (_error) {
+    if (!options.silent) {
+      showStatus("Browser storage is unavailable; saved queue could not be cleared", "warning");
+    }
+    return false;
+  }
+}
+
 function savePlaylistLocally() {
   if (playlistTracks.length === 0) {
     showStatus("Queue is empty", "warning");
@@ -583,7 +614,9 @@ function savePlaylistLocally() {
     v: 1,
     t: getSerializablePlaylistTracks(),
   };
-  window.localStorage.setItem(SAVED_QUEUE_STORAGE_KEY, JSON.stringify(payload));
+  if (!setStoredQueue(JSON.stringify(payload))) {
+    return;
+  }
   showStatus("✓ Queue saved locally", "success");
 }
 
@@ -675,7 +708,7 @@ function restoreSavedOrSharedQueue() {
     return;
   }
 
-  const savedQueue = window.localStorage.getItem(SAVED_QUEUE_STORAGE_KEY);
+  const savedQueue = getStoredQueue();
   if (!savedQueue) {
     return;
   }
@@ -684,7 +717,7 @@ function restoreSavedOrSharedQueue() {
     loadPlaylistFromPayload(JSON.parse(savedQueue));
     showStatus("✓ Restored saved queue", "success");
   } catch (_error) {
-    window.localStorage.removeItem(SAVED_QUEUE_STORAGE_KEY);
+    clearStoredQueue({ silent: true });
   }
 }
 
@@ -957,7 +990,7 @@ function clearPlaylist() {
   playlistTracks = [];
   currentPlaylistTrackId = null;
   isPlaylistPanelOpen = false;
-  window.localStorage.removeItem(SAVED_QUEUE_STORAGE_KEY);
+  clearStoredQueue();
   renderPlaylist();
   showStatus("✓ Queue cleared", "success");
 }
