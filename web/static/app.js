@@ -220,11 +220,13 @@ function releaseUiLock() {
     uploadLabel.setAttribute("aria-busy", "false");
   }
 
+  // Restore primary player controls immediately, even if nothing else re-renders.
+  updatePrimaryPlayerActions();
+
   // Re-apply queue boundary button states after the general UI unlock.
   if (playlistTracks.length > 0) {
     renderPlaylist();
   }
-  updatePrimaryPlayerActions();
 }
 
 /**
@@ -387,11 +389,22 @@ async function performProbe(url, sampleUrl, button) {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload),
     });
+    const contentType = response.headers.get("content-type") || "";
+    const isJsonResponse = contentType.includes("application/json");
+
+    if (!isJsonResponse) {
+      throw new Error("Probe returned a non-JSON response");
+    }
+
     const data = await response.json();
 
     if (!response.ok) {
-      showStatus(`✗ Error: ${data.error}`, "error");
+      showStatus(`✗ Error: ${data.error || "Probe failed"}`, "error");
       return null;
+    }
+
+    if (!data.ok || !data.playable || !(data.module_name || data.filename)) {
+      throw new Error("Probe returned incomplete module metadata");
     }
 
     showStatus(`✓ ${data.module_name || data.filename} is ready to add`, "success");
@@ -500,10 +513,6 @@ async function handleUrlConvert() {
     return;
   }
 
-  // Store URLs for share button
-  currentShareableUrl = url;
-  currentShareableSampleUrl = sampleUrl || null;
-
   const body = { url };
   let initialStatusMessage = "Downloading and converting...";
   let successMessageTemplate = "✓ {moduleName} downloaded and converted, ready to play";
@@ -527,6 +536,8 @@ async function handleUrlConvert() {
     successMessageTemplate,
     null, // moduleNameOverride
     () => {
+      currentShareableUrl = url;
+      currentShareableSampleUrl = sampleUrl || null;
       urlInput.value = "";
       sampleUrlInput.value = "";
       // Show share button after successful URL conversion
@@ -628,10 +639,6 @@ async function loadExamples() {
 
 // Play Example
 async function handleExamplePlay(example, button) {
-  // Store URLs for share button (examples have url and optional sample_url)
-  currentShareableUrl = example.url;
-  currentShareableSampleUrl = example.sample_url || null;
-
   await performConversion(
     `/play-example/${example.id}`,
     { method: "POST" },
@@ -640,6 +647,8 @@ async function handleExamplePlay(example, button) {
     "✓ {moduleName} converted and ready to play",
     example.name, // Override module name to ensure it's displayed correctly
     () => {
+      currentShareableUrl = example.url;
+      currentShareableSampleUrl = example.sample_url || null;
       // Show share button after successful example conversion
       updateShareButton(true);
     }
@@ -734,6 +743,7 @@ function renderPlaylist() {
   );
   playlistLauncherNext.textContent = getPlaylistNextLabel();
   playlistToggleBtn.textContent = isPlaylistPanelOpen ? "Hide" : "Open";
+  playlistToggleBtn.setAttribute("aria-label", isPlaylistPanelOpen ? "Hide queue" : "Open queue");
   playlistToggleBtn.disabled = isUiLocked || !hasPlaylist;
   playlistNextBtn.disabled = isUiLocked || !hasPlaylist;
   playlistClearBtn.disabled = isUiLocked || !hasPlaylist;
@@ -744,6 +754,8 @@ function renderPlaylist() {
   playlistTracks.forEach((track, index) => {
     const item = document.createElement("div");
     item.className = "playlist-item";
+    item.setAttribute("role", "listitem");
+    item.setAttribute("aria-label", `Queue item ${index + 1}: ${track.name}`);
     if (track.id === currentPlaylistTrackId) {
       item.classList.add("active");
     }
@@ -768,6 +780,7 @@ function renderPlaylist() {
     playBtn.type = "button";
     playBtn.className = "btn btn-secondary btn-small playlist-play-btn";
     playBtn.textContent = "Play";
+    playBtn.setAttribute("aria-label", `Play ${track.name}`);
     playBtn.disabled = isUiLocked;
     playBtn.addEventListener("click", () => playPlaylistTrack(track.id, playBtn));
     actions.appendChild(playBtn);
@@ -776,12 +789,14 @@ function renderPlaylist() {
     removeBtn.type = "button";
     removeBtn.className = "btn btn-secondary btn-small playlist-remove-btn";
     removeBtn.textContent = "Remove";
+    removeBtn.setAttribute("aria-label", `Remove ${track.name} from queue`);
     removeBtn.disabled = isUiLocked;
     removeBtn.addEventListener("click", () => removeTrackFromPlaylist(track.id));
     const moveUpBtn = document.createElement("button");
     moveUpBtn.type = "button";
     moveUpBtn.className = "btn btn-secondary btn-small playlist-move-btn";
     moveUpBtn.textContent = "↑";
+    moveUpBtn.setAttribute("aria-label", `Move ${track.name} up in queue`);
     moveUpBtn.disabled = isUiLocked || index === 0;
     moveUpBtn.addEventListener("click", () => movePlaylistTrack(track.id, -1));
     actions.appendChild(moveUpBtn);
@@ -790,6 +805,7 @@ function renderPlaylist() {
     moveDownBtn.type = "button";
     moveDownBtn.className = "btn btn-secondary btn-small playlist-move-btn";
     moveDownBtn.textContent = "↓";
+    moveDownBtn.setAttribute("aria-label", `Move ${track.name} down in queue`);
     moveDownBtn.disabled = isUiLocked || index === playlistTracks.length - 1;
     moveDownBtn.addEventListener("click", () => movePlaylistTrack(track.id, 1));
     actions.appendChild(moveDownBtn);
