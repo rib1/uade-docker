@@ -84,6 +84,33 @@ _perform_convert_url_call() {
     echo "$RESPONSE_BODY"
 }
 
+# Helper function to perform a probe-url API call
+# Arguments:
+# 1. URL to probe (string)
+# 2. Optional sample URL (string)
+# Returns: Prints HTTP_CODE (first line) and BODY (second line) to stdout.
+_perform_probe_url_call() {
+    LOCAL_URL=$1
+    LOCAL_SAMPLE_URL=$2
+
+    if [ -z "$LOCAL_SAMPLE_URL" ]; then
+        JSON_PAYLOAD=$(jq -n --arg url "$LOCAL_URL" '{url: $url}')
+    else
+        JSON_PAYLOAD=$(jq -n --arg url "$LOCAL_URL" --arg sample_url "$LOCAL_SAMPLE_URL" '{url: $url, sample_url: $sample_url}')
+    fi
+
+    RESPONSE_ALL=$(curl -s -w "\n%{http_code}" -X POST \
+        -H "Content-Type: application/json" \
+        -d "$JSON_PAYLOAD" \
+        "$BASE_URL/probe-url")
+
+    HTTP_CODE=$(echo "$RESPONSE_ALL" | tail -n1)
+    RESPONSE_BODY=$(echo "$RESPONSE_ALL" | sed '$d')
+
+    echo "$HTTP_CODE"
+    echo "$RESPONSE_BODY"
+}
+
 # Function to test a URL
 # Arguments:
 # 1. Test name (string)
@@ -168,6 +195,169 @@ test_security_url() {
         echo "Response body: $BODY"
         exit 1
     fi
+    echo ""
+}
+
+test_probe_url() {
+    TEST_NAME=$1
+    URL=$2
+    SAMPLE_URL=$3
+
+    echo "--- Testing Probe URL: $TEST_NAME ---"
+
+    HTTP_CODE_BODY=$(_perform_probe_url_call "$URL" "$SAMPLE_URL")
+    HTTP_CODE=$(echo "$HTTP_CODE_BODY" | head -n1)
+    BODY=$(echo "$HTTP_CODE_BODY" | tail -n1)
+
+    if [ "$HTTP_CODE" -ne 200 ]; then
+        echo "ERROR: Received HTTP $HTTP_CODE for probe test '$TEST_NAME'"
+        echo "Response body: $BODY"
+        exit 1
+    fi
+
+    OK=$(echo "$BODY" | jq -r .ok)
+    PLAYABLE=$(echo "$BODY" | jq -r .playable)
+    MODULE_NAME=$(echo "$BODY" | jq -r .module_name)
+    PLAYER_FORMAT=$(echo "$BODY" | jq -r .player_format)
+
+    if [ "$OK" != "true" ] || [ "$PLAYABLE" != "true" ]; then
+        echo "ERROR: Probe did not report ok=true and playable=true for '$TEST_NAME'"
+        echo "Response body: $BODY"
+        exit 1
+    fi
+
+    if [ -z "$MODULE_NAME" ] || [ "$MODULE_NAME" == "null" ]; then
+        echo "ERROR: Probe response missing module_name for '$TEST_NAME'"
+        echo "Response body: $BODY"
+        exit 1
+    fi
+
+    if [ -z "$PLAYER_FORMAT" ] || [ "$PLAYER_FORMAT" == "null" ]; then
+        echo "ERROR: Probe response missing player_format for '$TEST_NAME'"
+        echo "Response body: $BODY"
+        exit 1
+    fi
+
+    echo "SUCCESS: Probe returned playable metadata."
+    echo "Response body: $BODY"
+    echo ""
+}
+
+test_probe_error() {
+    TEST_NAME=$1
+    URL=$2
+    SAMPLE_URL=$3
+    EXPECTED_STATUS=$4
+    EXPECTED_ERROR_SUBSTRING=$5
+
+    echo "--- Testing Probe Error: $TEST_NAME ---"
+
+    HTTP_CODE_BODY=$(_perform_probe_url_call "$URL" "$SAMPLE_URL")
+    HTTP_CODE=$(echo "$HTTP_CODE_BODY" | head -n1)
+    BODY=$(echo "$HTTP_CODE_BODY" | tail -n1)
+
+    if [ "$HTTP_CODE" -ne "$EXPECTED_STATUS" ]; then
+        echo "ERROR: Probe returned HTTP $HTTP_CODE (expected $EXPECTED_STATUS) for '$TEST_NAME'"
+        echo "Response body: $BODY"
+        exit 1
+    fi
+
+    if [ -n "$EXPECTED_ERROR_SUBSTRING" ] && ! echo "$BODY" | grep -q "$EXPECTED_ERROR_SUBSTRING"; then
+        echo "ERROR: Probe error message mismatch for '$TEST_NAME'"
+        echo "Expected substring: '$EXPECTED_ERROR_SUBSTRING'"
+        echo "Response body: $BODY"
+        exit 1
+    fi
+
+    echo "SUCCESS: Probe returned expected error."
+    echo "Response body: $BODY"
+    echo ""
+}
+
+test_probe_oversized_remote_file() {
+    TEST_NAME=$1
+    URL_BASE=$2
+    UNIQUE_ID=$(date +%s%N)
+    URL="${URL_BASE}?test_id=${UNIQUE_ID}"
+
+    echo "--- Testing Probe Error: $TEST_NAME ---"
+
+    HTTP_CODE_BODY=$(_perform_probe_url_call "$URL")
+    HTTP_CODE=$(echo "$HTTP_CODE_BODY" | head -n1)
+    BODY=$(echo "$HTTP_CODE_BODY" | tail -n1)
+
+    if [ "$HTTP_CODE" -ne 413 ]; then
+        echo "ERROR: Probe returned HTTP $HTTP_CODE (expected 413) for '$TEST_NAME'"
+        echo "Response body: $BODY"
+        exit 1
+    fi
+
+    if ! echo "$BODY" | grep -q "External module file size exceeds the maximum allowed limit of 10MB"; then
+        echo "ERROR: Probe oversized-file error message mismatch for '$TEST_NAME'"
+        echo "Response body: $BODY"
+        exit 1
+    fi
+
+    echo "SUCCESS: Probe returned expected oversized-file error."
+    echo "Response body: $BODY"
+    echo ""
+}
+
+test_probe_has_no_conversion_fields() {
+    TEST_NAME=$1
+    URL=$2
+    SAMPLE_URL=$3
+
+    echo "--- Testing Probe Response Shape: $TEST_NAME ---"
+
+    HTTP_CODE_BODY=$(_perform_probe_url_call "$URL" "$SAMPLE_URL")
+    HTTP_CODE=$(echo "$HTTP_CODE_BODY" | head -n1)
+    BODY=$(echo "$HTTP_CODE_BODY" | tail -n1)
+
+    if [ "$HTTP_CODE" -ne 200 ]; then
+        echo "ERROR: Probe returned HTTP $HTTP_CODE for '$TEST_NAME'"
+        echo "Response body: $BODY"
+        exit 1
+    fi
+
+    for field in file_id play_url download_url audio_format; do
+        if echo "$BODY" | jq -e "has(\"$field\")" > /dev/null; then
+            echo "ERROR: Probe response unexpectedly contains '$field' for '$TEST_NAME'"
+            echo "Response body: $BODY"
+            exit 1
+        fi
+    done
+
+    echo "SUCCESS: Probe response does not include conversion-only fields."
+    echo "Response body: $BODY"
+    echo ""
+}
+
+test_probe_missing_url() {
+    echo "--- Testing Probe Error: missing URL ---"
+
+    RESPONSE_ALL=$(curl -s -w "\n%{http_code}" -X POST \
+        -H "Content-Type: application/json" \
+        -d '{}' \
+        "$BASE_URL/probe-url")
+
+    HTTP_CODE=$(echo "$RESPONSE_ALL" | tail -n1)
+    BODY=$(echo "$RESPONSE_ALL" | sed '$d')
+
+    if [ "$HTTP_CODE" -ne 400 ]; then
+        echo "ERROR: Probe returned HTTP $HTTP_CODE (expected 400) for missing URL"
+        echo "Response body: $BODY"
+        exit 1
+    fi
+
+    if ! echo "$BODY" | grep -q "No URL provided"; then
+        echo "ERROR: Probe missing URL returned unexpected error message"
+        echo "Response body: $BODY"
+        exit 1
+    fi
+
+    echo "SUCCESS: Probe rejected missing URL payload."
+    echo "Response body: $BODY"
     echo ""
 }
 
@@ -912,6 +1102,14 @@ done
 echo "Service is up!"
 
 test_health_endpoint
+
+test_probe_url "Probe Protracker module" "https://modland.com/pub/modules/Protracker/Captain/space%20debris.mod"
+test_probe_url "Probe TFMX module" "https://modland.com/pub/modules/TFMX/Chris%20Huelsbeck/mdat.turrican%202%20level%200-intro" "https://modland.com/pub/modules/TFMX/Chris%20Huelsbeck/smpl.turrican%202%20level%200-intro"
+test_probe_has_no_conversion_fields "Probe metadata only response" "https://modland.com/pub/modules/Protracker/Captain/space%20debris.mod"
+test_probe_error "Probe reject localhost URL" "http://localhost:5000/health" "" 400 "Unsafe or disallowed URL provided"
+test_probe_missing_url
+test_probe_oversized_remote_file "Probe oversized remote file" "$LOCAL_TEST_SERVER_URL/fixtures/invalid/too-large.bin"
+test_probe_error "Probe unsupported remote file" "https://www.gutenberg.org/files/1342/1342-0.txt" "" 500 "Could not detect module metadata. The file may be corrupt or not a supported module."
 
 test_url "Protracker module" "https://modland.com/pub/modules/Protracker/Captain/space%20debris.mod"
 test_url "AHX module" "https://modland.com/pub/modules/AHX/Pink/stormlord.ahx"

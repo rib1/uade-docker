@@ -1544,6 +1544,139 @@ def process_module_and_respond(
             shutil.rmtree(extract_dir, ignore_errors=True)
 
 
+def detect_cached_module_metadata(input_path, sample_files=None):
+    """
+    Load cached metadata or detect it from the module without converting audio.
+
+    On detection failure, truncate the module (and sample files, if any) to cache the
+    invalid state, matching the existing convert-url/upload behavior.
+    """
+    cache_hash = get_file_hash(input_path)
+    module_name = None
+    module_format = None
+    player_format = "Module"
+    subsongs = 0
+
+    cached_metadata = load_metadata_cache(cache_hash)
+    if cached_metadata:
+        module_name = cached_metadata.get("module_name")
+        module_format = cached_metadata.get("module_format")
+        player_format = cached_metadata.get("player_format", "Module")
+        subsongs = cached_metadata.get("subsongs", 1)
+        logger.info(f"Using cached metadata for {cache_hash}: {module_name} ({player_format})")
+        return True, module_name, module_format, player_format, subsongs, cache_hash
+
+    unique_metadata_lock = MODULES_DIR / f"{cache_hash}.metadatalock.{uuid.uuid4()!s}"
+    unique_metadata_lock.touch(exist_ok=True)
+    try:
+        metadata_success, module_name, module_format, player_format, subsongs = (
+            detect_module_metadata(input_path)
+        )
+    finally:
+        unique_metadata_lock.unlink(missing_ok=True)
+
+    if not metadata_success:
+        lock_glob = MODULES_DIR.glob(f"{cache_hash}.metadatalock.*")
+        if not any(lock_glob):
+            logger.info(
+                f"Could not detect metadata for {input_path}. "
+                "Truncating file to 0 bytes to cache as invalid module."
+            )
+            with Path(input_path).open("w") as _:
+                pass
+
+            if sample_files:
+                for sample_file_path in sample_files:
+                    if sample_file_path and sample_file_path.exists():
+                        if sample_file_path.is_symlink():
+                            sample_file_path.unlink(missing_ok=True)
+                            logger.info(f"Removed sample symlink: {sample_file_path}")
+                        else:
+                            with Path(sample_file_path).open("w") as _:
+                                pass
+                            logger.info(f"Truncated sample file to 0 bytes: {sample_file_path}")
+        else:
+            logger.info(
+                f"Could not detect metadata for {input_path}, but other locks exist. "
+                "Retaining file for ongoing metadata detection."
+            )
+
+    return metadata_success, module_name, module_format, player_format, subsongs, cache_hash
+
+
+def process_module_probe_response(module_path, filename, url_cached=False, sample_files=None):
+    """Shared logic for archive handling and metadata-only probe responses."""
+    unique_id = str(uuid.uuid4())
+    extract_dir = Path(f"{module_path}_extracted_{unique_id}")
+
+    if module_path.exists() and module_path.stat().st_size == 0:
+        logger.info(f"Skipping probe for known invalid zero-byte module: {module_path}")
+        return json_response(
+            {
+                "ok": False,
+                "playable": False,
+                "error": "Could not detect module metadata. "
+                "The file may be corrupt or not a supported module.",
+            },
+            500,
+        )
+
+    try:
+        if is_lha_file(module_path):
+            logger.info(f"Detected LHA archive during probe: {filename}")
+            success, error, music_file = extract_lha(module_path, extract_dir)
+            if not success:
+                module_path.unlink(missing_ok=True)
+                return json_response({"ok": False, "playable": False, "error": error}, 500)
+            filename = music_file.name
+            module_path = music_file
+        elif is_zip_file(module_path):
+            logger.info(f"Detected ZIP archive during probe: {filename}")
+            success, error, music_file = extract_zip(module_path, extract_dir)
+            if not success:
+                module_path.unlink(missing_ok=True)
+                return json_response({"ok": False, "playable": False, "error": error}, 500)
+            filename = music_file.name
+            module_path = music_file
+
+        (
+            metadata_success,
+            module_name,
+            module_format,
+            player_format,
+            subsongs,
+            _cache_hash,
+        ) = detect_cached_module_metadata(module_path, sample_files=sample_files)
+
+        if not metadata_success:
+            return json_response(
+                {
+                    "ok": False,
+                    "playable": False,
+                    "error": "Could not detect module metadata. "
+                    "The file may be corrupt or not a supported module.",
+                },
+                500,
+            )
+
+        return json_response(
+            {
+                "ok": True,
+                "playable": True,
+                "filename": filename,
+                "module_name": module_name or filename,
+                "module_format": module_format,
+                "player_format": player_format,
+                "subsongs": subsongs,
+                "url_cached": url_cached,
+                "source_type": "dual" if sample_files else "single",
+            }
+        )
+    finally:
+        if extract_dir.exists():
+            shutil.rmtree(extract_dir, ignore_errors=True)
+
+
 def is_safe_url(u):
     """
     Reject private/LAN/loopback/non-HTTP(S) URLs for SSRF defense,
@@ -1678,6 +1811,134 @@ def get_dual_file_module_filenames(filename):
     return filename, suffix, sample_filename, sample_suffix
 
 
+def prepare_remote_module_source(url, sample_url=None):
+    """Validate, download, and resolve a remote module source for probe/convert routes."""
+    if not is_safe_url(url) or (sample_url and not is_safe_url(sample_url)):
+        return None, json_response({"error": "Unsafe or disallowed URL provided"}, 400)
+
+    filename = extract_filename_from_url(url)
+    url_hash = hashlib.md5(
+        sanitized_url(url, log=False).encode(), usedforsecurity=False
+    ).hexdigest()
+
+    filename, suffix, sample_filename, sample_suffix = get_dual_file_module_filenames(filename)
+    module_path = MODULES_DIR / f"{filename}_{url_hash}{suffix}"
+    lock_path = module_path.with_suffix(f"{module_path.suffix}.lock")
+
+    url_cache_hit = False
+    if module_path.exists():
+        url_cache_hit = True
+        logger.info(f"Cache hit for module: {sanitized_url(url)}, using cached file: {module_path}")
+        touch_for_lru(module_path)
+    else:
+        try:
+            lock_path.touch(exist_ok=False)
+            try:
+                if not module_path.exists():
+                    logger.info(f"Downloading: {sanitized_url(url)}")
+                    temp_path = module_path.with_suffix(f"{module_path.suffix}.tmp")
+                    success, error_response = download_and_limit_size(
+                        url, temp_path, "External module"
+                    )
+                    if temp_path.exists():
+                        Path.replace(temp_path, module_path)
+                        logger.info(f"Moved partial/complete download to: {module_path}")
+                    if not success:
+                        return None, error_response
+            finally:
+                lock_path.unlink(missing_ok=True)
+        except FileExistsError:
+            logger.info(f"Download for {sanitized_url(url)} is already in progress, waiting...")
+            for _ in range(20):
+                time.sleep(1)
+                if module_path.exists():
+                    logger.info(
+                        f"Cache hit for module completed by another thread: "
+                        f"{sanitized_url(url)}, using cached file: {module_path}"
+                    )
+                    touch_for_lru(module_path)
+                    url_cache_hit = True
+                    break
+            else:
+                logger.warning(f"Timeout waiting for download of {sanitized_url(url)}.")
+                return None, json_response({"error": "Timeout waiting for file download."}, 500)
+
+    if not module_path.exists():
+        return None, json_response({"error": "Failed to retrieve module file."}, 500)
+
+    sample_files = []
+    if sample_url and sample_url != url:
+        if not sample_filename:
+            sample_filename = extract_filename_from_url(sample_url)
+        sample_url_hash = hashlib.md5(
+            sanitized_url(sample_url, log=False).encode(), usedforsecurity=False
+        ).hexdigest()
+
+        sample_path = MODULES_DIR / f"{sample_filename}_{url_hash}{sample_suffix}"
+        cached_sample_path = MODULES_DIR / f"{sample_filename}_{sample_url_hash}{sample_suffix}"
+        sample_lock_path = module_path.with_suffix(f"{cached_sample_path.suffix}.lock")
+        sample_files = [sample_path, cached_sample_path]
+
+        if cached_sample_path.exists():
+            if not sample_path.exists():
+                sample_path.unlink(missing_ok=True)
+                sample_path.symlink_to(cached_sample_path)
+            logger.info(
+                f"Cache hit for sample file: {sanitized_url(sample_url)}, "
+                f"using cached file {cached_sample_path}, linking to {sample_path}"
+            )
+            touch_for_lru(cached_sample_path)
+        else:
+            try:
+                sample_lock_path.touch(exist_ok=False)
+                temp_path = module_path.with_suffix(f"{cached_sample_path.suffix}.tmp")
+                success, error_response = download_and_limit_size(
+                    sample_url, temp_path, "External sample"
+                )
+                if temp_path.exists():
+                    Path.replace(temp_path, cached_sample_path)
+                    logger.info(f"Moved partial/complete sample download to: {cached_sample_path}")
+                if not success:
+                    return None, error_response
+
+                if sample_path.exists() or sample_path.is_symlink():
+                    sample_path.unlink(missing_ok=True)
+                sample_path.symlink_to(cached_sample_path)
+                logger.info(f"Cached sample file: {cached_sample_path}, linking to {sample_path}")
+            except FileExistsError:
+                logger.info(
+                    f"Download for {sanitized_url(cached_sample_path)} is already "
+                    "in progress, waiting..."
+                )
+                for _ in range(20):
+                    time.sleep(1)
+                    if cached_sample_path.exists():
+                        if not sample_path.exists():
+                            sample_path.unlink(missing_ok=True)
+                            sample_path.symlink_to(cached_sample_path)
+                        logger.info(
+                            f"Cache hit for sample file completed by another thread: "
+                            f"{sanitized_url(sample_url)}, using cached file "
+                            f"{cached_sample_path}, linking to {sample_path}"
+                        )
+                        touch_for_lru(cached_sample_path)
+                        break
+                else:
+                    logger.warning(
+                        f"Timeout waiting for download of {sanitized_url(cached_sample_path)}."
+                    )
+                    return None, json_response({"error": "Timeout waiting for file download."}, 500)
+            finally:
+                sample_lock_path.unlink(missing_ok=True)
+
+    return {
+        "module_path": module_path,
+        "filename": filename,
+        "sample_files": sample_files,
+        "url_cache_hit": url_cache_hit,
+    }, None
+
+
 @app.route("/convert-url", methods=["POST"])
 @limiter.limit("10 per minute")
 def convert_url():
@@ -1700,172 +1961,19 @@ def convert_url():
     url = data["url"]
     sample_url = data.get("sample_url")
 
-    if not is_safe_url(url) or (sample_url and not is_safe_url(sample_url)):
-        return json_response({"error": "Unsafe or disallowed URL provided"}, 400)
-
     try:
         # Check browser FLAC support
         user_agent = request.headers.get("User-Agent", "")
         use_flac = supports_flac(user_agent)
-
-        # --- Caching logic for main module file ---
-        filename = extract_filename_from_url(url)
-        # Compute cache hash from URL
-        url_hash = hashlib.md5(
-            sanitized_url(url, log=False).encode(), usedforsecurity=False
-        ).hexdigest()
-
-        # Unpack dual-file module info: main_filename, main_suffix, sample_filename, sample_suffix
-        (
-            filename,
-            suffix,
-            sample_filename,
-            sample_suffix,
-        ) = get_dual_file_module_filenames(filename)
-        # The suffix must be placed after the hash for UADE to correctly recognize the
-        # file type in dual-file modules
-        module_path = MODULES_DIR / f"{filename}_{url_hash}{suffix}"
-        lock_path = module_path.with_suffix(f"{module_path.suffix}.lock")
-
-        url_cache_hit = False
-        if module_path.exists():
-            url_cache_hit = True
-            logger.info(
-                f"Cache hit for module: {sanitized_url(url)}, using cached file: {module_path}"
-            )
-            # Touch file to extend its cleanup interval (LRU-aware caching)
-            touch_for_lru(module_path)
-        else:
-            try:
-                # Atomically create lock file. If it exists, FileExistsError is raised.
-                lock_path.touch(exist_ok=False)
-                try:
-                    # Re-check if file exists now that we have the lock
-                    if not module_path.exists():
-                        logger.info(f"Downloading: {sanitized_url(url)}")
-                        # nosec B501 - Trade-off for HTTP module downloads
-                        # Write to a temporary file first, then move, to ensure atomic write
-                        temp_path = module_path.with_suffix(f"{module_path.suffix}.tmp")
-                        success, error_response = download_and_limit_size(
-                            url, temp_path, "External module"
-                        )
-
-                        # Always attempt to move the partial/complete file to its final
-                        # destination (cache it)
-                        if temp_path.exists():
-                            Path.replace(temp_path, module_path)
-                            logger.info(f"Moved partial/complete download to: {module_path}")
-
-                        if not success:
-                            return error_response
-                finally:
-                    # Always remove the lock file when the owner is done
-                    lock_path.unlink(missing_ok=True)
-            except FileExistsError:
-                logger.info(f"Download for {sanitized_url(url)} is already in progress, waiting...")
-                for _ in range(20):  # Wait up to 20 seconds
-                    time.sleep(1)
-                    if module_path.exists():
-                        logger.info(
-                            f"Cache hit for module completed by another thread: "
-                            f"{sanitized_url(url)}, using cached file: {module_path}"
-                        )
-                        # Touch file to extend its cleanup interval (LRU-aware caching)
-                        touch_for_lru(module_path)
-                        url_cache_hit = True
-                        break
-                else:
-                    logger.warning(f"Timeout waiting for download of {sanitized_url(url)}.")
-                    return json_response({"error": "Timeout waiting for file download."}, 500)
-
-        if not module_path.exists():
-            return json_response({"error": "Failed to retrieve module file."}, 500)
-
-        # --- Caching logic for dual-file module sample file ---
-        sample_files = []
-        if sample_url and sample_url != url:
-            if not sample_filename:
-                sample_filename = extract_filename_from_url(sample_url)
-            # Compute cache hash from URL
-            sample_url_hash = hashlib.md5(
-                sanitized_url(sample_url, log=False).encode(), usedforsecurity=False
-            ).hexdigest()
-
-            # The suffix must be placed after the hash for UADE to correctly recognize the
-            # file type in dual-file modules
-            sample_path = MODULES_DIR / f"{sample_filename}_{url_hash}{sample_suffix}"
-            cached_sample_path = MODULES_DIR / f"{sample_filename}_{sample_url_hash}{sample_suffix}"
-            sample_lock_path = module_path.with_suffix(f"{cached_sample_path.suffix}.lock")
-
-            # Collect sample file paths for cleanup if needed
-            sample_files = [sample_path, cached_sample_path]
-
-            if cached_sample_path.exists():
-                if not sample_path.exists():
-                    sample_path.unlink(missing_ok=True)  # Ensure no stale link
-                    sample_path.symlink_to(cached_sample_path)
-                logger.info(
-                    f"Cache hit for sample file: {sanitized_url(sample_url)}, "
-                    f"using cached file {cached_sample_path}, linking to {sample_path}"
-                )
-                # Touch file to extend its cleanup interval (LRU-aware caching)
-                touch_for_lru(cached_sample_path)
-            else:
-                try:
-                    # Atomically create lock file. If it exists, FileExistsError is raised.
-                    sample_lock_path.touch(exist_ok=False)
-                    temp_path = module_path.with_suffix(f"{cached_sample_path.suffix}.tmp")
-                    success, error_response = download_and_limit_size(
-                        sample_url, temp_path, "External sample"
-                    )
-
-                    # Always attempt to move the partial/complete file to its final
-                    # destination (cache it)
-                    if temp_path.exists():
-                        Path.replace(temp_path, cached_sample_path)
-                        logger.info(
-                            f"Moved partial/complete sample download to: {cached_sample_path}"
-                        )
-
-                    if not success:
-                        return error_response
-
-                    if sample_path.exists() or sample_path.is_symlink():
-                        sample_path.unlink(missing_ok=True)
-                    sample_path.symlink_to(cached_sample_path)
-                    logger.info(
-                        f"Cached sample file: {cached_sample_path}, linking to {sample_path}"
-                    )
-                except FileExistsError:
-                    logger.info(
-                        f"Download for {sanitized_url(cached_sample_path)} is already "
-                        "in progress, waiting..."
-                    )
-                    for _ in range(20):  # Wait up to 20 seconds
-                        time.sleep(1)
-                        if cached_sample_path.exists():
-                            if not sample_path.exists():
-                                sample_path.unlink(missing_ok=True)  # Ensure no stale link
-                                sample_path.symlink_to(cached_sample_path)
-                            logger.info(
-                                f"Cache hit for sample file completed by another thread: "
-                                f"{sanitized_url(sample_url)}, using cached file "
-                                f"{cached_sample_path}, linking to {sample_path}"
-                            )
-                            # Touch file to extend its cleanup interval (LRU-aware caching)
-                            touch_for_lru(cached_sample_path)
-                            break
-                    else:
-                        logger.warning(
-                            f"Timeout waiting for download of {sanitized_url(cached_sample_path)}."
-                        )
-                        return json_response({"error": "Timeout waiting for file download."}, 500)
-                finally:
-                    # Always remove the lock file when the owner is done
-                    sample_lock_path.unlink(missing_ok=True)
-
+        remote_source, error_response = prepare_remote_module_source(url, sample_url)
+        if error_response:
+            return error_response
         return process_module_and_respond(
-            module_path, filename, use_flac, url_cache_hit, sample_files
+            remote_source["module_path"],
+            remote_source["filename"],
+            use_flac,
+            remote_source["url_cache_hit"],
+            remote_source["sample_files"],
         )
 
     except requests.RequestException:
@@ -1874,6 +1982,37 @@ def convert_url():
     except Exception:
         logger.error("Convert URL error", exc_info=True)
         return json_response({"error": "Internal server error during URL conversion"}, 500)
+
+
+@app.route("/probe-url", methods=["POST"])
+@limiter.limit("10 per minute")
+def probe_url():
+    """Validate a remote module and return metadata without converting audio."""
+    cleanup_old_files()
+
+    data = request.get_json()
+    if not data or "url" not in data:
+        return json_response({"error": "No URL provided"}, 400)
+
+    url = data["url"]
+    sample_url = data.get("sample_url")
+
+    try:
+        remote_source, error_response = prepare_remote_module_source(url, sample_url)
+        if error_response:
+            return error_response
+        return process_module_probe_response(
+            remote_source["module_path"],
+            remote_source["filename"],
+            remote_source["url_cache_hit"],
+            remote_source["sample_files"],
+        )
+    except requests.RequestException:
+        logger.error("Probe download error", exc_info=True)
+        return json_response({"error": "Download failed"}, 500)
+    except Exception:
+        logger.error("Probe URL error", exc_info=True)
+        return json_response({"error": "Internal server error during URL probe"}, 500)
 
 
 def sanitized_url(url, log=True):
