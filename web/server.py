@@ -1990,8 +1990,10 @@ def probe_url():
     """Validate a remote module and return metadata without converting audio."""
     cleanup_old_files()
 
-    data = request.get_json()
-    if not data or "url" not in data:
+    data = request.get_json(silent=True)
+    if not isinstance(data, dict):
+        return json_response({"error": "Invalid JSON body"}, 400)
+    if "url" not in data:
         return json_response({"error": "No URL provided"}, 400)
 
     url = data["url"]
