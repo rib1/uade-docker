@@ -529,6 +529,12 @@ audio::-webkit-media-controls-enclosure {
   margin-left: auto;
 }
 
+.playlist-launcher-actions .btn,
+.playlist-panel-header-actions .btn,
+.playlist-item-actions .btn {
+  min-height: 44px;
+}
+
 .playlist-launcher-next {
   color: var(--text-dim);
   font-size: 0.85rem;
@@ -603,6 +609,7 @@ audio::-webkit-media-controls-enclosure {
 
 .playlist-item-main {
   min-width: 0;
+  flex: 1 1 auto;
 }
 
 .playlist-item-title {
@@ -621,6 +628,7 @@ audio::-webkit-media-controls-enclosure {
   gap: 8px;
   flex-shrink: 0;
   flex-wrap: wrap;
+  align-items: stretch;
 }
 
 /* Hide player section, custom info, and share button by default (shown when available). */
@@ -849,5 +857,68 @@ audio::-webkit-media-controls-enclosure {
         flex-direction: column;
         align-items: flex-start;
         gap: 8px;
+    }
+
+    .playlist-launcher {
+        padding: 12px;
+    }
+
+    .playlist-launcher-bar {
+        align-items: stretch;
+    }
+
+    .playlist-launcher-info {
+        width: 100%;
+    }
+
+    .playlist-launcher-actions {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        width: 100%;
+        margin-left: 0;
+    }
+
+    .playlist-launcher-actions .btn {
+        width: 100%;
+        min-width: 0;
+        padding-inline: 10px;
+        white-space: nowrap;
+    }
+
+    .playlist-panel {
+        max-height: min(60vh, 30rem);
+        overflow-y: auto;
+        padding-right: 2px;
+    }
+
+    .playlist-panel-header-actions {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        width: 100%;
+    }
+
+    .playlist-panel-header-actions .btn {
+        width: 100%;
+        min-width: 0;
+        padding-inline: 10px;
+        white-space: nowrap;
+    }
+
+    .playlist-item {
+        gap: 10px;
+    }
+
+    .playlist-item-actions {
+        display: grid;
+        grid-template-columns: minmax(0, 1.4fr) repeat(3, minmax(0, 1fr));
+        width: 100%;
+    }
+
+    .playlist-item-actions .btn {
+        width: 100%;
+        min-width: 0;
+        padding-inline: 8px;
+        font-size: 0.8rem;
+        white-space: nowrap;
     }
 }

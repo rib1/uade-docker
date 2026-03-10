@@ -48,6 +48,7 @@ const playlistClearBtn = document.getElementById("playlist-clear-btn");
 const playlistList = document.getElementById("playlist-list");
 const playlistEmptyState = document.getElementById("playlist-empty-state");
 const playlistPanelSummary = document.getElementById("playlist-panel-summary");
+const mobileQueueMediaQuery = window.matchMedia("(max-width: 600px)");
 
 const elementsToDisable = [
   fileInput,
@@ -139,6 +140,8 @@ document.addEventListener("DOMContentLoaded", () => {
   restoreSavedOrSharedQueue();
   // Check for shared URL parameter and auto-convert
   checkSharedUrlParameter();
+  updatePlaylistMobileLabels();
+  mobileQueueMediaQuery.addEventListener("change", renderPlaylist);
   updatePlayerSectionVisibility();
   updatePrimaryPlayerActions();
 });
@@ -665,7 +668,7 @@ async function sharePlaylist() {
   try {
     await navigator.clipboard.writeText(shareUrl);
     const originalText = playlistShareBtn.textContent;
-    playlistShareBtn.textContent = "✓ Copied!";
+    playlistShareBtn.textContent = `${originalText} (Copied)`;
     setTimeout(() => {
       playlistShareBtn.textContent = originalText;
     }, 2000);
@@ -1077,7 +1080,7 @@ function renderPlaylist() {
     const removeBtn = document.createElement("button");
     removeBtn.type = "button";
     removeBtn.className = "btn btn-secondary btn-small playlist-remove-btn";
-    removeBtn.textContent = "Remove";
+    removeBtn.textContent = mobileQueueMediaQuery.matches ? "Del" : "Remove";
     removeBtn.setAttribute("aria-label", `Remove ${track.name} from queue`);
     removeBtn.disabled = isUiLocked;
     removeBtn.addEventListener("click", () => removeTrackFromPlaylist(track.id));
@@ -1109,6 +1112,13 @@ function renderPlaylist() {
   playlistPanel.hidden = !isPlaylistPanelOpen || playlistTracks.length === 0;
   updatePlayerSectionVisibility();
   updatePrimaryPlayerActions();
+  updatePlaylistMobileLabels();
+}
+
+function updatePlaylistMobileLabels() {
+  const isMobileQueueLayout = mobileQueueMediaQuery.matches;
+  playlistPrevBtn.textContent = isMobileQueueLayout ? "Prev" : "⏮";
+  playlistNextBtn.textContent = isMobileQueueLayout ? "Next" : "⏭";
 }
 
 function setPlaylistPanelOpen(isOpen) {
