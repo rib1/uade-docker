@@ -507,6 +507,13 @@ function getSerializablePlaylistTracks() {
   }));
 }
 
+function buildQueuePayload() {
+  return {
+    v: 1,
+    t: getSerializablePlaylistTracks(),
+  };
+}
+
 function sanitizePlaylistTrack(track) {
   if (!track || typeof track !== "object") {
     return null;
@@ -613,10 +620,7 @@ function savePlaylistLocally() {
     return;
   }
 
-  const payload = {
-    v: 1,
-    t: getSerializablePlaylistTracks(),
-  };
+  const payload = buildQueuePayload();
   if (!setStoredQueue(JSON.stringify(payload))) {
     return;
   }
@@ -629,10 +633,7 @@ function bookmarkPlaylist() {
     return;
   }
 
-  const payload = {
-    v: 1,
-    t: getSerializablePlaylistTracks(),
-  };
+  const payload = buildQueuePayload();
   const queueUrl = buildQueueUrlFromPayload(payload);
   const bookmarkUrl = new URL(window.location.href);
   const encodedQueue = new URL(queueUrl).searchParams.get("queue");
@@ -657,10 +658,7 @@ async function sharePlaylist() {
     return;
   }
 
-  const payload = {
-    v: 1,
-    t: getSerializablePlaylistTracks(),
-  };
+  const payload = buildQueuePayload();
   const shareUrl = buildQueueUrlFromPayload(payload);
 
   warnIfQueueUrlIsLong(shareUrl);
