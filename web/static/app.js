@@ -978,6 +978,9 @@ function removeTrackFromPlaylist(trackId) {
 
   if (playlistTracks.length === 0) {
     setPlaylistPanelOpen(false);
+    if (getStoredQueue()) {
+      showStatus("Queue is empty. Saved local queue is still available.", "info");
+    }
   }
 
   renderPlaylist();
@@ -993,7 +996,7 @@ function clearPlaylist() {
   isPlaylistPanelOpen = false;
   clearStoredQueue();
   renderPlaylist();
-  showStatus("✓ Queue cleared", "success");
+  showStatus("✓ Queue cleared. Saved local queue was also removed.", "success");
 }
 
 function movePlaylistTrack(trackId, direction) {
