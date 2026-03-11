@@ -631,8 +631,12 @@ audio::-webkit-media-controls-enclosure {
   align-items: stretch;
 }
 
-/* Hide player section, custom info, and share button by default (shown when available). */
+/* Hide player section, player metadata, custom info, and share button by default (shown when available). */
 #player-section {
+  display: none;
+}
+
+#track-format {
   display: none;
 }
 

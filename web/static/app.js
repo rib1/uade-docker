@@ -188,7 +188,9 @@ function updatePlayerSectionVisibility() {
 }
 
 function updatePlayerMetaVisibility() {
-  trackFormat.hidden = !trackFormat.textContent.trim();
+  const hasFormatText = Boolean(trackFormat.textContent.trim());
+  trackFormat.hidden = !hasFormatText;
+  trackFormat.style.display = hasFormatText ? "inline-block" : "none";
 }
 
 function updatePrimaryPlayerActions() {
