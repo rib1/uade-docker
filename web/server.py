@@ -42,6 +42,7 @@ logger = logging.getLogger(__name__)
 
 app = Flask(__name__, static_folder="static")
 START_TIME: Final = time.time()
+CLEANUP_TIMESTAMPS: dict[str, datetime | None] = {"local": None, "cache": None}
 UADE_VERSION_TOKEN_PARTS_MIN: Final = 2
 MEMINFO_LINE_PARTS_EXPECTED: Final = 2
 LHA_HEADER_MIN_BYTES: Final = 7
@@ -520,6 +521,9 @@ def cleanup_old_files():
             logger.info("No old files to clean up in local directories.")
     except Exception:
         logger.error("Cleanup error", exc_info=True)
+    else:
+        if removed > 0:
+            CLEANUP_TIMESTAMPS["local"] = datetime.now(UTC)
 
 
 def cleanup_cache_files():
@@ -554,6 +558,9 @@ def cleanup_cache_files():
             logger.info("No old files to clean up in remote cache.")
     except Exception:
         logger.error("Cache cleanup error", exc_info=True)
+    else:
+        if removed > 0:
+            CLEANUP_TIMESTAMPS["cache"] = datetime.now(UTC)
 
 
 def get_file_hash(file_path):
@@ -1387,6 +1394,18 @@ def health():
     cache_info = {
         "protocol": fs_cache.protocol,
         "uri_redacted": CACHE_URI.split("://")[0] + "://***" if "://" in CACHE_URI else "***",
+        "last_cleanup_at": (
+            CLEANUP_TIMESTAMPS["cache"].isoformat()
+            if CLEANUP_TIMESTAMPS["cache"] is not None
+            else None
+        ),
+    }
+    temp_files_info = {
+        "last_cleanup_at": (
+            CLEANUP_TIMESTAMPS["local"].isoformat()
+            if CLEANUP_TIMESTAMPS["local"] is not None
+            else None
+        ),
     }
 
     return json_response(
@@ -1403,6 +1422,7 @@ def health():
             "disk": get_disk_usage(TEMP_BASE),
             "binaries": binaries,
             "cache": cache_info,
+            "temp_files": temp_files_info,
             "config": {
                 "max_upload_size_mb": MAX_UPLOAD_SIZE / (1024 * 1024),
                 "max_download_size_mb": MAX_DOWNLOAD_SIZE / (1024 * 1024),

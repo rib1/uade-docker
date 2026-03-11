@@ -1203,7 +1203,7 @@ test_health_endpoint() {
     fi
 
     # Check for presence of required keys
-    REQUIRED_KEYS=("uptime_seconds" "python_version" "os_platform" "memory" "disk" "binaries" "cache" "config" "uade_version" "version" "uade_available")
+    REQUIRED_KEYS=("uptime_seconds" "python_version" "os_platform" "memory" "disk" "binaries" "cache" "temp_files" "config" "uade_version" "version" "uade_available")
     for key in "${REQUIRED_KEYS[@]}"; do
         if ! echo "$RESPONSE" | jq -e "has(\"$key\")" > /dev/null; then
             echo "ERROR: Missing key '$key' in health response"
@@ -1224,6 +1224,22 @@ test_health_endpoint() {
     if [ "$UADE_BIN" != "true" ]; then
         echo "ERROR: uade123 binary reported as unavailable"
         exit 1
+    fi
+
+    LAST_CACHE_CLEANUP_AT=$(echo "$RESPONSE" | jq -r .cache.last_cleanup_at)
+    if [ "$LAST_CACHE_CLEANUP_AT" != "null" ] && [ -n "$LAST_CACHE_CLEANUP_AT" ]; then
+        if ! echo "$LAST_CACHE_CLEANUP_AT" | grep -Eq '^[0-9]{4}-[0-9]{2}-[0-9]{2}T'; then
+            echo "ERROR: cache.last_cleanup_at is not an ISO timestamp: $LAST_CACHE_CLEANUP_AT"
+            exit 1
+        fi
+    fi
+
+    LAST_LOCAL_CLEANUP_AT=$(echo "$RESPONSE" | jq -r .temp_files.last_cleanup_at)
+    if [ "$LAST_LOCAL_CLEANUP_AT" != "null" ] && [ -n "$LAST_LOCAL_CLEANUP_AT" ]; then
+        if ! echo "$LAST_LOCAL_CLEANUP_AT" | grep -Eq '^[0-9]{4}-[0-9]{2}-[0-9]{2}T'; then
+            echo "ERROR: temp_files.last_cleanup_at is not an ISO timestamp: $LAST_LOCAL_CLEANUP_AT"
+            exit 1
+        fi
     fi
 
     echo "SUCCESS: Health endpoint returned all expected fields and valid data."
