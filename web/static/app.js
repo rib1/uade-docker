@@ -143,6 +143,7 @@ document.addEventListener("DOMContentLoaded", () => {
   updatePlaylistMobileLabels();
   mobileQueueMediaQuery.addEventListener("change", renderPlaylist);
   updatePlayerSectionVisibility();
+  updatePlayerMetaVisibility();
   updatePrimaryPlayerActions();
 });
 
@@ -184,6 +185,10 @@ function updatePlayerSectionVisibility() {
   const hasPlaylist = playlistTracks.length > 0;
   const hasPlayableTrack = Boolean(audioPlayer.getAttribute("src"));
   playerSection.style.display = hasPlaylist || hasPlayableTrack ? "block" : "none";
+}
+
+function updatePlayerMetaVisibility() {
+  trackFormat.hidden = !trackFormat.textContent.trim();
 }
 
 function updatePrimaryPlayerActions() {
@@ -1267,6 +1272,7 @@ function playFile(
   } else {
     trackFormat.textContent = "Module";
   }
+  updatePlayerMetaVisibility();
 
   // Show infobox for Custom modules
   const customInfo = document.getElementById("custom-info");
