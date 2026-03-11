@@ -229,6 +229,11 @@ function setUiLock() {
     uploadLabel.classList.add("disabled");
     uploadLabel.setAttribute("aria-busy", "true");
   }
+
+  // Keep queue controls in sync with the common lock state immediately.
+  if (playlistTracks.length > 0) {
+    renderPlaylist();
+  }
 }
 
 /**
