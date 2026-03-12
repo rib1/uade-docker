@@ -224,6 +224,8 @@ architecture-beta
   - Uses fsspec, s3fs, and gcsfs for unified access
   - Docker image and local development require Python dependencies (see `requirements.txt`)
   - Multi-instance deployments share cache for instant replay and deduplication
+  - Remote-cache LRU tracking uses a sidecar access record per cache hash (`HASH.cache-access.json`)
+    so cache-hit access times work consistently across `file`, `s3`, and `gcs` backends
 
 ### Development
 
@@ -248,6 +250,8 @@ architecture-beta
 - **Server-Side Caching:**
   - Source modules from URLs are cached locally to prevent re-downloads (using an MD5 hash of the URL).
   - Converted audio files are stored in a content-addressable cache (local or remote S3/GCS, see Infrastructure) for deduplication and instant serving.
+  - Remote cache cleanup prefers sidecar `last_accessed_at` timestamps over backend object mtimes,
+    with object mtime used as fallback when a sidecar is missing.
 - Single Gunicorn worker (memory optimization)
 - 4 threads per worker
 - Connection pooling
@@ -270,6 +274,8 @@ architecture-beta
   - Dependency verification (uade123, flac, lha, unzip availability)
   - Environment details (Python version, OS platform)
   - Redacted configuration and cache settings
+  - Optional cache debug timing summaries (`oldest_entry_at`, `newest_entry_at`,
+    `oldest_accessed_at`, `newest_accessed_at`) when `HEALTH_INCLUDE_CACHE_DEBUG=1`
 - Git commit tracking in responses
 - Budget alerts
 - Network egress monitoring (1GB free tier)

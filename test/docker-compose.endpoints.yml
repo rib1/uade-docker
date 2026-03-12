@@ -6,3 +6,5 @@ services:
   uade-web:
     environment:
       - UADE_TEST_MODE=1
+      - CACHE_ACCESS_UPDATE_INTERVAL_SECONDS=0
+      - HEALTH_INCLUDE_CACHE_DEBUG=1

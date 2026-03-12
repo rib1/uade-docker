@@ -244,6 +244,8 @@ Returns comprehensive server health status, including:
 - **System Resources**: Memory and disk usage statistics (Linux only for memory).
 - **Dependency Check**: Availability verification for `uade123`, `flac`, `lha`, and `unzip` binaries.
 - **Configuration**: Redacted cache URI/protocol and service limits (max sizes, rate limiting status).
+- **Optional Cache Debug Times**: When `HEALTH_INCLUDE_CACHE_DEBUG=1`, includes cache timing
+  summaries for `oldest_entry_at`, `newest_entry_at`, `oldest_accessed_at`, and `newest_accessed_at`.
 
 ### Upload File
 
@@ -325,11 +327,13 @@ MAX_DOWNLOAD_SIZE: 10485760 # Max download from URLs (10MB)
 CLEANUP_INTERVAL: 3600 # File cleanup (1 hour)
 CACHE_CLEANUP_INTERVAL: 86400 # Cache cleanup interval (24 hours)
 CACHE_URI: file:///tmp/cache # Remote cache URI (default: file:///tmp/cache)
+CACHE_ACCESS_UPDATE_INTERVAL_SECONDS: 300 # Minimum seconds between cache access sidecar rewrites
 RATE_LIMIT: 200 # Max Requests/hour per IP (all endpoints combined)
 RATE_LIMIT_DISABLED: 0 # Set to 1 to disable rate limiting for local development/testing
 DISABLE_SSL_VERIFY: 0 # Set to 1 to disable SSL verification for corporate proxies (Zscaler)
 GIT_COMMIT: unknown # Git commit hash (set automatically at build time)
 UADE_TEST_MODE: 0 # Set to 1 to enable test mode (allows internal test server access)
+HEALTH_INCLUDE_CACHE_DEBUG: 1 # Optional: add cache timing summaries to /health when set
 ```
 
 ## Caching
@@ -347,7 +351,14 @@ The server maintains its own cache of converted audio files. This is primarily f
 - **Stateless & Shared:** All server instances can connect to a shared cache (e.g., AWS S3, GCS, or a shared disk), allowing them to share converted files.
 - **Deduplication:** If one user converts a module, it becomes available instantly to all other users without needing to be converted again.
 - **Backend Options:** The cache can be a local directory, an AWS S3 bucket, or a Google Cloud Storage bucket.
-- **Cleanup:** This cache is periodically cleaned of old files (default is 24 hours).
+- **LRU Access Tracking:** Remote cache entries store access time in a sidecar file
+  `HASH.cache-access.json`. This avoids relying on object mtime updates that are not portable
+  across `file`, `s3`, and `gcs` backends.
+- **Cleanup:** This cache is periodically cleaned of old files (default is 24 hours). Cleanup
+  prefers sidecar `last_accessed_at` timestamps and falls back to object mtime when a sidecar is
+  missing.
+- **Write Throttling:** Cache-hit access sidecars are not rewritten on every request by default.
+  `CACHE_ACCESS_UPDATE_INTERVAL_SECONDS` controls the minimum interval between updates for the same entry.
 
 **Configuration:**
 
@@ -357,6 +368,7 @@ Set the `CACHE_URI` environment variable to your desired cache location:
 CACHE_URI: file:///tmp/cache        # Local cache (default)
 CACHE_URI: s3://your-bucket/cache   # AWS S3 remote cache
 CACHE_URI: gcs://your-bucket/cache  # Google Cloud Storage remote cache
+CACHE_ACCESS_UPDATE_INTERVAL_SECONDS: 300 # Update sidecar access time at most once every 5 min
 ```
 
 ## Browser Compatibility
@@ -491,7 +503,8 @@ Interactive input fields have associated accessible names to ensure they are pro
   - Check for typos in bucket or path names.
 - **Performance issues:**
   - Remote cache may be slower than local disk; use local cache for development/testing.
-  - For S3/GCS, avoid frequent small file operations; batch uploads if possible.
+  - For S3/GCS, frequent small writes can be expensive; `CACHE_ACCESS_UPDATE_INTERVAL_SECONDS`
+    reduces sidecar rewrite frequency on hot cache entries.
 - **fsspec errors:**
   - Ensure `s3fs` (for S3) or `gcsfs` (for GCS) is installed in your environment.
   - Check Python logs for detailed error messages.

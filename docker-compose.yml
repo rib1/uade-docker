@@ -69,6 +69,7 @@ services:
         condition: service_started
     volumes:
       - test-tmp:/home/tester/app/fixtures
+      - uade-tmp:/uade-tmp
     networks:
       - uade-net
 

@@ -43,12 +43,15 @@ logger = logging.getLogger(__name__)
 app = Flask(__name__, static_folder="static")
 START_TIME: Final = time.time()
 CLEANUP_TIMESTAMPS: dict[str, datetime | None] = {"local": None, "cache": None}
+CLEANUP_STATUSES: dict[str, str] = {"local": "not_run_yet", "cache": "not_run_yet"}
 UADE_VERSION_TOKEN_PARTS_MIN: Final = 2
 MEMINFO_LINE_PARTS_EXPECTED: Final = 2
 LHA_HEADER_MIN_BYTES: Final = 7
 ASCII_PRINTABLE_MIN: Final = 0x20
 ASCII_PRINTABLE_MAX: Final = 0x7E
 SANITIZED_URL_LOG_MAX_LEN: Final = 200
+CACHE_ACCESS_RECORD_SUFFIX: Final = ".cache-access.json"
+ENOENT_ERRNO: Final = 2
 
 
 # Get git commit hash for version tracking
@@ -194,6 +197,10 @@ def get_fs_and_root(uri, fs_kwargs=None):
 #   - "gcs://bucket/path" for Google Cloud Storage
 CACHE_URI: Final = os.getenv("CACHE_URI", f"file://{TEMP_BASE}/cache")
 fs_cache, root_cache = get_fs_and_root(CACHE_URI)
+CACHE_ACCESS_UPDATE_INTERVAL_SECONDS: Final = int(
+    os.getenv("CACHE_ACCESS_UPDATE_INTERVAL_SECONDS", "300")
+)
+HEALTH_INCLUDE_CACHE_DEBUG: Final = os.getenv("HEALTH_INCLUDE_CACHE_DEBUG", "0") == "1"
 
 # Ensure remote cache directory exists (if using local filesystem)
 if fs_cache.protocol == "file":
@@ -521,9 +528,10 @@ def cleanup_old_files():
             logger.info("No old files to clean up in local directories.")
     except Exception:
         logger.error("Cleanup error", exc_info=True)
+        CLEANUP_STATUSES["local"] = "cleanup_error"
     else:
-        if removed > 0:
-            CLEANUP_TIMESTAMPS["local"] = datetime.now(UTC)
+        CLEANUP_TIMESTAMPS["local"] = datetime.now(UTC)
+        CLEANUP_STATUSES["local"] = "old_entries_removed" if removed > 0 else "no_old_entries_found"
 
 
 def cleanup_cache_files():
@@ -532,35 +540,48 @@ def cleanup_cache_files():
     try:
         cutoff = time.time() - CACHE_CLEANUP_INTERVAL
         removed = 0
+        stale_cache_hashes = set()
         # List all files in cache root
         for cache_file in fs_cache.glob(f"{root_cache}/*"):
             try:
-                info = fs_cache.info(cache_file)
-                mtime = info.get("mtime") or info.get("LastModified")
-                # mtime may be a timestamp or datetime string
-                if isinstance(mtime, str):
-                    # Try to parse ISO8601 or RFC format
-                    try:
-                        from dateutil.parser import parse as dtparse
+                if is_cache_access_temp_file(cache_file):
+                    fs_cache.rm_file(cache_file)
+                    logger.info(f"Cleaned up orphaned cache access temp file: {cache_file}")
+                    removed += 1
+                    continue
+                if is_cache_access_record(cache_file):
+                    continue
 
-                        mtime_ts = dtparse(mtime).timestamp()
-                    except Exception:
-                        mtime_ts = 0
-                else:
-                    mtime_ts = float(mtime) if mtime is not None else 0
+                cache_hash = get_cache_hash_from_remote_path(cache_file)
+                mtime_ts = get_cache_entry_last_access_ts(cache_hash, cache_file)
                 if mtime_ts < cutoff:
                     fs_cache.rm_file(cache_file)
                     logger.info(f"Cleaned up old cache file: {cache_file}")
                     removed += 1
+                    stale_cache_hashes.add(cache_hash)
             except Exception:
                 logger.warning(f"Cache cleanup error for {cache_file}", exc_info=True)
+
+        for cache_hash in stale_cache_hashes:
+            access_record_path = get_cache_access_record_path(cache_hash)
+            if fs_cache.exists(access_record_path):
+                try:
+                    fs_cache.rm_file(access_record_path)
+                    logger.info(f"Cleaned up old cache access record: {access_record_path}")
+                    removed += 1
+                except Exception:
+                    logger.warning(
+                        f"Cache cleanup error for access record {access_record_path}",
+                        exc_info=True,
+                    )
         if removed == 0:
             logger.info("No old files to clean up in remote cache.")
     except Exception:
         logger.error("Cache cleanup error", exc_info=True)
+        CLEANUP_STATUSES["cache"] = "cleanup_error"
     else:
-        if removed > 0:
-            CLEANUP_TIMESTAMPS["cache"] = datetime.now(UTC)
+        CLEANUP_TIMESTAMPS["cache"] = datetime.now(UTC)
+        CLEANUP_STATUSES["cache"] = "old_entries_removed" if removed > 0 else "no_old_entries_found"
 
 
 def get_file_hash(file_path):
@@ -578,6 +599,158 @@ def touch_for_lru(file_path):
         Path(file_path).touch()
     except Exception:
         logger.warning(f"Could not touch file for LRU update {file_path}", exc_info=True)
+
+
+def is_cache_access_record(remote_path):
+    """Return True when the remote cache path points to a sidecar access record."""
+    return str(remote_path).endswith(CACHE_ACCESS_RECORD_SUFFIX)
+
+
+def is_cache_access_temp_file(remote_path):
+    """Return True when the remote cache path points to a temporary sidecar access record."""
+    path_str = str(remote_path)
+    return CACHE_ACCESS_RECORD_SUFFIX in path_str and path_str.endswith(".tmp")
+
+
+def get_cache_hash_from_remote_path(remote_path):
+    """Extract cache hash from a remote cache path."""
+    filename = str(remote_path).rsplit("/", maxsplit=1)[-1]
+    if filename.endswith(CACHE_ACCESS_RECORD_SUFFIX):
+        return filename.removesuffix(CACHE_ACCESS_RECORD_SUFFIX)
+    return filename.rsplit(".", maxsplit=1)[0]
+
+
+def get_cache_access_record_path(cache_hash):
+    """Return the remote access-record path for a cache entry."""
+    return f"{root_cache}/{cache_hash}{CACHE_ACCESS_RECORD_SUFFIX}"
+
+
+def parse_timestamp_to_epoch(timestamp_value):
+    """Parse an ISO or backend-provided timestamp into epoch seconds."""
+    if isinstance(timestamp_value, str):
+        try:
+            return datetime.fromisoformat(timestamp_value).timestamp()
+        except ValueError:
+            try:
+                from dateutil.parser import parse as dtparse
+
+                return dtparse(timestamp_value).timestamp()
+            except Exception:
+                return 0
+    if timestamp_value is None:
+        return 0
+    try:
+        return float(timestamp_value)
+    except (TypeError, ValueError):
+        return 0
+
+
+def get_remote_path_mtime_ts(remote_path):
+    """Return the remote file mtime as epoch seconds."""
+    info = fs_cache.info(remote_path)
+    return parse_timestamp_to_epoch(info.get("mtime") or info.get("LastModified"))
+
+
+def load_cache_access_record(cache_hash):
+    """Load the sidecar access record for a cache entry."""
+    access_record_path = get_cache_access_record_path(cache_hash)
+    if not fs_cache.exists(access_record_path):
+        return None
+    try:
+        with fs_cache.open(access_record_path, "r") as f:
+            data = json.load(f)
+        if isinstance(data, dict):
+            return data
+    except Exception:
+        logger.warning(f"Could not load cache access record for {cache_hash}", exc_info=True)
+    return None
+
+
+def get_cache_entry_last_access_ts(cache_hash, remote_path):
+    """Return the cache entry access time, preferring the sidecar access record."""
+    access_record = load_cache_access_record(cache_hash)
+    if isinstance(access_record, dict):
+        access_ts = parse_timestamp_to_epoch(access_record.get("last_accessed_at"))
+        if access_ts > 0:
+            return access_ts
+    return get_remote_path_mtime_ts(remote_path)
+
+
+def update_cache_access_record(cache_hash, force=False):
+    """Best-effort write of a sidecar access record for remote-cache LRU tracking."""
+    temp_record_path = None
+    try:
+        access_record_path = get_cache_access_record_path(cache_hash)
+        now = datetime.now(UTC)
+        existing_record = load_cache_access_record(cache_hash)
+        if isinstance(existing_record, dict) and not force:
+            last_accessed_ts = parse_timestamp_to_epoch(existing_record.get("last_accessed_at"))
+            if last_accessed_ts > 0:
+                age_seconds = now.timestamp() - last_accessed_ts
+                if age_seconds < CACHE_ACCESS_UPDATE_INTERVAL_SECONDS:
+                    return
+
+        payload = json.dumps({"last_accessed_at": now.isoformat()})
+        temp_record_path = f"{access_record_path}.{uuid.uuid4()}.tmp"
+        with fs_cache.open(temp_record_path, "w") as f:
+            f.write(payload)
+        if fs_cache.exists(access_record_path):
+            try:
+                fs_cache.rm_file(access_record_path)
+            except FileNotFoundError:
+                pass
+            except OSError as exc:
+                if getattr(exc, "errno", None) != ENOENT_ERRNO:
+                    raise
+        fs_cache.mv(temp_record_path, access_record_path)
+    except Exception:
+        logger.warning(f"Could not update cache access record for {cache_hash}", exc_info=True)
+    finally:
+        if temp_record_path and fs_cache.exists(temp_record_path):
+            try:
+                fs_cache.rm_file(temp_record_path)
+            except Exception:
+                logger.warning(
+                    f"Could not clean up temp cache access record for {cache_hash}",
+                    exc_info=True,
+                )
+
+
+def summarize_cache_debug_times():
+    """Return optional cache timing summaries for debug health output."""
+    entry_times = []
+    access_times = []
+    try:
+        for cache_file in fs_cache.glob(f"{root_cache}/*"):
+            if is_cache_access_record(cache_file):
+                continue
+            cache_hash = get_cache_hash_from_remote_path(cache_file)
+            entry_ts = get_remote_path_mtime_ts(cache_file)
+            access_ts = get_cache_entry_last_access_ts(cache_hash, cache_file)
+            if entry_ts > 0:
+                entry_times.append(datetime.fromtimestamp(entry_ts, UTC))
+            if access_ts > 0:
+                access_times.append(datetime.fromtimestamp(access_ts, UTC))
+    except Exception:
+        logger.warning("Could not summarize cache debug times", exc_info=True)
+        return {
+            "oldest_entry_at": None,
+            "newest_entry_at": None,
+            "oldest_accessed_at": None,
+            "newest_accessed_at": None,
+        }
+
+    def as_iso(value_list, fn):
+        if not value_list:
+            return None
+        return fn(value_list).isoformat()
+
+    return {
+        "oldest_entry_at": as_iso(entry_times, min),
+        "newest_entry_at": as_iso(entry_times, max),
+        "oldest_accessed_at": as_iso(access_times, min),
+        "newest_accessed_at": as_iso(access_times, max),
+    }
 
 
 def supports_flac(user_agent):
@@ -751,6 +924,8 @@ def save_to_cache(cache_hash, file, ext):
             fs_cache.mv(temp_file_remote, cache_file_remote)
             logger.info(f"Cached metadata to remote: {cache_hash}.json")
 
+    update_cache_access_record(cache_hash, force=True)
+
 
 def fetch_cached_file(cache_hash, prefer_flac=False):
     """
@@ -772,8 +947,16 @@ def fetch_cached_file(cache_hash, prefer_flac=False):
                 logger.info(f"Cache hit ({ext[1:].upper()}): {cache_hash} already exists locally")
                 # Touch file to extend its cleanup interval (LRU-aware caching)
                 touch_for_lru(cache_file_local)
+                update_cache_access_record(cache_hash)
                 # Load metadata including subsong durations
                 metadata = load_metadata_cache(cache_hash)
+                if prefer_flac and ext == ".wav":
+                    flac_cache_file_local = CONVERTED_DIR / f"{cache_hash}.flac"
+                    if flac_cache_file_local.exists() or compress_to_flac(
+                        cache_file_local, flac_cache_file_local
+                    ):
+                        save_to_cache(cache_hash, flac_cache_file_local, ".flac")
+                        return flac_cache_file_local, metadata
                 return cache_file_local, metadata
             # Ensure local cache directory exists
             cache_dir_local = cache_file_local.parent
@@ -788,8 +971,16 @@ def fetch_cached_file(cache_hash, prefer_flac=False):
             logger.info(f"Cache hit ({ext[1:].upper()}): {cache_hash} from remote cache")
             # Touch file to extend its cleanup interval (LRU-aware caching)
             touch_for_lru(cache_file_local)
+            update_cache_access_record(cache_hash)
             # Load metadata including subsong durations
             metadata = load_metadata_cache(cache_hash)
+            if prefer_flac and ext == ".wav":
+                flac_cache_file_local = CONVERTED_DIR / f"{cache_hash}.flac"
+                if flac_cache_file_local.exists() or compress_to_flac(
+                    cache_file_local, flac_cache_file_local
+                ):
+                    save_to_cache(cache_hash, flac_cache_file_local, ".flac")
+                    return flac_cache_file_local, metadata
             return cache_file_local, metadata
     return None, None
 
@@ -950,6 +1141,7 @@ def load_metadata_cache(cache_hash):
             logger.info(f"Loaded metadata from local: {cache_hash}.json")
             # Touch file to extend its cleanup interval (LRU-aware caching)
             touch_for_lru(metadata_file_local)
+            update_cache_access_record(cache_hash)
             return metadata
 
         # Fallback to remote cache if not found locally
@@ -958,6 +1150,7 @@ def load_metadata_cache(cache_hash):
             with fs_cache.open(metadata_file_remote, "r") as f:
                 metadata = json.load(f)
             logger.info(f"Loaded metadata from remote cache: {cache_hash}.json")
+            update_cache_access_record(cache_hash)
 
             # Save to local disk for future access
             temp_file_local = metadata_file_local.with_name(
@@ -1394,13 +1587,17 @@ def health():
     cache_info = {
         "protocol": fs_cache.protocol,
         "uri_redacted": CACHE_URI.split("://")[0] + "://***" if "://" in CACHE_URI else "***",
+        "cleanup_status": CLEANUP_STATUSES["cache"],
         "last_cleanup_at": (
             CLEANUP_TIMESTAMPS["cache"].isoformat()
             if CLEANUP_TIMESTAMPS["cache"] is not None
             else None
         ),
     }
+    if HEALTH_INCLUDE_CACHE_DEBUG:
+        cache_info["debug"] = summarize_cache_debug_times()
     temp_files_info = {
+        "cleanup_status": CLEANUP_STATUSES["local"],
         "last_cleanup_at": (
             CLEANUP_TIMESTAMPS["local"].isoformat()
             if CLEANUP_TIMESTAMPS["local"] is not None
@@ -1428,6 +1625,45 @@ def health():
                 "max_download_size_mb": MAX_DOWNLOAD_SIZE / (1024 * 1024),
                 "rate_limiting_enabled": rate_limit_enabled,
                 "cleanup_interval_seconds": CLEANUP_INTERVAL,
+            },
+        }
+    )
+
+
+@app.route("/test/run-cleanup", methods=["POST"])
+@limiter.exempt
+def test_run_cleanup():
+    """Trigger cleanup paths in test mode to validate health status transitions."""
+    if os.getenv("UADE_TEST_MODE") != "1":
+        return json_response({"error": "Not found"}, 404)
+
+    data = request.get_json(silent=True) or {}
+    scope = data.get("scope", "all")
+    if scope not in {"local", "cache", "all"}:
+        return json_response({"error": "Invalid cleanup scope"}, 400)
+
+    if scope in {"local", "all"}:
+        cleanup_old_files()
+    if scope in {"cache", "all"}:
+        cleanup_cache_files()
+
+    return json_response(
+        {
+            "local": {
+                "cleanup_status": CLEANUP_STATUSES["local"],
+                "last_cleanup_at": (
+                    CLEANUP_TIMESTAMPS["local"].isoformat()
+                    if CLEANUP_TIMESTAMPS["local"] is not None
+                    else None
+                ),
+            },
+            "cache": {
+                "cleanup_status": CLEANUP_STATUSES["cache"],
+                "last_cleanup_at": (
+                    CLEANUP_TIMESTAMPS["cache"].isoformat()
+                    if CLEANUP_TIMESTAMPS["cache"] is not None
+                    else None
+                ),
             },
         }
     )
@@ -1711,18 +1947,18 @@ def is_safe_url(u):
 
         parsed = urllib.parse.urlparse(u)
         if parsed.scheme not in ("http", "https"):
-            logger.warning(
+            logger.info(
                 f"is_safe_url: rejected scheme '{parsed.scheme}' for URL: {sanitized_url_for_log}"
             )
             return False
         if not parsed.hostname:
-            logger.warning(f"is_safe_url: missing hostname in URL: {sanitized_url_for_log}")
+            logger.info(f"is_safe_url: missing hostname in URL: {sanitized_url_for_log}")
             return False
         # Normalize hostname for Unicode/punycode edge cases
         try:
             normalized_hostname = parsed.hostname.encode("idna").decode("ascii")
         except Exception:
-            logger.warning(
+            logger.info(
                 f"is_safe_url: failed to normalize hostname '{parsed.hostname}' "
                 f"in URL: {sanitized_url_for_log}"
             )  # codeql [py/log-injection] lgtm [py/log-injection]
@@ -1748,10 +1984,9 @@ def is_safe_url(u):
                     for addr in socket.getaddrinfo(normalized_hostname, None)
                 ]
             except Exception:
-                logger.warning(
+                logger.info(
                     f"is_safe_url: failed to resolve domain '{normalized_hostname}' "
-                    f"in URL: {sanitized_url_for_log}",
-                    exc_info=True,
+                    f"in URL: {sanitized_url_for_log}"
                 )  # codeql [py/log-injection] lgtm [py/log-injection]
                 return False
         for ip in check_ips:
@@ -1763,7 +1998,7 @@ def is_safe_url(u):
                 or ip.is_multicast
                 or ip.is_unspecified
             ):
-                logger.warning(f"is_safe_url: rejected IP '{ip}' for URL: {sanitized_url_for_log}")
+                logger.info(f"is_safe_url: rejected IP '{ip}' for URL: {sanitized_url_for_log}")
                 return False
 
         # Check for shell-sensitive characters in path and query
@@ -1790,7 +2025,7 @@ def is_safe_url(u):
         ]
         for char in problematic_chars:
             if char in unquoted_path or char in unquoted_query or char in unquoted_fragment:
-                logger.warning(
+                logger.info(
                     f"is_safe_url: rejected URL due to problematic character '{char}' "
                     f"in path/query/fragment for URL: {sanitized_url_for_log}"
                 )
@@ -1801,7 +2036,7 @@ def is_safe_url(u):
             or unquoted_query.endswith(("'", '"'))
             or unquoted_fragment.endswith(("'", '"'))
         ):
-            logger.warning(
+            logger.info(
                 "is_safe_url: rejected URL due to dangling quote in path/query/fragment "
                 f"for URL: {sanitized_url_for_log}"
             )
@@ -1814,7 +2049,7 @@ def is_safe_url(u):
         if any(seg == ".." for seg in normalized_path.split("/")) or any(
             seg == ".." for seg in normalized_query.split("/")
         ):
-            logger.warning(
+            logger.info(
                 f"is_safe_url: rejected URL due to path traversal pattern '..' "
                 f"in path/query for URL: {sanitized_url_for_log}"
             )

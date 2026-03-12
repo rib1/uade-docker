@@ -1227,7 +1227,21 @@ test_health_endpoint() {
     fi
 
     LAST_CACHE_CLEANUP_AT=$(echo "$RESPONSE" | jq -r .cache.last_cleanup_at)
-    if [ "$LAST_CACHE_CLEANUP_AT" != "null" ] && [ -n "$LAST_CACHE_CLEANUP_AT" ]; then
+    CACHE_CLEANUP_STATUS=$(echo "$RESPONSE" | jq -r .cache.cleanup_status)
+    if ! echo "$CACHE_CLEANUP_STATUS" | grep -Eq '^(not_run_yet|no_old_entries_found|old_entries_removed|cleanup_error)$'; then
+        echo "ERROR: cache.cleanup_status is invalid: $CACHE_CLEANUP_STATUS"
+        exit 1
+    fi
+    if [ "$CACHE_CLEANUP_STATUS" = "not_run_yet" ]; then
+        if [ "$LAST_CACHE_CLEANUP_AT" != "null" ] && [ -n "$LAST_CACHE_CLEANUP_AT" ]; then
+            echo "ERROR: cache.last_cleanup_at should be null before first run: $LAST_CACHE_CLEANUP_AT"
+            exit 1
+        fi
+    else
+        if [ "$LAST_CACHE_CLEANUP_AT" = "null" ] || [ -z "$LAST_CACHE_CLEANUP_AT" ]; then
+            echo "ERROR: cache.last_cleanup_at is missing after cleanup run"
+            exit 1
+        fi
         if ! echo "$LAST_CACHE_CLEANUP_AT" | grep -Eq '^[0-9]{4}-[0-9]{2}-[0-9]{2}T'; then
             echo "ERROR: cache.last_cleanup_at is not an ISO timestamp: $LAST_CACHE_CLEANUP_AT"
             exit 1
@@ -1235,14 +1249,269 @@ test_health_endpoint() {
     fi
 
     LAST_LOCAL_CLEANUP_AT=$(echo "$RESPONSE" | jq -r .temp_files.last_cleanup_at)
-    if [ "$LAST_LOCAL_CLEANUP_AT" != "null" ] && [ -n "$LAST_LOCAL_CLEANUP_AT" ]; then
+    LOCAL_CLEANUP_STATUS=$(echo "$RESPONSE" | jq -r .temp_files.cleanup_status)
+    if ! echo "$LOCAL_CLEANUP_STATUS" | grep -Eq '^(not_run_yet|no_old_entries_found|old_entries_removed|cleanup_error)$'; then
+        echo "ERROR: temp_files.cleanup_status is invalid: $LOCAL_CLEANUP_STATUS"
+        exit 1
+    fi
+    if [ "$LOCAL_CLEANUP_STATUS" = "not_run_yet" ]; then
+        if [ "$LAST_LOCAL_CLEANUP_AT" != "null" ] && [ -n "$LAST_LOCAL_CLEANUP_AT" ]; then
+            echo "ERROR: temp_files.last_cleanup_at should be null before first run: $LAST_LOCAL_CLEANUP_AT"
+            exit 1
+        fi
+    else
+        if [ "$LAST_LOCAL_CLEANUP_AT" = "null" ] || [ -z "$LAST_LOCAL_CLEANUP_AT" ]; then
+            echo "ERROR: temp_files.last_cleanup_at is missing after cleanup run"
+            exit 1
+        fi
         if ! echo "$LAST_LOCAL_CLEANUP_AT" | grep -Eq '^[0-9]{4}-[0-9]{2}-[0-9]{2}T'; then
             echo "ERROR: temp_files.last_cleanup_at is not an ISO timestamp: $LAST_LOCAL_CLEANUP_AT"
             exit 1
         fi
     fi
 
+    CACHE_DEBUG=$(echo "$RESPONSE" | jq -c .cache.debug)
+    if [ "$CACHE_DEBUG" = "null" ] || [ -z "$CACHE_DEBUG" ]; then
+        echo "ERROR: cache.debug is missing in health response"
+        echo "Response: $RESPONSE"
+        exit 1
+    fi
+
+    for key in oldest_entry_at newest_entry_at oldest_accessed_at newest_accessed_at; do
+        VALUE=$(echo "$RESPONSE" | jq -r ".cache.debug.$key")
+        if [ "$VALUE" != "null" ] && [ -n "$VALUE" ]; then
+            if ! echo "$VALUE" | grep -Eq '^[0-9]{4}-[0-9]{2}-[0-9]{2}T'; then
+                echo "ERROR: cache.debug.$key is not an ISO timestamp: $VALUE"
+                exit 1
+            fi
+        fi
+    done
+
     echo "SUCCESS: Health endpoint returned all expected fields and valid data."
+    echo ""
+}
+
+test_remote_cache_access_record_refresh() {
+    TEST_NAME=$1
+    URL=$2
+
+    echo "--- Testing Remote Cache Access Record: $TEST_NAME ---"
+
+    HTTP_CODE_BODY=$(_perform_convert_url_call "$URL")
+    HTTP_CODE=$(echo "$HTTP_CODE_BODY" | head -n1)
+    BODY=$(echo "$HTTP_CODE_BODY" | tail -n1)
+
+    if [ "$HTTP_CODE" -ne 200 ]; then
+        echo "ERROR: Initial convert-url call failed with HTTP $HTTP_CODE for '$TEST_NAME'"
+        echo "Response body: $BODY"
+        exit 1
+    fi
+
+    FILE_ID=$(echo "$BODY" | jq -r .file_id)
+    ACCESS_RECORD_PATH="/uade-tmp/cache/${FILE_ID}.cache-access.json"
+
+    if [ ! -f "$ACCESS_RECORD_PATH" ]; then
+        echo "ERROR: Cache access record not found for '$TEST_NAME'"
+        echo "Expected path: $ACCESS_RECORD_PATH"
+        exit 1
+    fi
+
+    BEFORE_TS=$(stat -c %Y "$ACCESS_RECORD_PATH")
+    LAST_ACCESSED_AT=$(jq -r .last_accessed_at "$ACCESS_RECORD_PATH")
+    if [ -z "$LAST_ACCESSED_AT" ] || [ "$LAST_ACCESSED_AT" = "null" ]; then
+        echo "ERROR: Cache access record missing last_accessed_at for '$TEST_NAME'"
+        cat "$ACCESS_RECORD_PATH"
+        exit 1
+    fi
+
+    sleep 2
+
+    HTTP_CODE_BODY=$(_perform_convert_url_call "$URL")
+    HTTP_CODE=$(echo "$HTTP_CODE_BODY" | head -n1)
+    BODY=$(echo "$HTTP_CODE_BODY" | tail -n1)
+
+    if [ "$HTTP_CODE" -ne 200 ]; then
+        echo "ERROR: Second convert-url call failed with HTTP $HTTP_CODE for '$TEST_NAME'"
+        echo "Response body: $BODY"
+        exit 1
+    fi
+
+    AFTER_TS=$(stat -c %Y "$ACCESS_RECORD_PATH")
+    if [ "$AFTER_TS" -le "$BEFORE_TS" ]; then
+        echo "ERROR: Cache access record timestamp did not advance for '$TEST_NAME'"
+        echo "Before: $BEFORE_TS"
+        echo "After: $AFTER_TS"
+        cat "$ACCESS_RECORD_PATH"
+        exit 1
+    fi
+
+    echo "SUCCESS: Cache access record timestamp advanced on cache hit."
+    echo ""
+}
+
+test_no_orphaned_cache_access_temp_files_under_parallel_hits() {
+    TEST_NAME=$1
+    URL=$2
+
+    echo "--- Testing Remote Cache Access Temp Cleanup: $TEST_NAME ---"
+
+    HTTP_CODE_BODY=$(_perform_convert_url_call "$URL")
+    HTTP_CODE=$(echo "$HTTP_CODE_BODY" | head -n1)
+    BODY=$(echo "$HTTP_CODE_BODY" | tail -n1)
+
+    if [ "$HTTP_CODE" -ne 200 ]; then
+        echo "ERROR: Initial convert-url call failed with HTTP $HTTP_CODE for '$TEST_NAME'"
+        echo "Response body: $BODY"
+        exit 1
+    fi
+
+    FILE_ID=$(echo "$BODY" | jq -r .file_id)
+
+    seq 1 8 | xargs -I{} -P 8 sh -c "
+        curl -s -X POST \
+            -H 'Content-Type: application/json' \
+            -d '{\"url\":\"$URL\"}' \
+            '$BASE_URL/convert-url' > /dev/null
+    "
+
+    TEMP_FILES=$(find /uade-tmp/cache -maxdepth 1 -name "${FILE_ID}.cache-access.json.*.tmp" | wc -l)
+    if [ "$TEMP_FILES" -ne 0 ]; then
+        echo "ERROR: Found orphaned cache access temp files for '$TEST_NAME'"
+        find /uade-tmp/cache -maxdepth 1 -name "${FILE_ID}.cache-access.json.*.tmp"
+        exit 1
+    fi
+
+    echo "SUCCESS: Parallel cache hits left no orphaned cache access temp files."
+    echo ""
+}
+
+_run_cleanup_scope() {
+    LOCAL_SCOPE=$1
+
+    RESPONSE_ALL=$(curl -s -w "\n%{http_code}" -X POST \
+        -H "Content-Type: application/json" \
+        -d "{\"scope\":\"$LOCAL_SCOPE\"}" \
+        "$BASE_URL/test/run-cleanup")
+
+    HTTP_CODE=$(echo "$RESPONSE_ALL" | tail -n1)
+    BODY=$(echo "$RESPONSE_ALL" | sed '$d')
+
+    if [ "$HTTP_CODE" -ne 200 ]; then
+        echo "ERROR: Cleanup trigger failed for scope '$LOCAL_SCOPE'"
+        echo "Response body: $BODY"
+        exit 1
+    fi
+
+    echo "$BODY"
+}
+
+test_cleanup_status_and_timestamp_transitions() {
+    echo "--- Testing Cleanup Status And Timestamp Transitions ---"
+
+    mkdir -p /uade-tmp/converted /uade-tmp/cache
+
+    LOCAL_STALE_FILE="/uade-tmp/converted/health-cleanup-stale.tmp"
+    touch "$LOCAL_STALE_FILE"
+    touch -t 202001010101 "$LOCAL_STALE_FILE"
+
+    LOCAL_RESPONSE=$(_run_cleanup_scope "local")
+    LOCAL_STATUS=$(echo "$LOCAL_RESPONSE" | jq -r .local.cleanup_status)
+    LOCAL_TS_1=$(echo "$LOCAL_RESPONSE" | jq -r .local.last_cleanup_at)
+
+    if [ "$LOCAL_STATUS" != "old_entries_removed" ]; then
+        echo "ERROR: Expected local cleanup to remove old entries, got '$LOCAL_STATUS'"
+        echo "Response body: $LOCAL_RESPONSE"
+        exit 1
+    fi
+
+    if [ -e "$LOCAL_STALE_FILE" ]; then
+        echo "ERROR: Local stale file still exists after cleanup"
+        exit 1
+    fi
+
+    sleep 1
+
+    LOCAL_RESPONSE=$(_run_cleanup_scope "local")
+    LOCAL_STATUS=$(echo "$LOCAL_RESPONSE" | jq -r .local.cleanup_status)
+    LOCAL_TS_2=$(echo "$LOCAL_RESPONSE" | jq -r .local.last_cleanup_at)
+
+    if [ "$LOCAL_STATUS" != "no_old_entries_found" ]; then
+        echo "ERROR: Expected local cleanup to report no old entries, got '$LOCAL_STATUS'"
+        echo "Response body: $LOCAL_RESPONSE"
+        exit 1
+    fi
+
+    if [[ ! "$LOCAL_TS_2" > "$LOCAL_TS_1" ]]; then
+        echo "ERROR: Local cleanup timestamp did not advance on no-op cleanup"
+        echo "First timestamp: $LOCAL_TS_1"
+        echo "Second timestamp: $LOCAL_TS_2"
+        exit 1
+    fi
+
+    CACHE_HASH="health-cache-stale"
+    CACHE_STALE_FILE="/uade-tmp/cache/${CACHE_HASH}.wav"
+    CACHE_ACCESS_RECORD="/uade-tmp/cache/${CACHE_HASH}.cache-access.json"
+
+    echo "stale" > "$CACHE_STALE_FILE"
+    cat > "$CACHE_ACCESS_RECORD" <<'EOF'
+{"last_accessed_at":"2020-01-01T01:01:00+00:00"}
+EOF
+    touch -t 202001010101 "$CACHE_STALE_FILE"
+    touch -t 202001010101 "$CACHE_ACCESS_RECORD"
+
+    CACHE_RESPONSE=$(_run_cleanup_scope "cache")
+    CACHE_STATUS=$(echo "$CACHE_RESPONSE" | jq -r .cache.cleanup_status)
+    CACHE_TS_1=$(echo "$CACHE_RESPONSE" | jq -r .cache.last_cleanup_at)
+
+    if [ "$CACHE_STATUS" != "old_entries_removed" ]; then
+        echo "ERROR: Expected cache cleanup to remove old entries, got '$CACHE_STATUS'"
+        echo "Response body: $CACHE_RESPONSE"
+        exit 1
+    fi
+
+    if [ -e "$CACHE_STALE_FILE" ] || [ -e "$CACHE_ACCESS_RECORD" ]; then
+        echo "ERROR: Cache stale artifacts still exist after cleanup"
+        exit 1
+    fi
+
+    sleep 1
+
+    CACHE_RESPONSE=$(_run_cleanup_scope "cache")
+    CACHE_STATUS=$(echo "$CACHE_RESPONSE" | jq -r .cache.cleanup_status)
+    CACHE_TS_2=$(echo "$CACHE_RESPONSE" | jq -r .cache.last_cleanup_at)
+
+    if [ "$CACHE_STATUS" != "no_old_entries_found" ]; then
+        echo "ERROR: Expected cache cleanup to report no old entries, got '$CACHE_STATUS'"
+        echo "Response body: $CACHE_RESPONSE"
+        exit 1
+    fi
+
+    if [[ ! "$CACHE_TS_2" > "$CACHE_TS_1" ]]; then
+        echo "ERROR: Cache cleanup timestamp did not advance on no-op cleanup"
+        echo "First timestamp: $CACHE_TS_1"
+        echo "Second timestamp: $CACHE_TS_2"
+        exit 1
+    fi
+
+    HEALTH_RESPONSE=$(curl -s "$BASE_URL/health")
+    HEALTH_LOCAL_STATUS=$(echo "$HEALTH_RESPONSE" | jq -r .temp_files.cleanup_status)
+    HEALTH_CACHE_STATUS=$(echo "$HEALTH_RESPONSE" | jq -r .cache.cleanup_status)
+    HEALTH_LOCAL_TS=$(echo "$HEALTH_RESPONSE" | jq -r .temp_files.last_cleanup_at)
+    HEALTH_CACHE_TS=$(echo "$HEALTH_RESPONSE" | jq -r .cache.last_cleanup_at)
+
+    if [ "$HEALTH_LOCAL_STATUS" != "no_old_entries_found" ] || [ "$HEALTH_CACHE_STATUS" != "no_old_entries_found" ]; then
+        echo "ERROR: Health endpoint cleanup statuses do not reflect latest cleanup runs"
+        echo "Response: $HEALTH_RESPONSE"
+        exit 1
+    fi
+
+    if [ "$HEALTH_LOCAL_TS" != "$LOCAL_TS_2" ] || [ "$HEALTH_CACHE_TS" != "$CACHE_TS_2" ]; then
+        echo "ERROR: Health endpoint cleanup timestamps do not match latest cleanup runs"
+        echo "Response: $HEALTH_RESPONSE"
+        exit 1
+    fi
+
+    echo "SUCCESS: Cleanup status and timestamp transitions validated."
     echo ""
 }
 
@@ -1254,6 +1523,9 @@ done
 echo "Service is up!"
 
 test_health_endpoint
+test_cleanup_status_and_timestamp_transitions
+test_remote_cache_access_record_refresh "Sidecar access record refresh" "https://modland.com/pub/modules/Protracker/Captain/space%20debris.mod"
+test_no_orphaned_cache_access_temp_files_under_parallel_hits "No orphaned sidecar temp files" "https://modland.com/pub/modules/Protracker/Captain/space%20debris.mod"
 
 test_probe_url "Probe Protracker module" "https://modland.com/pub/modules/Protracker/Captain/space%20debris.mod"
 test_probe_url "Probe TFMX module" "https://modland.com/pub/modules/TFMX/Chris%20Huelsbeck/mdat.turrican%202%20level%200-intro" "https://modland.com/pub/modules/TFMX/Chris%20Huelsbeck/smpl.turrican%202%20level%200-intro"
