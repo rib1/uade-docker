@@ -69,7 +69,7 @@ docker compose ps
 The `docker-compose.yml` includes these environment variables:
 
 ```yaml
-FLASK_ENV: production # Production mode
+FLASK_ENV: production # Production-like local mode (does not enable reload by itself)
 MAX_UPLOAD_SIZE: 10485760 # 10MB max upload
 MAX_DOWNLOAD_SIZE: 10485760 # 10MB max download from URLs
 CLEANUP_INTERVAL: 3600 # Local files deleted after 1 hour
@@ -78,7 +78,9 @@ RATE_LIMIT_DISABLED: 1  # disable rate limiting for local testing
 DISABLE_SSL_VERIFY: 1 # disable SSL verification for corporate proxies (Zscaler)
 ```
 
-To customize, edit `docker-compose.yml` or create a `docker-compose.override.yml`:
+`FLASK_DEBUG` is intentionally not part of the base compose configuration. It is a development-only flag used by `docker-compose.dev.yml` to enable Flask reload behavior.
+
+To customize the production-like local stack, edit `docker-compose.yml` or add a local override file such as `docker-compose.override.yml`:
 
 ```yaml
 # docker-compose.override.yml
@@ -90,6 +92,8 @@ services:
     ports:
       - "8080:5000" # Use port 8080 instead
 ```
+
+For hot reload during development, use the dedicated `docker-compose.dev.yml` flow described in [Hot Reload with Docker](#hot-reload-with-docker) instead of changing the base service command.
 
 ### Manual Docker Build
 
@@ -320,7 +324,8 @@ GET /download/{file_id}  # Download file
 Environment variables for customization:
 
 ```yaml
-FLASK_ENV: production # Flask environment
+FLASK_ENV: production # Runtime mode label; does not enable reload by itself
+FLASK_DEBUG: 0 # Development-only; set to 1 in docker-compose.dev.yml to enable Flask reloader
 PORT: 5000 # Server port
 MAX_UPLOAD_SIZE: 10485760 # Max upload (10MB)
 MAX_DOWNLOAD_SIZE: 10485760 # Max download from URLs (10MB)
@@ -569,16 +574,26 @@ python server.py
 
 ### Hot Reload with Docker
 
-```yaml
-# docker-compose.override.yml (local development)
-services:
-  uade-web:
-    volumes:
-      - ./web:/app # Remove :ro for hot reload
-    command: python3 server.py # Use Flask dev server
-    environment:
-      - FLASK_ENV=development
+Use the dedicated development override file so production and live deployments stay on Gunicorn without reload mode:
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.dev.yml up --build uade-web
 ```
+
+`docker-compose.dev.yml` switches the web container to:
+
+- a read-write `./web:/app` mount for live code changes
+- `python3 server.py` instead of Gunicorn
+- `FLASK_ENV=development` to label the container as development mode
+- `FLASK_DEBUG=1` to actually enable Flask's reloader
+- HTML, CSS, and JavaScript changes are served from the bind mount on browser refresh
+- Python changes reload automatically through Flask's reloader
+
+The base `docker-compose.yml` remains production-like:
+
+- `FLASK_ENV=production`
+- Gunicorn as the container command
+- no `FLASK_DEBUG` flag
 
 ## Performance
 

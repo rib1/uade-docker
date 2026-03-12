@@ -1,0 +1,8 @@
+services:
+  uade-web:
+    volumes:
+      - ./web:/app
+    environment:
+      - FLASK_ENV=development
+      - FLASK_DEBUG=1
+    command: ["python3", "server.py"]

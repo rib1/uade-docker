@@ -62,6 +62,7 @@ This project uses semantic versioning for the UADE CLI base image to ensure stab
 docker build -t uade-cli .
 docker build -f Dockerfile.web -t uade-web-player .
 docker compose up -d uade-web  # Run web player locally at http://localhost:5000
+docker compose -f docker-compose.yml -f docker-compose.dev.yml up --build uade-web # For containerized development with hot reload
 ```
 
 For testing instructions, see the **[Development section in the Web Player documentation](docs/WEB-PLAYER.md#development)**.
