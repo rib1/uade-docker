@@ -39,11 +39,8 @@ fi
 # Git Bash (MSYS2) rewrites POSIX paths in docker args by default.
 # Disable conversion so /workspace paths are passed to Docker unchanged.
 if [ -n "${MSYSTEM:-}" ] || uname -s | grep -Eq 'MINGW|MSYS'; then
-    GIT_BASH=true
     export MSYS_NO_PATHCONV="${MSYS_NO_PATHCONV:-1}"
     export MSYS2_ARG_CONV_EXCL="${MSYS2_ARG_CONV_EXCL:-*}"
-else
-    GIT_BASH=false
 fi
 
 # Tool versions from manifests (managed by Dependabot)
@@ -537,29 +534,42 @@ if [ "$RUN_RUFF" = true ]; then
 
     echo "Running Ruff on /web..."
 
-    FIX_MODE_ARG=""
+    RUFF_CHECK_ARGS=()
+    RUFF_FORMAT_ARGS=(--check)
     if [ "$FIX_MODE" = true ]; then
-        FIX_MODE_ARG="--fix"
+        RUFF_CHECK_ARGS+=(--fix)
+        RUFF_FORMAT_ARGS=()
     fi
 
     # Check if ruff is available locally (in Docker container)
     if command -v ruff >/dev/null 2>&1; then
         # Use local ruff
-        OUTPUT=$(cd "${PROJECT_ROOT}/web" && ruff check . $FIX_MODE_ARG 2>&1)
-        EXIT_CODE=$?
+        OUTPUT_FORMAT=$(cd "${PROJECT_ROOT}/web" && ruff format . "${RUFF_FORMAT_ARGS[@]}" 2>&1)
+        EXIT_CODE_FORMAT=$?
+        OUTPUT_CHECK=$(cd "${PROJECT_ROOT}/web" && ruff check . "${RUFF_CHECK_ARGS[@]}" 2>&1)
+        EXIT_CODE_CHECK=$?
     else
         # Fall back to Docker (for local dev environments)
         OUTPUT=$(docker run --rm \
                -v "${PROJECT_ROOT}:/workspace" \
                --workdir /workspace/web \
-               "ghcr.io/astral-sh/ruff:${RUFF_VERSION}" check . $FIX_MODE_ARG 2>&1)
+               "ghcr.io/astral-sh/ruff:${RUFF_VERSION}" check . "${RUFF_CHECK_ARGS[@]}" 2>&1)
         EXIT_CODE=$?
+        # Ruff format and check in one go with Docker is a bit more complex,
+        # so we'll just show the check output for now. The CI uses local ruff.
+        OUTPUT_FORMAT=""
+        EXIT_CODE_FORMAT=0
+        OUTPUT_CHECK="$OUTPUT"
+        EXIT_CODE_CHECK="$EXIT_CODE"
     fi
 
-    if [ $EXIT_CODE -eq 0 ]; then
+    if [ $EXIT_CODE_FORMAT -eq 0 ] && [ $EXIT_CODE_CHECK -eq 0 ]; then
         print_result "Ruff" 0
     else
-        print_result "Ruff" $EXIT_CODE "$OUTPUT"
+        COMBINED_OUTPUT="${OUTPUT_FORMAT}\n${OUTPUT_CHECK}"
+        # Use the highest exit code
+        FINAL_EXIT_CODE=$(( EXIT_CODE_FORMAT > EXIT_CODE_CHECK ? EXIT_CODE_FORMAT : EXIT_CODE_CHECK ))
+        print_result "Ruff" "$FINAL_EXIT_CODE" "$COMBINED_OUTPUT"
     fi
 fi
 
@@ -580,7 +590,7 @@ if [ "$RUN_MYPY" = true ]; then
         OUTPUT=$(docker run --rm \
                -v "${PROJECT_ROOT}:/workspace" \
                --workdir /workspace \
-               python:3.13-slim sh -lc "pip install --no-cache-dir mypy==${MYPY_VERSION} >/dev/null && mypy --config-file pyproject.toml --no-error-summary" 2>&1)
+               python:3.13-slim sh -lc "pip install --no-cache-dir mypy==${MYPY_VERSION} >/dev/null && mypy ${MYPY_ARGS[*]}" 2>&1)
         EXIT_CODE=$?
     fi
 
@@ -644,41 +654,48 @@ if [ "$RUN_COMPOSE" = true ]; then
     # Check if docker compose plugin is available
     if ! docker compose version >/dev/null 2>&1; then
         echo -e "${YELLOW}⚠ Docker Compose plugin not available (skipped in container)${NC}"
+        print_result "Docker Compose" 0 # Skip check
     else
-        # Find main Docker Compose files (not overrides which require base file)
-        COMPOSE_FILES=$(find "${PROJECT_ROOT}" -maxdepth 1 -type f \( -name "docker-compose.yml" -o -name "compose.yml" \) 2>/dev/null | sort)
+        MAIN_COMPOSE_FILE=$(find "${PROJECT_ROOT}" -maxdepth 1 -type f \( -name "docker-compose.yml" -o -name "compose.yml" \) 2>/dev/null | head -n 1)
 
-        if [ -z "$COMPOSE_FILES" ]; then
+        if [ -z "$MAIN_COMPOSE_FILE" ]; then
             echo -e "${YELLOW}⚠ No Docker Compose files found${NC}"
+            print_result "Docker Compose" 0
         else
-            COMPOSE_COUNT=$(echo "$COMPOSE_FILES" | wc -l)
+            mapfile -t OVERRIDE_FILES < <(find "${PROJECT_ROOT}/test" -maxdepth 1 -type f -name "docker-compose.*.yml" 2>/dev/null | sort)
+            ALL_COMPOSE_FILES=("$MAIN_COMPOSE_FILE" "${OVERRIDE_FILES[@]}")
+            COMPOSE_COUNT=${#ALL_COMPOSE_FILES[@]}
+
             echo "Found $COMPOSE_COUNT compose file(s). Validating..."
 
             COMPOSE_FAILED=false
             COMPOSE_OUTPUT=""
-            while IFS= read -r composefile; do
+            for composefile in "${ALL_COMPOSE_FILES[@]}"; do
                 composefile_name=$(basename "$composefile")
                 echo "  Checking: $composefile_name"
 
-                # Use docker compose config to validate
-                if [ "$GIT_BASH" = true ]; then
-                    OUTPUT=$(cd "${PROJECT_ROOT}" && MSYS_NO_PATHCONV=1 MSYS2_ARG_CONV_EXCL="*" docker compose -f "$composefile_name" config --quiet 2>&1)
-                else
+                if [ "$composefile" = "$MAIN_COMPOSE_FILE" ]; then
+                    # Validate base file alone
                     OUTPUT=$(cd "${PROJECT_ROOT}" && docker compose -f "$composefile_name" config --quiet 2>&1)
+                else
+                    # Validate override file with the base file
+                    main_composefile_name=$(basename "$MAIN_COMPOSE_FILE")
+                    relative_override_path="${composefile#"${PROJECT_ROOT}"/}"
+                    OUTPUT=$(cd "${PROJECT_ROOT}" && docker compose -f "$main_composefile_name" -f "$relative_override_path" config --quiet 2>&1)
                 fi
                 EXIT_CODE=$?
 
                 if [ $EXIT_CODE -eq 0 ]; then
                     echo -e "    ${GREEN}✓${NC} $composefile_name"
                 else
-                    echo -e "    ${RED}✗${NC} $composefile_name"
+                    echo -e "    ${RED}✗${NC} $composefile_name\n$OUTPUT"
                     COMPOSE_FAILED=true
                     COMPOSE_OUTPUT="$COMPOSE_OUTPUT\n$OUTPUT"
                 fi
-            done <<< "$COMPOSE_FILES"
+            done
 
             if [ "$COMPOSE_FAILED" = true ]; then
-                print_result "Docker Compose" 1 "$COMPOSE_OUTPUT"
+                print_result "Docker Compose" 1
             else
                 print_result "Docker Compose" 0
             fi

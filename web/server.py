@@ -52,14 +52,20 @@ ASCII_PRINTABLE_MAX: Final = 0x7E
 SANITIZED_URL_LOG_MAX_LEN: Final = 200
 CACHE_ACCESS_RECORD_SUFFIX: Final = ".cache-access.json"
 ENOENT_ERRNO: Final = 2
+GIT_BIN: Final = "/usr/bin/git"
+UADE123_BIN: Final = "/usr/local/bin/uade123"
+FLAC_BIN: Final = "/usr/bin/flac"
+LHA_BIN: Final = "/usr/bin/lha"
+SH_BIN: Final = "/bin/sh"
 
 
 # Get git commit hash for version tracking
 def get_git_commit():
     """Get current git commit hash"""
     try:
-        result = subprocess.run(
-            ["git", "rev-parse", "--short", "HEAD"],
+        # Trusted fixed binary path and static args; falls back to env var if git is unavailable.
+        result = subprocess.run(  # noqa: S603
+            [GIT_BIN, "rev-parse", "--short", "HEAD"],
             capture_output=True,
             text=True,
             check=False,
@@ -78,8 +84,9 @@ def get_git_commit():
 def get_uade_version():
     """Get UADE version from the uade123 binary"""
     try:
-        result = subprocess.run(
-            ["/usr/local/bin/uade123", "--version"],
+        # Trusted fixed binary path and static args.
+        result = subprocess.run(  # noqa: S603
+            [UADE123_BIN, "--version"],
             capture_output=True,
             text=True,
             check=False,
@@ -146,7 +153,6 @@ def get_disk_usage(path):
     return None
 
 
-UADE123_BIN: Final = "/usr/local/bin/uade123"
 GIT_COMMIT: Final = get_git_commit()
 UADE_VERSION: Final = get_uade_version()
 
@@ -223,7 +229,7 @@ if not rate_limit_enabled:
 
 
 @app.errorhandler(429)
-def ratelimit_handler(e):
+def ratelimit_handler(_e):
     return json_response(
         {"error": "Rate limit exceeded. Please wait and try again.", "code": 429}, 429
     )
@@ -676,7 +682,7 @@ def get_cache_entry_last_access_ts(cache_hash, remote_path):
     return get_remote_path_mtime_ts(remote_path)
 
 
-def update_cache_access_record(cache_hash, force=False):
+def update_cache_access_record(cache_hash, *, force=False):
     """Best-effort write of a sidecar access record for remote-cache LRU tracking."""
     temp_record_path = None
     try:
@@ -771,8 +777,18 @@ def compress_to_flac(wav_path, flac_path):
             logger.warning(f"FLAC compression skipped: Input WAV file is empty: {wav_path}")
             return False
 
-        cmd = ["flac", "--best", "--silent", "-f", "-o", str(temp_flac_output_path), str(wav_path)]
-        result = subprocess.run(cmd, capture_output=True, text=True, check=False, timeout=60)
+        cmd = [
+            FLAC_BIN,
+            "--best",
+            "--silent",
+            "-f",
+            "-o",
+            str(temp_flac_output_path),
+            str(wav_path),
+        ]
+        result = subprocess.run(  # noqa: S603
+            cmd, capture_output=True, text=True, check=False, timeout=60
+        )
 
         if result.returncode == 0 and temp_flac_output_path.exists():
             Path.replace(temp_flac_output_path, flac_path)
@@ -848,8 +864,8 @@ def extract_lha(lha_path, extract_dir):
         extract_dir.mkdir(parents=True, exist_ok=True)
 
         # Change to extract directory and run lha extraction
-        cmd = ["lha", "x", str(lha_path)]
-        result = subprocess.run(
+        cmd = [LHA_BIN, "x", str(lha_path)]
+        result = subprocess.run(  # noqa: S603
             cmd, capture_output=True, text=True, check=False, timeout=30, cwd=str(extract_dir)
         )
 
@@ -927,7 +943,7 @@ def save_to_cache(cache_hash, file, ext):
     update_cache_access_record(cache_hash, force=True)
 
 
-def fetch_cached_file(cache_hash, prefer_flac=False):
+def fetch_cached_file(cache_hash, *, prefer_flac=False):
     """
     Check if a converted file exists in remote cache (WAV or FLAC).
     If found, copy to local and return local path with metadata.
@@ -994,7 +1010,7 @@ def detect_module_metadata(input_path):
     try:
         cmd = [UADE123_BIN, "-g", str(input_path)]
         # Use encoding='latin1' to avoid decode errors with non-UTF-8 bytes in output
-        result = subprocess.run(
+        result = subprocess.run(  # noqa: S603
             cmd, capture_output=True, text=True, check=False, timeout=5, encoding="latin1"
         )
         if result.returncode != 0:
@@ -1034,12 +1050,12 @@ def detect_module_metadata(input_path):
                         try:
                             min_val = int(parts[i + 1])
                         except ValueError:
-                            logger.warning(f"Failed to parse subsong value: {parts[i+1]}")
+                            logger.warning(f"Failed to parse subsong value: {parts[i + 1]}")
                     elif part == "max" and i + 1 < len(parts):
                         try:
                             max_val = int(parts[i + 1])
                         except ValueError:
-                            logger.warning(f"Failed to parse subsong value: {parts[i+1]}")
+                            logger.warning(f"Failed to parse subsong value: {parts[i + 1]}")
                 # Calculate subsongs: max - min + 1
                 if min_val is not None and max_val is not None:
                     subsongs = max_val - min_val + 1
@@ -1199,7 +1215,7 @@ def wait_for_conversion(
     return None
 
 
-def process_audio_conversion(input_path, compress_flac=False, sample_files=None):
+def process_audio_conversion(input_path, *, compress_flac=False, sample_files=None):
     """
     Convert module to WAV using UADE with optional caching and FLAC compression.
 
@@ -1394,9 +1410,9 @@ def process_audio_conversion(input_path, compress_flac=False, sample_files=None)
             # Modern way to set umask for a child process without using the deprecated preexec_fn.
             # We wrap the command in a shell that sets the umask and then execs the binary.
             # This is thread-safe and avoids Python's deprecated preexec_fn.
-            full_cmd = ["/bin/sh", "-c", 'umask 0002; exec "$@"', "--", *cmd]
+            full_cmd = [SH_BIN, "-c", 'umask 0002; exec "$@"', "--", *cmd]
 
-            result = subprocess.run(
+            result = subprocess.run(  # noqa: S603
                 full_cmd,
                 capture_output=True,
                 text=True,
@@ -1720,7 +1736,7 @@ def upload_file():
 
 
 def process_module_and_respond(
-    module_path, filename, use_flac, url_cached=False, sample_files=None
+    module_path, filename, use_flac, *, url_cached=False, sample_files=None
 ):
     """
     Shared logic for archive detection, extraction, conversion, metadata, cleanup, and response.
@@ -1863,7 +1879,7 @@ def detect_cached_module_metadata(input_path, sample_files=None):
     return metadata_success, module_name, module_format, player_format, subsongs, cache_hash
 
 
-def process_module_probe_response(module_path, filename, url_cached=False, sample_files=None):
+def process_module_probe_response(module_path, filename, *, url_cached=False, sample_files=None):
     """Shared logic for archive handling and metadata-only probe responses."""
     unique_id = str(uuid.uuid4())
     extract_dir = Path(f"{module_path}_extracted_{unique_id}")
@@ -2223,22 +2239,8 @@ def prepare_remote_module_source(url, sample_url=None):
     }, None
 
 
-@app.route("/convert-url", methods=["POST"])
-@limiter.limit("10 per minute")
-def convert_url():
-    """
-    Download a module file from a given URL and convert it for playback.
-
-    Supports an optional 'sample_url' parameter for dual-file (e.g., TFMX, RJP) modules.
-    The request JSON should be:
-        {
-            "url": "<module file URL>",
-            "sample_url": "<sample file URL>"  # Optional, only for dual-file modules
-        }
-    """
-    cleanup_old_files()
-
-    data = request.get_json(silent=True)
+def convert_url_payload(data):
+    """Shared logic for URL-backed module conversion requests."""
     if not isinstance(data, dict):
         return json_response({"error": "Invalid JSON body"}, 400)
     if "url" not in data:
@@ -2258,8 +2260,8 @@ def convert_url():
             remote_source["module_path"],
             remote_source["filename"],
             use_flac,
-            remote_source["url_cache_hit"],
-            remote_source["sample_files"],
+            url_cached=remote_source["url_cache_hit"],
+            sample_files=remote_source["sample_files"],
         )
 
     except requests.RequestException:
@@ -2270,13 +2272,25 @@ def convert_url():
         return json_response({"error": "Internal server error during URL conversion"}, 500)
 
 
-@app.route("/probe-url", methods=["POST"])
+@app.route("/convert-url", methods=["POST"])
 @limiter.limit("10 per minute")
-def probe_url():
-    """Validate a remote module and return metadata without converting audio."""
-    cleanup_old_files()
+def convert_url():
+    """
+    Download a module file from a given URL and convert it for playback.
 
-    data = request.get_json(silent=True)
+    Supports an optional 'sample_url' parameter for dual-file (e.g., TFMX, RJP) modules.
+    The request JSON should be:
+        {
+            "url": "<module file URL>",
+            "sample_url": "<sample file URL>"  # Optional, only for dual-file modules
+        }
+    """
+    cleanup_old_files()
+    return convert_url_payload(request.get_json(silent=True))
+
+
+def probe_url_payload(data):
+    """Shared logic for URL-backed metadata probe requests."""
     if not isinstance(data, dict):
         return json_response({"error": "Invalid JSON body"}, 400)
     if "url" not in data:
@@ -2292,8 +2306,8 @@ def probe_url():
         return process_module_probe_response(
             remote_source["module_path"],
             remote_source["filename"],
-            remote_source["url_cache_hit"],
-            remote_source["sample_files"],
+            url_cached=remote_source["url_cache_hit"],
+            sample_files=remote_source["sample_files"],
         )
     except requests.RequestException:
         logger.error("Probe download error", exc_info=True)
@@ -2303,7 +2317,15 @@ def probe_url():
         return json_response({"error": "Internal server error during URL probe"}, 500)
 
 
-def sanitized_url(url, log=True):
+@app.route("/probe-url", methods=["POST"])
+@limiter.limit("10 per minute")
+def probe_url():
+    """Validate a remote module and return metadata without converting audio."""
+    cleanup_old_files()
+    return probe_url_payload(request.get_json(silent=True))
+
+
+def sanitized_url(url, *, log=True):
     """
     Sanitize URL for safe logging (removes control/meta chars, line breaks, trims, limits length)
     """
@@ -2509,13 +2531,7 @@ def play_example(example_id):
     if "sample_url" in example:
         payload["sample_url"] = example["sample_url"]
 
-    # Directly call convert_url with the payload
-    # Save and restore request._cached_json to avoid side effects
-    old_json = getattr(request, "_cached_json", None)
-    request._cached_json = (payload, payload)
-    result = convert_url()
-    request._cached_json = old_json
-    return result
+    return convert_url_payload(payload)
 
 
 @app.route("/play/<file_id>")
@@ -2546,7 +2562,7 @@ def download_file(file_id):
     return serve_audio_file(file_id, as_attachment=True, custom_filename=custom_filename)
 
 
-def serve_audio_file(file_id, as_attachment=False, custom_filename=None):
+def serve_audio_file(file_id, *, as_attachment=False, custom_filename=None):
     """
     Shared logic for serving audio files (FLAC/WAV) with range support.
 

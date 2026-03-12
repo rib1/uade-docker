@@ -73,7 +73,6 @@ $NpmQuality = Get-Content -Path $NpmQualityManifest -Raw | ConvertFrom-Json
 $ESLINT_VERSION = $NpmQuality.devDependencies.eslint
 $STYLELINT_VERSION = $NpmQuality.devDependencies.stylelint
 $HTMLHINT_VERSION = $NpmQuality.devDependencies.htmlhint
-
 $PyPins = @{}
 Get-Content -Path $PyQualityManifest | ForEach-Object {
     if ($_ -match '^([A-Za-z0-9._-]+)==(.+)$') {
@@ -272,22 +271,34 @@ if ($Ruff) {
 
     Write-Host "Running Ruff on /web..."
 
-    $ruffArgs = @("check", ".")
+    $ruffCheckArgs = @("check", ".")
+    $ruffFormatArgs = @("format", ".", "--check")
     if ($Fix) {
-        $ruffArgs += "--fix"
+        $ruffCheckArgs += "--fix"
+        $ruffFormatArgs = @("format", ".")
     }
 
-    $output = & docker run --rm `
+    # Run format check
+    $outputFormat = & docker run --rm `
         -v "${ProjectRoot}:/workspace" `
         --workdir /workspace/web `
-        ghcr.io/astral-sh/ruff:$RUFF_VERSION @ruffArgs 2>&1
+        ghcr.io/astral-sh/ruff:$RUFF_VERSION @ruffFormatArgs 2>&1
+    $exitCodeFormat = $LASTEXITCODE
 
-    $exitCode = $LASTEXITCODE
+    # Run linter check
+    $outputCheck = & docker run --rm `
+        -v "${ProjectRoot}:/workspace" `
+        --workdir /workspace/web `
+        ghcr.io/astral-sh/ruff:$RUFF_VERSION @ruffCheckArgs 2>&1
+    $exitCodeCheck = $LASTEXITCODE
 
-    if ($exitCode -eq 0) {
+
+    if ($exitCodeFormat -eq 0 -and $exitCodeCheck -eq 0) {
         Write-Result "Ruff" 0
     } else {
-        Write-Result "Ruff" 1 $output
+        $combinedOutput = "$outputFormat`n$outputCheck"
+        $finalExitCode = [Math]::Max($exitCodeFormat, $exitCodeCheck)
+        Write-Result "Ruff" $finalExitCode $combinedOutput
     }
 }
 
@@ -323,6 +334,7 @@ if ($Hadolint) {
         Write-Host "Found $($Dockerfiles.Count) Dockerfile(s). Validating..."
 
         $HadolintFailed = $false
+        $HadolintOutput = ""
 
         foreach ($Dockerfile in $Dockerfiles) {
             $DockerfileName = $Dockerfile.Name
@@ -338,11 +350,12 @@ if ($Hadolint) {
             } else {
                 Write-Host "    FAIL: $DockerfileName" @Red
                 $HadolintFailed = $true
+                $HadolintOutput += "`n$output"
             }
         }
 
         if ($HadolintFailed) {
-            Write-Result "Hadolint" 1 $output
+            Write-Result "Hadolint" 1 $HadolintOutput
         } else {
             Write-Result "Hadolint" 0
         }
@@ -361,6 +374,7 @@ if ($Compose) {
 
     if (-not (Test-Path $MainCompose)) {
         Write-Host "No base docker-compose.yml found" @Yellow
+        Write-Result "Docker Compose" 0
     } else {
         # Find all compose files (main + test overrides)
         $ComposeFiles = @($MainCompose)
@@ -372,6 +386,7 @@ if ($Compose) {
         Write-Host "Found $($ComposeFiles.Count) compose file(s). Validating..."
 
         $ComposeFailed = $false
+        $ComposeOutput = ""
 
         foreach ($ComposeFile in $ComposeFiles) {
             $ComposeFileName = Split-Path $ComposeFile -Leaf
@@ -389,12 +404,16 @@ if ($Compose) {
                 Write-Host "    OK: $ComposeFileName" @Green
             } else {
                 Write-Host "    FAIL: $ComposeFileName" @Red
+                if ($output) {
+                    Write-Host $output @Red
+                    $ComposeOutput += "`n$output"
+                }
                 $ComposeFailed = $true
             }
         }
 
         if ($ComposeFailed) {
-            Write-Result "Docker Compose" 1 $output
+            Write-Result "Docker Compose" 1 $ComposeOutput
         } else {
             Write-Result "Docker Compose" 0
         }
@@ -417,6 +436,7 @@ if ($ActionLint) {
             Write-Host "Found $($Workflows.Count) workflow(s). Validating..."
 
             $ActionLintFailed = $false
+            $ActionLintOutput = ""
 
             foreach ($Workflow in $Workflows) {
                 $WorkflowName = $Workflow.Name
@@ -434,11 +454,12 @@ if ($ActionLint) {
                 } else {
                     Write-Host "    FAIL: $WorkflowName" @Red
                     $ActionLintFailed = $true
+                    $ActionLintOutput += "`n$output"
                 }
             }
 
             if ($ActionLintFailed) {
-                Write-Result "ActionLint" 1 $output
+                Write-Result "ActionLint" 1 $ActionLintOutput
             } else {
                 Write-Result "ActionLint" 0
             }
@@ -460,6 +481,7 @@ if ($ShellCheck) {
         Write-Host "Found $($ShellFiles.Count) shell script(s). Validating..."
 
         $ShellcheckFailed = $false
+        $ShellcheckOutput = ""
         foreach ($ShellFile in $ShellFiles) {
             Write-Host "  Checking: $($ShellFile.Name)"
             $relativePath = "test/$($ShellFile.Name)"
@@ -470,11 +492,12 @@ if ($ShellCheck) {
             $exitCode = $LASTEXITCODE
             if ($exitCode -ne 0) {
                 $ShellcheckFailed = $true
+                $ShellcheckOutput += "`n$output"
             }
         }
 
         if ($ShellcheckFailed) {
-            Write-Result "ShellCheck" 1 $output
+            Write-Result "ShellCheck" 1 $ShellcheckOutput
         } else {
             Write-Result "ShellCheck" 0
         }

@@ -31,10 +31,21 @@ select = [
     "W",   # pycodestyle warnings
     "F",   # pyflakes
     "I",   # isort
+    "S",   # flake8-bandit (security)
+    "A",   # flake8-builtins
+    "ARG", # flake8-unused-arguments
     "B",   # flake8-bugbear
     "C4",  # flake8-comprehensions
+    "FBT", # flake8-boolean-trap
+    "LOG", # flake8-logging
+    "PYI", # flake8-pyi
+    "Q",   # flake8-quotes
+    "PERF", # Perflint
     "UP",  # pyupgrade
     "SIM", # flake8-simplify
+    "SLF", # flake8-self
+    "TC",  # flake8-type-checking
+    "TID", # flake8-tidy-imports
     "RET", # flake8-return
     "RUF", # Ruff-specific rules
     "PTH", # pathlib best practices
@@ -42,7 +53,10 @@ select = [
     "PLW", # pylint warnings
     "PLR2004", # magic-value-comparison
 ]
-ignore = []
+ignore = [
+    "S101", # Ignore `assert` statements, which are used in test scripts
+    "S104", # Ignore `bind_all_interfaces` for the local dev server
+]
 
 [tool.pylint]
 max-line-length = 100

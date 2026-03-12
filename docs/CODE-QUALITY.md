@@ -18,13 +18,29 @@ The UADE Docker project uses eleven automated code quality tools:
 10. **ShellCheck** - Shell script linting and bug detection
 11. **Yamllint** - YAML syntax and style validation
 
-## Version Management
+## How to Run Checks
 
 - JavaScript/CSS/HTML tool versions are pinned in `test/package.json`.
 - Python quality tool versions are pinned in `test/requirements-quality.txt`.
 - Hadolint and Actionlint Docker image tags are pinned in `test/docker-compose.tooling.yml`.
 - Dependabot monitors both manifests and opens update PRs.
 - Dependabot also monitors Docker tags in `/test` (including `test/docker-compose.tooling.yml`).
+
+### Docker Compose Service (Recommended)
+
+Use the Docker Compose quality-check service for consistent, isolated checks:
+
+```bash
+# Run the default quality suite in Docker
+docker compose -f docker-compose.yml -f test/docker-compose.quality.yml run --rm --build quality-check
+```
+
+This approach:
+
+- Runs ESLint, Stylelint, HTMLHint, Black, Ruff, mypy, Hadolint, ActionLint, ShellCheck, and Yamllint in an isolated container
+- No local installation required
+- Consistent results across all environments
+- Properly exits with code 1 on failures
 
 ## Tools
 
@@ -112,7 +128,7 @@ docker run --rm -v ${pwd}:/workspace --workdir /workspace node:24-alpine sh -lc 
 
 ### Ruff (Python)
 
-**Purpose:** Extremely fast Python linter and formatter, replacing flake8, isort, and more.
+**Purpose:** Fast Python linting and formatting, covering style, correctness, security, typing, import hygiene, and selected API design rules.
 
 **Version source:** `test/requirements-quality.txt` (`ruff`)
 
@@ -124,6 +140,16 @@ docker run --rm -v ${pwd}:/workspace --workdir /workspace node:24-alpine sh -lc 
 
 - In quality-check container: Uses locally installed Ruff binary
 - Local development: Falls back to Docker container
+
+**What the scripts run:**
+
+- `ruff format --check .`
+- `ruff check .`
+
+With `--fix` / `-Fix`, the scripts run:
+
+- `ruff format .`
+- `ruff check . --fix`
 
 **Recommended command:**
 
@@ -222,7 +248,7 @@ docker run --rm -v ${pwd}/.github/workflows:/workflows rhysd/actionlint:1.7.11 -
 Use the Docker Compose quality-check service for consistent, isolated checks:
 
 ```bash
-# Run all available checks in Docker container (ESLint, Stylelint, HTMLHint, Black, Ruff, mypy, Hadolint, ActionLint, ShellCheck, Yamllint)
+# Run the default quality suite in Docker
 docker compose -f docker-compose.yml -f test/docker-compose.quality.yml run --rm --build quality-check
 ```
 
@@ -347,7 +373,11 @@ Black is configured with:
 Ruff is configured with:
 
 - Line length: 100 characters
-- Rule selection: E (pycodestyle), F (Pyflakes), B (flake8-bugbear), I (isort), UP (pyupgrade), C4 (flake8-comprehensions)
+- Rule selection and ignores are defined in `[tool.ruff.lint]`
+- `pyproject.toml` is the source of truth for enabled Ruff rule families
+- Repo-specific ignores:
+  - `S101` allows `assert` in tests
+  - `S104` allows binding all interfaces for the local dev server
 
 ### ActionLint Configuration
 
