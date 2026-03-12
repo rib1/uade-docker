@@ -537,6 +537,14 @@ To run the integration tests using Docker Compose:
     This command will run the tests in a new container and remove it upon completion (`--rm`).
     The `uade-web` service must be running and healthy for the tests to pass.
 
+3. **To run the accessibility test:**
+
+    ```powershell
+    docker compose -f docker-compose.yml -f test/docker-compose.accessibility.yml up --build uade-test-accessibility-runner
+    ```
+
+    This starts the web app, then runs `pa11y-ci` in a Playwright/Chromium-capable container against `http://uade-web:5000`.
+
 ### Security Testing (DAST)
 
 UADE Web Player supports manual Dynamic Application Security Testing (DAST) using OWASP ZAP. To run a security scan against the running web service:

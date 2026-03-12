@@ -17,12 +17,14 @@
 #    docker compose -f docker-compose.yml -f test/docker-compose.endpoints.yml run --rm uade-test-runner
 # 3. To run ratelimit-tests (RATE_LIMIT_DISABLED set ON by docker-compose.ratelimit.yml):
 #    docker compose -f docker-compose.yml -f test/docker-compose.ratelimit.yml up --build uade-test-ratelimit-runner
-# 4. To run the race condition test:
+# 4. To run the accessibility test:
+#    docker compose -f docker-compose.yml -f test/docker-compose.accessibility.yml up --build uade-test-accessibility-runner
+# 5. To run the race condition test:
 #    docker compose up --build uade-test-race-condition-runner
-# 5. To run a DAST scan (UADE_TEST_MODE is OFF by default):
+# 6. To run a DAST scan (UADE_TEST_MODE is OFF by default):
 #    docker compose up --build zap-scan
 #    The HTML report will be in the ./reports directory.
-# 6. To run a full DAST scan (UADE_TEST_MODE is OFF by default):
+# 7. To run a full DAST scan (UADE_TEST_MODE is OFF by default):
 #    docker compose up --build zap-full-scan
 #    The HTML report will be in the ./reports directory.
 
