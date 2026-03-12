@@ -32,6 +32,22 @@
         "wait for element #status-container .status-success to be added",
         "wait for element #status-container .status-success to be visible"
       ]
+    },
+    {
+      "url": "http://uade-web:5000?queue=eyJ2IjoxLCJ0IjpbeyJuIjoiQ2FwdGFpbiAtIFNwYWNlIERlYnJpcyIsInUiOiJodHRwczovL21vZGxhbmQuY29tL3B1Yi9tb2R1bGVzL1Byb3RyYWNrZXIvQ2FwdGFpbi9zcGFjZSUyMGRlYnJpcy5tb2QiLCJzIjpudWxsLCJmIjoiUHJvdHJhY2tlciIsIm8iOiJleGFtcGxlIn1dfQ",
+      "label": "iphone15-queue-open",
+      "viewport": {
+        "width": 393,
+        "height": 852,
+        "deviceScaleFactor": 3,
+        "isMobile": true,
+        "hasTouch": true
+      },
+      "actions": [
+        "wait for element #playlist-launcher to be visible",
+        "click element #playlist-toggle-btn",
+        "wait for element #playlist-panel to be visible"
+      ]
     }
   ],
   "defaults": {

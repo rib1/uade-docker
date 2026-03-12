@@ -126,12 +126,13 @@
           </div>
           <div class="player-queue-row">
             <div id="playlist-launcher" class="playlist-launcher" hidden>
-              <div
-                class="playlist-launcher-bar"
-                role="button"
-                tabindex="0"
-                aria-label="Toggle queue"
-              >
+              <div class="playlist-launcher-bar">
+                <button
+                  type="button"
+                  id="playlist-launcher-hitbox"
+                  class="playlist-launcher-hitbox"
+                  aria-label="Open queue"
+                ></button>
                 <div class="playlist-launcher-info">
                   <span id="playlist-launcher-label"><strong>Queue</strong> (0)</span>
                   <span id="playlist-launcher-next" class="playlist-launcher-next"></span>

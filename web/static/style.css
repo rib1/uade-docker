@@ -508,13 +508,37 @@ audio::-webkit-media-controls-enclosure {
 }
 
 .playlist-launcher-bar {
+  position: relative;
   display: flex;
   align-items: center;
   gap: 8px;
   flex-wrap: wrap;
 }
 
+.playlist-launcher-hitbox {
+  position: absolute;
+  inset: 0;
+  border: 0;
+  padding: 0;
+  margin: 0;
+  background: transparent;
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+.playlist-launcher-hitbox:disabled {
+  cursor: default;
+}
+
+.playlist-launcher-hitbox:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+}
+
 .playlist-launcher-info {
+  position: relative;
+  z-index: 1;
+  pointer-events: none;
   display: flex;
   flex-direction: column;
   gap: 4px;
@@ -522,6 +546,8 @@ audio::-webkit-media-controls-enclosure {
 }
 
 .playlist-launcher-actions {
+  position: relative;
+  z-index: 1;
   display: inline-flex;
   align-items: center;
   gap: 8px;

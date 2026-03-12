@@ -35,6 +35,7 @@ const examplesGrid = document.getElementById("examples-grid");
 const statusContainer = document.getElementById("status-container");
 const playlistLauncher = document.getElementById("playlist-launcher");
 const playlistLauncherBar = document.querySelector(".playlist-launcher-bar");
+const playlistLauncherHitbox = document.getElementById("playlist-launcher-hitbox");
 const playlistLauncherLabel = document.getElementById("playlist-launcher-label");
 const playlistLauncherNext = document.getElementById("playlist-launcher-next");
 const playlistToggleBtn = document.getElementById("playlist-toggle-btn");
@@ -138,6 +139,7 @@ document.addEventListener("DOMContentLoaded", () => {
   audioPlayer.addEventListener("ended", handlePlaylistEnded);
 
   restoreSavedOrSharedQueue();
+  renderPlaylist();
   // Check for shared URL parameter and auto-convert
   checkSharedUrlParameter();
   updatePlaylistMobileLabels();
@@ -238,9 +240,7 @@ function setUiLock() {
   }
 
   // Keep queue controls in sync with the common lock state immediately.
-  if (playlistTracks.length > 0) {
-    renderPlaylist();
-  }
+  renderPlaylist();
 }
 
 /**
@@ -269,10 +269,8 @@ function releaseUiLock() {
   // Restore primary player controls immediately, even if nothing else re-renders.
   updatePrimaryPlayerActions();
 
-  // Re-apply queue boundary button states after the general UI unlock.
-  if (playlistTracks.length > 0) {
-    renderPlaylist();
-  }
+  // Re-apply queue state after the general UI unlock.
+  renderPlaylist();
 }
 
 /**
@@ -481,18 +479,7 @@ function setupUrlForm() {
 }
 
 function setupPlaylistControls() {
-  playlistLauncherBar.addEventListener("click", (event) => {
-    if (event.target.closest("button")) {
-      return;
-    }
-    togglePlaylistPanel();
-  });
-  playlistLauncherBar.addEventListener("keydown", (event) => {
-    if (event.key === "Enter" || event.key === " ") {
-      event.preventDefault();
-      togglePlaylistPanel();
-    }
-  });
+  playlistLauncherHitbox.addEventListener("click", togglePlaylistPanel);
   playlistToggleBtn.addEventListener("click", togglePlaylistPanel);
   playlistSaveBtn.addEventListener("click", savePlaylistLocally);
   playlistBookmarkBtn.addEventListener("click", bookmarkPlaylist);
@@ -1037,6 +1024,8 @@ function renderPlaylist() {
     hasPlaylist && (currentIndex === -1 ? playlistTracks.length > 0 : currentIndex < playlistTracks.length - 1);
   playlistLauncher.hidden = !hasPlaylist;
   playlistLauncher.classList.toggle("expanded", isPlaylistPanelOpen && hasPlaylist);
+  playlistLauncherHitbox.disabled = isUiLocked || !hasPlaylist;
+  playlistLauncherHitbox.setAttribute("aria-label", isPlaylistPanelOpen ? "Hide queue" : "Open queue");
   playlistPanelSummary.textContent = `${playlistTracks.length} track${playlistTracks.length === 1 ? "" : "s"}`;
   playlistLauncherLabel.replaceChildren(
     Object.assign(document.createElement("strong"), { textContent: "Queue" }),
@@ -1246,6 +1235,12 @@ function playFile(
   currentPlayableTrackFormat = moduleFormat || playerFormat || "Module";
   currentSubsongs = parseInt(subsongs) || 1;
   currentSubsongDurations = subsongDurations || [];
+
+  // Non-queue playback should not leave queue navigation highlighted as active.
+  if (currentPlaylistTrackId !== null) {
+    currentPlaylistTrackId = null;
+    renderPlaylist();
+  }
 
   audioPlayer.src = playUrl;
 
