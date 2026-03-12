@@ -376,8 +376,12 @@ if ($Compose) {
         Write-Host "No base docker-compose.yml found" @Yellow
         Write-Result "Docker Compose" 0
     } else {
-        # Find all compose files (main + test overrides)
+        # Find all compose files (main + root dev override + test overrides)
         $ComposeFiles = @($MainCompose)
+        $DevCompose = Join-Path $ProjectRoot "docker-compose.dev.yml"
+        if (Test-Path $DevCompose) {
+            $ComposeFiles += $DevCompose
+        }
         $TestComposes = Get-ChildItem -Path (Join-Path $ProjectRoot "test") -Filter "docker-compose.*.yml" -File -ErrorAction SilentlyContinue
         if ($TestComposes) {
             $ComposeFiles += $TestComposes.FullName

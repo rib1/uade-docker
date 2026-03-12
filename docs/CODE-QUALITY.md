@@ -204,6 +204,7 @@ Get-Content Dockerfile | docker run --rm -i -v "${pwd}/.hadolint.yaml:/.hadolint
 **Files checked:**
 
 - `docker-compose.yml` (base file)
+- `docker-compose.dev.yml` (development override)
 - `test/docker-compose.endpoints.yml` (override)
 - `test/docker-compose.quality.yml` (override)
 - `test/docker-compose.ratelimit.yml` (override)
@@ -216,7 +217,10 @@ Get-Content Dockerfile | docker run --rm -i -v "${pwd}/.hadolint.yaml:/.hadolint
 # Validate base file
 docker compose -f docker-compose.yml config --quiet
 
-# Validate override file with base
+# Validate development override with base
+docker compose -f docker-compose.yml -f docker-compose.dev.yml config --quiet
+
+# Validate test override with base
 docker compose -f docker-compose.yml -f test/docker-compose.quality.yml config --quiet
 ```
 

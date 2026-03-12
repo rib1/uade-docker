@@ -662,8 +662,12 @@ if [ "$RUN_COMPOSE" = true ]; then
             echo -e "${YELLOW}⚠ No Docker Compose files found${NC}"
             print_result "Docker Compose" 0
         else
-            mapfile -t OVERRIDE_FILES < <(find "${PROJECT_ROOT}/test" -maxdepth 1 -type f -name "docker-compose.*.yml" 2>/dev/null | sort)
-            ALL_COMPOSE_FILES=("$MAIN_COMPOSE_FILE" "${OVERRIDE_FILES[@]}")
+            OVERRIDE_FILES=()
+            if [ -f "${PROJECT_ROOT}/docker-compose.dev.yml" ]; then
+                OVERRIDE_FILES+=("${PROJECT_ROOT}/docker-compose.dev.yml")
+            fi
+            mapfile -t TEST_OVERRIDE_FILES < <(find "${PROJECT_ROOT}/test" -maxdepth 1 -type f -name "docker-compose.*.yml" 2>/dev/null | sort)
+            ALL_COMPOSE_FILES=("$MAIN_COMPOSE_FILE" "${OVERRIDE_FILES[@]}" "${TEST_OVERRIDE_FILES[@]}")
             COMPOSE_COUNT=${#ALL_COMPOSE_FILES[@]}
 
             echo "Found $COMPOSE_COUNT compose file(s). Validating..."
