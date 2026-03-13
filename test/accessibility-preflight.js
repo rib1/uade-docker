@@ -2,6 +2,12 @@ const { chromium, devices } = require("playwright-core");
 
 const {
   DEFAULT_TIMEOUT_MS,
+  EXAMPLE_PLAY_BUTTON_SELECTOR,
+  URL_INPUT_SELECTOR,
+  URL_SUBMIT_SELECTOR,
+  PLAYLIST_LAUNCHER_SELECTOR,
+  PLAYLIST_TOGGLE_BUTTON_SELECTOR,
+  PLAYLIST_PANEL_SELECTOR,
   STATUS_EXPECTATIONS,
   getScenario,
   preflightScenarioLabels,
@@ -41,8 +47,8 @@ async function verifyStatusState(browser, scenarioLabel) {
     await page.goto(scenario.url, { waitUntil: "networkidle" });
     if (scenario.label === "desktop-url-warning-empty") {
       const expected = STATUS_EXPECTATIONS.warning;
-      await page.waitForSelector("#url-submit", { state: "visible" });
-      await page.click("#url-submit");
+      await page.waitForSelector(URL_SUBMIT_SELECTOR, { state: "visible" });
+      await page.click(URL_SUBMIT_SELECTOR);
       await page.waitForSelector(expected.selector, { state: "visible" });
       await expectStatusColors(
         page,
@@ -55,9 +61,9 @@ async function verifyStatusState(browser, scenarioLabel) {
 
     if (scenario.label === "desktop-url-error-invalid") {
       const expected = STATUS_EXPECTATIONS.error;
-      await page.waitForSelector("#url-input", { state: "visible" });
-      await page.fill("#url-input", "this-is-not-a-valid-url");
-      await page.click("#url-submit");
+      await page.waitForSelector(URL_INPUT_SELECTOR, { state: "visible" });
+      await page.fill(URL_INPUT_SELECTOR, "this-is-not-a-valid-url");
+      await page.click(URL_SUBMIT_SELECTOR);
       await page.waitForSelector(expected.selector, {
         state: "visible",
         timeout: DEFAULT_TIMEOUT_MS,
@@ -74,8 +80,8 @@ async function verifyStatusState(browser, scenarioLabel) {
     if (scenario.label === "iphone15-example-info") {
       const infoStatus = STATUS_EXPECTATIONS.info;
 
-      await page.waitForSelector(".example-card .play-btn[data-example-id]", { state: "visible" });
-      await page.click(".example-card .play-btn[data-example-id]");
+      await page.waitForSelector(EXAMPLE_PLAY_BUTTON_SELECTOR, { state: "visible" });
+      await page.click(EXAMPLE_PLAY_BUTTON_SELECTOR);
       await page.waitForSelector(infoStatus.selector, {
         state: "visible",
         timeout: DEFAULT_TIMEOUT_MS,
@@ -93,8 +99,8 @@ async function verifyStatusState(browser, scenarioLabel) {
       const infoStatus = STATUS_EXPECTATIONS.info;
       const successStatus = STATUS_EXPECTATIONS.success;
 
-      await page.waitForSelector(".example-card .play-btn[data-example-id]", { state: "visible" });
-      await page.click(".example-card .play-btn[data-example-id]");
+      await page.waitForSelector(EXAMPLE_PLAY_BUTTON_SELECTOR, { state: "visible" });
+      await page.click(EXAMPLE_PLAY_BUTTON_SELECTOR);
       await page.waitForSelector(infoStatus.selector, {
         state: "visible",
         timeout: DEFAULT_TIMEOUT_MS,
@@ -134,13 +140,13 @@ async function verifyStatusState(browser, scenarioLabel) {
       throw new Error("Player did not reach a loaded, interactive state after clicking an example.");
     }
 
-    if (scenario.label === "iphone15-queue-open") {
-      await page.waitForSelector("#playlist-launcher", {
+    if (scenario.label === "iphone15-queue-open" || scenario.label === "desktop-queue-open") {
+      await page.waitForSelector(PLAYLIST_LAUNCHER_SELECTOR, {
         state: "visible",
         timeout: DEFAULT_TIMEOUT_MS,
       });
-      await page.click("#playlist-toggle-btn");
-      await page.waitForSelector("#playlist-panel", {
+      await page.click(PLAYLIST_TOGGLE_BUTTON_SELECTOR);
+      await page.waitForSelector(PLAYLIST_PANEL_SELECTOR, {
         state: "visible",
         timeout: DEFAULT_TIMEOUT_MS,
       });

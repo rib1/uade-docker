@@ -13,6 +13,14 @@ const SHARED_QUEUE_URL =
   `${APP_URL}?queue=` +
   "eyJ2IjoxLCJ0IjpbeyJuIjoiQ2FwdGFpbiAtIFNwYWNlIERlYnJpcyIsInUiOiJodHRwczovL21vZGxhbmQuY29tL3B1Yi9tb2R1bGVzL1Byb3RyYWNrZXIvQ2FwdGFpbi9zcGFjZSUyMGRlYnJpcy5tb2QiLCJzIjpudWxsLCJmIjoiUHJvdHJhY2tlciIsIm8iOiJleGFtcGxlIn1dfQ";
 
+const EXAMPLE_PLAY_BUTTON_SELECTOR = ".example-card .play-btn[data-example-id]";
+const PLAYER_SECTION_SELECTOR = "#player-section";
+const URL_INPUT_SELECTOR = "#url-input";
+const URL_SUBMIT_SELECTOR = "#url-submit";
+const PLAYLIST_LAUNCHER_SELECTOR = "#playlist-launcher";
+const PLAYLIST_TOGGLE_BUTTON_SELECTOR = "#playlist-toggle-btn";
+const PLAYLIST_PANEL_SELECTOR = "#playlist-panel";
+
 const STATUS_EXPECTATIONS = {
   info: {
     selector: "#status-container .status-info",
@@ -36,6 +44,33 @@ const STATUS_EXPECTATIONS = {
   },
 };
 
+function buildExampleInfoActions() {
+  return [
+    `wait for element ${EXAMPLE_PLAY_BUTTON_SELECTOR} to be visible`,
+    `click element ${EXAMPLE_PLAY_BUTTON_SELECTOR}`,
+    `wait for element ${STATUS_EXPECTATIONS.info.selector} to be added`,
+    `wait for element ${STATUS_EXPECTATIONS.info.selector} to be visible`,
+  ];
+}
+
+function buildExamplePlayingActions() {
+  return [
+    `wait for element ${EXAMPLE_PLAY_BUTTON_SELECTOR} to be visible`,
+    `click element ${EXAMPLE_PLAY_BUTTON_SELECTOR}`,
+    `wait for element ${PLAYER_SECTION_SELECTOR} to be visible`,
+    `wait for element ${STATUS_EXPECTATIONS.success.selector} to be added`,
+    `wait for element ${STATUS_EXPECTATIONS.success.selector} to be visible`,
+  ];
+}
+
+function buildQueueOpenActions() {
+  return [
+    `wait for element ${PLAYLIST_LAUNCHER_SELECTOR} to be visible`,
+    `click element ${PLAYLIST_TOGGLE_BUTTON_SELECTOR}`,
+    `wait for element ${PLAYLIST_PANEL_SELECTOR} to be visible`,
+  ];
+}
+
 const accessibilityScenarios = [
   {
     label: "desktop-home",
@@ -51,35 +86,24 @@ const accessibilityScenarios = [
     url: APP_URL,
     viewport: IPHONE_15_VIEWPORT,
     preflight: true,
-    actions: [
-      "wait for element .example-card .play-btn[data-example-id] to be visible",
-      "click element .example-card .play-btn[data-example-id]",
-      "wait for element #status-container .status-info to be added",
-      "wait for element #status-container .status-info to be visible",
-    ],
+    actions: buildExampleInfoActions(),
   },
   {
     label: "iphone15-example-playing",
     url: APP_URL,
     viewport: IPHONE_15_VIEWPORT,
     preflight: true,
-    actions: [
-      "wait for element .example-card .play-btn[data-example-id] to be visible",
-      "click element .example-card .play-btn[data-example-id]",
-      "wait for element #player-section to be visible",
-      "wait for element #status-container .status-success to be added",
-      "wait for element #status-container .status-success to be visible",
-    ],
+    actions: buildExamplePlayingActions(),
   },
   {
     label: "desktop-url-warning-empty",
     url: APP_URL,
     preflight: true,
     actions: [
-      "wait for element #url-submit to be visible",
-      "click element #url-submit",
-      "wait for element #status-container .status-warning to be added",
-      "wait for element #status-container .status-warning to be visible",
+      `wait for element ${URL_SUBMIT_SELECTOR} to be visible`,
+      `click element ${URL_SUBMIT_SELECTOR}`,
+      `wait for element ${STATUS_EXPECTATIONS.warning.selector} to be added`,
+      `wait for element ${STATUS_EXPECTATIONS.warning.selector} to be visible`,
     ],
   },
   {
@@ -87,11 +111,11 @@ const accessibilityScenarios = [
     url: APP_URL,
     preflight: true,
     actions: [
-      "wait for element #url-input to be visible",
-      "set field #url-input to this-is-not-a-valid-url",
-      "click element #url-submit",
-      "wait for element #status-container .status-error to be added",
-      "wait for element #status-container .status-error to be visible",
+      `wait for element ${URL_INPUT_SELECTOR} to be visible`,
+      `set field ${URL_INPUT_SELECTOR} to this-is-not-a-valid-url`,
+      `click element ${URL_SUBMIT_SELECTOR}`,
+      `wait for element ${STATUS_EXPECTATIONS.error.selector} to be added`,
+      `wait for element ${STATUS_EXPECTATIONS.error.selector} to be visible`,
     ],
   },
   {
@@ -99,11 +123,13 @@ const accessibilityScenarios = [
     url: SHARED_QUEUE_URL,
     viewport: IPHONE_15_VIEWPORT,
     preflight: true,
-    actions: [
-      "wait for element #playlist-launcher to be visible",
-      "click element #playlist-toggle-btn",
-      "wait for element #playlist-panel to be visible",
-    ],
+    actions: buildQueueOpenActions(),
+  },
+  {
+    label: "desktop-queue-open",
+    url: SHARED_QUEUE_URL,
+    preflight: true,
+    actions: buildQueueOpenActions(),
   },
 ];
 
@@ -157,6 +183,13 @@ module.exports = {
   APP_URL,
   DEFAULT_TIMEOUT_MS,
   IPHONE_15_VIEWPORT,
+  EXAMPLE_PLAY_BUTTON_SELECTOR,
+  PLAYER_SECTION_SELECTOR,
+  URL_INPUT_SELECTOR,
+  URL_SUBMIT_SELECTOR,
+  PLAYLIST_LAUNCHER_SELECTOR,
+  PLAYLIST_TOGGLE_BUTTON_SELECTOR,
+  PLAYLIST_PANEL_SELECTOR,
   STATUS_EXPECTATIONS,
   accessibilityScenarios,
   preflightScenarioLabels,

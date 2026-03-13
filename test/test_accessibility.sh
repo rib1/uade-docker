@@ -19,10 +19,6 @@ fi
 
 echo "Using Chromium at: ${CHROME_PATH}"
 
-# Guard against drift between the shared accessibility scenario source and the
-# checked-in Pa11y snapshot before running either preflight or audits.
-node /workspace/test/check-pa11y-config-sync.js
-
 # Run a Playwright preflight first so we can verify the async UI flows and
 # computed status colors deterministically before handing the page to Pa11y.
 echo "Verifying example playback flow before accessibility scan..."
@@ -35,17 +31,9 @@ node /workspace/test/accessibility-preflight.js
 npm install -g "pa11y-ci@${PA11Y_CI_VERSION}" >/dev/null
 echo "Using Pa11y CI version: $(pa11y-ci --version)"
 
-node -e '
-const fs = require("fs");
-const { buildPa11yConfig } = require("/workspace/test/accessibility-scenarios");
-const outPath = "/tmp/pa11yci.json";
-const cfg = buildPa11yConfig();
-cfg.defaults = cfg.defaults || {};
-cfg.defaults.chromeLaunchConfig = {
-  executablePath: process.argv[1],
-  args: ["--no-sandbox", "--disable-setuid-sandbox"]
-};
-fs.writeFileSync(outPath, JSON.stringify(cfg, null, 2));
-' "${CHROME_PATH}"
+# Build the Pa11y config on the fly from test/accessibility-scenarios.js and
+# inject the runtime Chromium path so the container does not rely on a
+# checked-in JSON snapshot.
+node /workspace/test/generate-pa11y-config.js /tmp/pa11yci.json "${CHROME_PATH}"
 
 pa11y-ci --config /tmp/pa11yci.json
