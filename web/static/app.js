@@ -665,7 +665,7 @@ async function sharePlaylist() {
   try {
     await navigator.clipboard.writeText(shareUrl);
     const originalText = playlistShareBtn.textContent;
-    playlistShareBtn.textContent = `${originalText} (Copied)`;
+    playlistShareBtn.textContent = "✓ Copied!";
     setTimeout(() => {
       playlistShareBtn.textContent = originalText;
     }, 2000);
