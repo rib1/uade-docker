@@ -1,4 +1,5 @@
 {
+  "concurrency": 1,
   "urls": [
     {
       "url": "http://uade-web:5000",
@@ -17,6 +18,23 @@
     },
     {
       "url": "http://uade-web:5000",
+      "label": "iphone15-example-info",
+      "viewport": {
+        "width": 393,
+        "height": 852,
+        "deviceScaleFactor": 3,
+        "isMobile": true,
+        "hasTouch": true
+      },
+      "actions": [
+        "wait for element .example-card .play-btn[data-example-id] to be visible",
+        "click element .example-card .play-btn[data-example-id]",
+        "wait for element #status-container .status-info to be added",
+        "wait for element #status-container .status-info to be visible"
+      ]
+    },
+    {
+      "url": "http://uade-web:5000",
       "label": "iphone15-example-playing",
       "viewport": {
         "width": 393,
@@ -31,6 +49,27 @@
         "wait for element #player-section to be visible",
         "wait for element #status-container .status-success to be added",
         "wait for element #status-container .status-success to be visible"
+      ]
+    },
+    {
+      "url": "http://uade-web:5000",
+      "label": "desktop-url-warning-empty",
+      "actions": [
+        "wait for element #url-submit to be visible",
+        "click element #url-submit",
+        "wait for element #status-container .status-warning to be added",
+        "wait for element #status-container .status-warning to be visible"
+      ]
+    },
+    {
+      "url": "http://uade-web:5000",
+      "label": "desktop-url-error-invalid",
+      "actions": [
+        "wait for element #url-input to be visible",
+        "set field #url-input to this-is-not-a-valid-url",
+        "click element #url-submit",
+        "wait for element #status-container .status-error to be added",
+        "wait for element #status-container .status-error to be visible"
       ]
     },
     {

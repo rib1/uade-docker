@@ -174,24 +174,39 @@ try {
 if ($ESLint) {
     Write-Header "ESLint - JavaScript/CSS Linting"
 
-    Write-Host "Running ESLint on /web/static..."
+    Write-Host "Running ESLint on /web/static and /test/*.js..."
 
     $eslintArgs = @(".")
     if ($Fix) {
         $eslintArgs += "--fix"
     }
 
-    $output = & docker run --rm `
+    $webOutput = & docker run --rm `
         -v "${ProjectRoot}:/workspace" `
         --workdir /workspace/web/static `
         node:24-alpine sh -lc "npm install -g eslint@$ESLINT_VERSION >/dev/null && eslint $($eslintArgs -join ' ')" 2>&1
+    $webExitCode = $LASTEXITCODE
 
-    $exitCode = $LASTEXITCODE
+    $testOutput = & docker run --rm `
+        -v "${ProjectRoot}:/workspace" `
+        --workdir /workspace/test `
+        node:24-alpine sh -lc "npm install -g eslint@$ESLINT_VERSION >/dev/null && eslint $($eslintArgs -join ' ')" 2>&1
+    $testExitCode = $LASTEXITCODE
+
+    $output = @()
+    if ($webExitCode -ne 0) {
+        $output += $webOutput
+    }
+    if ($testExitCode -ne 0) {
+        $output += $testOutput
+    }
+
+    $exitCode = [Math]::Max($webExitCode, $testExitCode)
 
     if ($exitCode -eq 0) {
         Write-Result "ESLint" 0
     } else {
-        Write-Result "ESLint" 1 $output
+        Write-Result "ESLint" 1 ($output -join "`n")
     }
 }
 

@@ -19,70 +19,27 @@ fi
 
 echo "Using Chromium at: ${CHROME_PATH}"
 
+# Guard against drift between the shared accessibility scenario source and the
+# checked-in Pa11y snapshot before running either preflight or audits.
+node /workspace/test/check-pa11y-config-sync.js
+
+# Run a Playwright preflight first so we can verify the async UI flows and
+# computed status colors deterministically before handing the page to Pa11y.
 echo "Verifying example playback flow before accessibility scan..."
 npm install -g "playwright-core@${PLAYWRIGHT_VERSION}" >/dev/null
 export CHROME_PATH
-node <<'EOF'
-const { chromium, devices } = require('playwright-core');
+node /workspace/test/accessibility-preflight.js
 
-(async () => {
-  const browser = await chromium.launch({
-    executablePath: process.env.CHROME_PATH,
-    headless: true,
-    args: ['--no-sandbox', '--disable-setuid-sandbox']
-  });
-  const context = await browser.newContext(devices['iPhone 15']);
-  const page = await context.newPage();
-
-  try {
-    await page.goto('http://uade-web:5000', { waitUntil: 'networkidle' });
-    await page.waitForSelector('.example-card .play-btn[data-example-id]', { state: 'visible' });
-    await page.click('.example-card .play-btn[data-example-id]');
-    await page.waitForSelector('#status-container .status-success', { state: 'visible', timeout: 120000 });
-
-    const deadline = Date.now() + 120000;
-    while (Date.now() < deadline) {
-      const trackText = await page.locator('#current-track').textContent();
-      const downloadEnabled = await page.locator('#download-btn').isEnabled();
-      if (
-        trackText &&
-        trackText.trim() !== '' &&
-        trackText.trim() !== 'No track loaded' &&
-        downloadEnabled
-      ) {
-        break;
-      }
-      await page.waitForTimeout(500);
-    }
-
-    const finalTrackText = await page.locator('#current-track').textContent();
-    const finalDownloadEnabled = await page.locator('#download-btn').isEnabled();
-    if (
-      !finalTrackText ||
-      finalTrackText.trim() === '' ||
-      finalTrackText.trim() === 'No track loaded' ||
-      !finalDownloadEnabled
-    ) {
-      throw new Error('Player did not reach a loaded, interactive state after clicking an example.');
-    }
-  } finally {
-    await browser.close();
-  }
-})().catch((error) => {
-  console.error('ERROR: Example playback preflight failed.');
-  console.error(error);
-  process.exit(1);
-});
-EOF
-
+# Pa11y remains the actual accessibility audit step. It scans the page after
+# the shared scenarios have proven the app can reach those states reliably.
 npm install -g "pa11y-ci@${PA11Y_CI_VERSION}" >/dev/null
 echo "Using Pa11y CI version: $(pa11y-ci --version)"
 
 node -e '
 const fs = require("fs");
-const configPath = "/workspace/test/pa11yci.json";
+const { buildPa11yConfig } = require("/workspace/test/accessibility-scenarios");
 const outPath = "/tmp/pa11yci.json";
-const cfg = JSON.parse(fs.readFileSync(configPath, "utf8"));
+const cfg = buildPa11yConfig();
 cfg.defaults = cfg.defaults || {};
 cfg.defaults.chromeLaunchConfig = {
   executablePath: process.argv[1],

@@ -1,6 +1,7 @@
 :root {
   --primary: #4a9eff;
   --primary-dark: #4877bf;
+  --primary-contrast: #4477c2;
   --secondary: #6c757d;
   --success: #0a8927;
   --danger: #dc3545;
@@ -159,7 +160,7 @@ footer a:hover {
 }
 
 .example-card .play-btn:hover {
-  background: var(--primary);
+  background: var(--primary-contrast);
 }
 
 .example-card .play-btn:focus {
@@ -350,7 +351,7 @@ footer a:hover {
 }
 
 .btn-primary:hover {
-  background: var(--primary);
+  background: var(--primary-contrast);
   transform: translateY(-2px);
   box-shadow: 0 4px 8px rgba(74, 158, 255, 0.3);
 }
@@ -873,7 +874,7 @@ audio::-webkit-media-controls-enclosure {
 }
 
 .btn-subsong:hover {
-    background: var(--primary);
+    background: var(--primary-contrast);
     transform: translateY(-1px);
     box-shadow: 0 2px 8px rgba(74, 158, 255, 0.3);
 }

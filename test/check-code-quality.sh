@@ -334,26 +334,55 @@ print_result() {
 if [ "$RUN_ESLINT" = true ]; then
     print_header "ESLint - JavaScript/CSS Linting"
 
-    echo "Running ESLint on /web/static..."
+    echo "Running ESLint on /web/static and /test/*.js..."
 
     FIX_MODE_ARG=""
     if [ "$FIX_MODE" = true ]; then
         FIX_MODE_ARG="--fix"
     fi
 
-    # Check if eslint is available locally (in Docker container)
-    if command -v eslint >/dev/null 2>&1; then
-        # Use local eslint - run from the directory containing eslint.config.js
-        OUTPUT=$(cd "${PROJECT_ROOT}/web/static" && eslint . $FIX_MODE_ARG 2>&1)
-        EXIT_CODE=$?
-    else
-        # Fall back to Docker (for local dev environments)
-        OUTPUT=$(docker run --rm \
-               -v "${PROJECT_ROOT}:/workspace" \
-               --workdir /workspace/web/static \
-               node:24-alpine sh -lc "npm install -g eslint@${ESLINT_VERSION} >/dev/null && eslint . $FIX_MODE_ARG" 2>&1)
-        EXIT_CODE=$?
+    run_eslint_dir() {
+        local workdir="$1"
+        local target="$2"
+        local output
+        local exit_code
+
+        if command -v eslint >/dev/null 2>&1; then
+            if [ -n "$FIX_MODE_ARG" ]; then
+                output=$(cd "$workdir" && eslint "$target" "$FIX_MODE_ARG" 2>&1)
+            else
+                output=$(cd "$workdir" && eslint "$target" 2>&1)
+            fi
+            exit_code=$?
+        else
+            output=$(docker run --rm \
+                   -v "${PROJECT_ROOT}:/workspace" \
+                   --workdir "$target" \
+                   node:24-alpine sh -lc "npm install -g eslint@${ESLINT_VERSION} >/dev/null && eslint . $FIX_MODE_ARG" 2>&1)
+            exit_code=$?
+        fi
+
+        printf '%s' "$output"
+        return $exit_code
+    }
+
+    WEB_OUTPUT=$(run_eslint_dir "${PROJECT_ROOT}/web/static" "/workspace/web/static")
+    WEB_EXIT_CODE=$?
+    TEST_OUTPUT=$(run_eslint_dir "${PROJECT_ROOT}/test" "/workspace/test")
+    TEST_EXIT_CODE=$?
+
+    OUTPUT=""
+    if [ $WEB_EXIT_CODE -ne 0 ]; then
+        OUTPUT="${OUTPUT}${WEB_OUTPUT}"
     fi
+    if [ $TEST_EXIT_CODE -ne 0 ]; then
+        if [ -n "$OUTPUT" ]; then
+            OUTPUT="${OUTPUT}\n"
+        fi
+        OUTPUT="${OUTPUT}${TEST_OUTPUT}"
+    fi
+
+    EXIT_CODE=$(( WEB_EXIT_CODE > TEST_EXIT_CODE ? WEB_EXIT_CODE : TEST_EXIT_CODE ))
 
     if [ $EXIT_CODE -eq 0 ]; then
         print_result "ESLint" 0
