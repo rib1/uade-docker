@@ -44,6 +44,34 @@ const STATUS_EXPECTATIONS = {
   },
 };
 
+/**
+ * Shared Playwright preflight helper to assert computed status colors.
+ */
+async function expectStatus(page, type) {
+  const expected = STATUS_EXPECTATIONS[type];
+  const status = page.locator(expected.selector).last();
+  await status.waitFor({ state: "visible", timeout: DEFAULT_TIMEOUT_MS });
+
+  const styles = await status.evaluate((element) => {
+    const computed = window.getComputedStyle(element);
+    return {
+      backgroundColor: computed.backgroundColor,
+      color: computed.color,
+    };
+  });
+
+  if (
+    styles.backgroundColor !== expected.backgroundColor ||
+    styles.color !== expected.textColor
+  ) {
+    throw new Error(
+      `${expected.selector} colors mismatch for ${type}. ` +
+      `Expected background ${expected.backgroundColor} and text ${expected.textColor}, got ` +
+      `${styles.backgroundColor} and ${styles.color}.`
+    );
+  }
+}
+
 function buildExampleInfoActions() {
   return [
     `wait for element ${EXAMPLE_PLAY_BUTTON_SELECTOR} to be visible`,
@@ -85,31 +113,60 @@ const accessibilityScenarios = [
     label: "iphone15-example-info",
     url: APP_URL,
     viewport: IPHONE_15_VIEWPORT,
-    preflight: true,
     actions: buildExampleInfoActions(),
+    async preflight(page) {
+      await page.waitForSelector(EXAMPLE_PLAY_BUTTON_SELECTOR, { state: "visible" });
+      await page.click(EXAMPLE_PLAY_BUTTON_SELECTOR);
+      await expectStatus(page, "info");
+    },
   },
   {
     label: "iphone15-example-playing",
     url: APP_URL,
     viewport: IPHONE_15_VIEWPORT,
-    preflight: true,
     actions: buildExamplePlayingActions(),
+    async preflight(page) {
+      await page.waitForSelector(EXAMPLE_PLAY_BUTTON_SELECTOR, { state: "visible" });
+      await page.click(EXAMPLE_PLAY_BUTTON_SELECTOR);
+      await expectStatus(page, "info");
+      await expectStatus(page, "success");
+
+      const deadline = Date.now() + DEFAULT_TIMEOUT_MS;
+      while (Date.now() < deadline) {
+        const trackText = await page.locator("#current-track").textContent();
+        const downloadEnabled = await page.locator("#download-btn").isEnabled();
+        if (
+          trackText &&
+          trackText.trim() !== "" &&
+          trackText.trim() !== "No track loaded" &&
+          downloadEnabled
+        ) {
+          return;
+        }
+        await page.waitForTimeout(500);
+      }
+
+      throw new Error("Player did not reach a loaded, interactive state after clicking an example.");
+    },
   },
   {
     label: "desktop-url-warning-empty",
     url: APP_URL,
-    preflight: true,
     actions: [
       `wait for element ${URL_SUBMIT_SELECTOR} to be visible`,
       `click element ${URL_SUBMIT_SELECTOR}`,
       `wait for element ${STATUS_EXPECTATIONS.warning.selector} to be added`,
       `wait for element ${STATUS_EXPECTATIONS.warning.selector} to be visible`,
     ],
+    async preflight(page) {
+      await page.waitForSelector(URL_SUBMIT_SELECTOR, { state: "visible" });
+      await page.click(URL_SUBMIT_SELECTOR);
+      await expectStatus(page, "warning");
+    },
   },
   {
     label: "desktop-url-error-invalid",
     url: APP_URL,
-    preflight: true,
     actions: [
       `wait for element ${URL_INPUT_SELECTOR} to be visible`,
       `set field ${URL_INPUT_SELECTOR} to this-is-not-a-valid-url`,
@@ -117,46 +174,47 @@ const accessibilityScenarios = [
       `wait for element ${STATUS_EXPECTATIONS.error.selector} to be added`,
       `wait for element ${STATUS_EXPECTATIONS.error.selector} to be visible`,
     ],
+    async preflight(page) {
+      await page.waitForSelector(URL_INPUT_SELECTOR, { state: "visible" });
+      await page.fill(URL_INPUT_SELECTOR, "this-is-not-a-valid-url");
+      await page.click(URL_SUBMIT_SELECTOR);
+      await expectStatus(page, "error");
+    },
   },
   {
     label: "iphone15-queue-open",
     url: SHARED_QUEUE_URL,
     viewport: IPHONE_15_VIEWPORT,
-    preflight: true,
     actions: buildQueueOpenActions(),
+    async preflight(page) {
+      await page.waitForSelector(PLAYLIST_LAUNCHER_SELECTOR, {
+        state: "visible",
+        timeout: DEFAULT_TIMEOUT_MS,
+      });
+      await page.click(PLAYLIST_TOGGLE_BUTTON_SELECTOR);
+      await page.waitForSelector(PLAYLIST_PANEL_SELECTOR, {
+        state: "visible",
+        timeout: DEFAULT_TIMEOUT_MS,
+      });
+    },
   },
   {
     label: "desktop-queue-open",
     url: SHARED_QUEUE_URL,
-    preflight: true,
     actions: buildQueueOpenActions(),
+    async preflight(page) {
+      await page.waitForSelector(PLAYLIST_LAUNCHER_SELECTOR, {
+        state: "visible",
+        timeout: DEFAULT_TIMEOUT_MS,
+      });
+      await page.click(PLAYLIST_TOGGLE_BUTTON_SELECTOR);
+      await page.waitForSelector(PLAYLIST_PANEL_SELECTOR, {
+        state: "visible",
+        timeout: DEFAULT_TIMEOUT_MS,
+      });
+    },
   },
 ];
-
-const preflightScenarioLabels = accessibilityScenarios
-  .filter((scenario) => scenario.actions)
-  .map((scenario) => scenario.label);
-
-function getScenario(label) {
-  const scenario = accessibilityScenarios.find((entry) => entry.label === label);
-  if (!scenario) {
-    throw new Error(`Unknown accessibility scenario: ${label}`);
-  }
-  return scenario;
-}
-
-function validateAccessibilityScenarioCoverage() {
-  const missingPreflight = accessibilityScenarios
-    .filter((scenario) => scenario.actions && !scenario.preflight)
-    .map((scenario) => scenario.label);
-
-  if (missingPreflight.length > 0) {
-    throw new Error(
-      "Every Pa11y scenario with actions must opt into Playwright preflight. " +
-      `Missing preflight coverage for: ${missingPreflight.join(", ")}`
-    );
-  }
-}
 
 function buildPa11yConfig() {
   return {
@@ -192,8 +250,5 @@ module.exports = {
   PLAYLIST_PANEL_SELECTOR,
   STATUS_EXPECTATIONS,
   accessibilityScenarios,
-  preflightScenarioLabels,
-  getScenario,
   buildPa11yConfig,
-  validateAccessibilityScenarioCoverage,
 };
