@@ -2,6 +2,8 @@ import fs from "node:fs";
 import path from "node:path";
 
 const projectRoot = process.env.PROJECT_ROOT || process.cwd();
+const cliArgs = new Set(process.argv.slice(2));
+const shouldListFoundReferences = cliArgs.has("--list-found-references");
 
 const instructionFiles = [
   ".github/copilot-instructions.md",
@@ -9,7 +11,28 @@ const instructionFiles = [
   "references/project-lessons.md",
 ];
 
+const requiredReferencedFiles = {
+  ".github/copilot-instructions.md": [
+    "docs/ARCHITECTURE.md",
+    "docs/DOCKER_VERSIONING.md",
+    "docs/CODE-QUALITY.md",
+    "docs/WEB-PLAYER.md",
+  ],
+  "SKILL.md": [
+    ".github/copilot-instructions.md",
+    "references/project-lessons.md",
+  ],
+  "references/project-lessons.md": [
+    "test/accessibility-preflight.js",
+    "test/accessibility-scenarios.js",
+    "test/test_accessibility.sh",
+    "docker-compose.dev.yml",
+    "pyproject.toml",
+  ],
+};
+
 const failures = [];
+const foundInlineReferencesByFile = new Map();
 
 function addFailure(file, message) {
   failures.push(`${file}: ${message}`);
@@ -42,6 +65,76 @@ function validateRelativeLinks(relativePath, content) {
     const resolvedPath = path.normalize(path.join(projectRoot, fileDir, targetPath));
     if (!fs.existsSync(resolvedPath)) {
       addFailure(relativePath, `broken relative link: ${rawTarget}`);
+    }
+  }
+}
+
+function looksLikeRepoFilePath(value) {
+  const repoPathPrefixes = [
+    ".github/",
+    "docs/",
+    "references/",
+    "test/",
+    "web/",
+  ];
+  const repoFileNames = [
+    "SKILL.md",
+    "GEMINI.md",
+    "Dockerfile",
+    "Dockerfile.web",
+    "docker-compose.yml",
+    "docker-compose.dev.yml",
+    "pyproject.toml",
+  ];
+
+  return (
+    (repoPathPrefixes.some((prefix) => value.startsWith(prefix)) ||
+      repoFileNames.includes(value)) &&
+    !value.includes("*") &&
+    !value.includes("://")
+  );
+}
+
+function normalizeReferencedPath(rawValue) {
+  return rawValue
+    .trim()
+    .replace(/^\.?\//, (match) => (match === "./" ? "" : match))
+    .replace(/[),.:;!?]+$/g, "");
+}
+
+function validateInlineFileReferences(relativePath, content) {
+  const contentWithoutCodeBlocks = content.replace(/```[\s\S]*?```/g, "");
+  const inlineCodePattern = /`([^`]+)`/g;
+  const checkedPaths = new Set();
+  const foundPaths = new Set();
+
+  for (const match of contentWithoutCodeBlocks.matchAll(inlineCodePattern)) {
+    const rawValue = normalizeReferencedPath(match[1]);
+    if (!looksLikeRepoFilePath(rawValue)) {
+      continue;
+    }
+
+    foundPaths.add(rawValue);
+
+    if (checkedPaths.has(rawValue)) {
+      continue;
+    }
+    checkedPaths.add(rawValue);
+
+    const resolvedPath = path.normalize(path.join(projectRoot, rawValue));
+    if (!fs.existsSync(resolvedPath)) {
+      addFailure(relativePath, `inline file reference is missing on disk: ${rawValue}`);
+    }
+  }
+
+  foundInlineReferencesByFile.set(relativePath, [...foundPaths].sort());
+}
+
+function validateRequiredReferencedFiles(relativePath) {
+  const requiredFiles = requiredReferencedFiles[relativePath] || [];
+  for (const targetPath of requiredFiles) {
+    if (!fileExists(targetPath)) {
+      addFailure(relativePath, `required referenced file is missing: ${targetPath}`);
     }
   }
 }
@@ -94,6 +187,8 @@ for (const relativePath of instructionFiles) {
   const content = fs.readFileSync(absolutePath, "utf8");
 
   validateRelativeLinks(relativePath, content);
+  validateInlineFileReferences(relativePath, content);
+  validateRequiredReferencedFiles(relativePath);
 
   if (relativePath === ".github/copilot-instructions.md") {
     validateCopilotInstructions(relativePath, content);
@@ -106,6 +201,15 @@ if (failures.length > 0) {
     console.error(`- ${failure}`);
   }
   process.exit(1);
+}
+
+if (shouldListFoundReferences) {
+  for (const relativePath of instructionFiles) {
+    console.log(`FILE: ${relativePath}`);
+    for (const reference of foundInlineReferencesByFile.get(relativePath) || []) {
+      console.log(`  ${reference}`);
+    }
+  }
 }
 
 console.log("Instruction files look consistent.");

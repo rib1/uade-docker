@@ -177,7 +177,7 @@ try {
 if ($ESLint) {
     Write-Header "ESLint - JavaScript/CSS Linting"
 
-    Write-Host "Running ESLint on /web/static and /test/*.js..."
+    Write-Host "Running ESLint on /web/static and /test/*.{js,mjs}..."
 
     $eslintArgs = @(".")
     if ($Fix) {

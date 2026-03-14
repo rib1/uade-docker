@@ -15,6 +15,7 @@ Prefer the repo's Docker-first workflows over local-tool assumptions:
 - Use Docker Compose for integration and accessibility coverage.
 - Keep changes aligned with the project's minimal-dependency approach.
 - When you learn something non-obvious and repo-specific while working, update `references/project-lessons.md` so the next pass does not have to rediscover it.
+- When you discover instruction drift or a docs regression pattern, update `test/check-instructions.mjs` so the quality pipeline can catch it automatically next time.
 
 Preserve the pinned base-image strategy described in the repo instructions. Treat `Dockerfile.web` as depending on a stable published UADE base image rather than rebuilding UADE ad hoc.
 

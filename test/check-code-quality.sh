@@ -351,7 +351,7 @@ print_result() {
 if [ "$RUN_ESLINT" = true ]; then
     print_header "ESLint - JavaScript/CSS Linting"
 
-    echo "Running ESLint on /web/static and /test/*.js..."
+    echo "Running ESLint on /web/static and /test/*.{js,mjs}..."
 
     FIX_MODE_ARG=""
     if [ "$FIX_MODE" = true ]; then
