@@ -16,6 +16,7 @@
 #   .\test\check-code-quality.ps1 -Stylelint   # Stylelint only
 #   .\test\check-code-quality.ps1 -HTMLHint    # HTMLHint only
 #   .\test\check-code-quality.ps1 -MyPy        # mypy only
+#   .\test\check-code-quality.ps1 -Instructions # Instruction files only
 #
 # Requirements:
 #   - Docker Desktop installed and running
@@ -32,7 +33,8 @@ param(
     [switch]$Yamllint,
     [switch]$Stylelint,
     [switch]$HTMLHint,
-    [switch]$MyPy
+    [switch]$MyPy,
+    [switch]$Instructions
 )
 
 # Color codes
@@ -114,7 +116,7 @@ $PassedChecks = 0
 $FailedChecks = 0
 
 # Default to run all if no specific tool selected
-if (-not $ESLint -and -not $Black -and -not $Ruff -and -not $ActionLint -and -not $Hadolint -and -not $Compose -and -not $ShellCheck -and -not $Yamllint -and -not $Stylelint -and -not $HTMLHint -and -not $MyPy) {
+if (-not $ESLint -and -not $Black -and -not $Ruff -and -not $ActionLint -and -not $Hadolint -and -not $Compose -and -not $ShellCheck -and -not $Yamllint -and -not $Stylelint -and -not $HTMLHint -and -not $MyPy -and -not $Instructions) {
     $ESLint = $true
     $Stylelint = $true
     $HTMLHint = $true
@@ -126,6 +128,7 @@ if (-not $ESLint -and -not $Black -and -not $Ruff -and -not $ActionLint -and -no
     $ShellCheck = $true
     $Yamllint = $true
     $MyPy = $true
+    $Instructions = $true
 }
 
 # Helper function to print headers
@@ -564,6 +567,31 @@ if ($Yamllint) {
         } else {
             Write-Result "Yamllint" 1 $output
         }
+    }
+}
+
+# Instruction Files Check
+if ($Instructions) {
+    Write-Header "Instruction Files - Repo Guidance Validation"
+
+    Write-Host "Running repo-specific checks on instruction files..."
+
+    try {
+        $nodeVersion = node --version 2>$null
+        $output = & node (Join-Path $ProjectRoot "test/check-instructions.mjs") 2>&1
+        $exitCode = $LASTEXITCODE
+    } catch {
+        $output = & docker run --rm `
+            -v "${ProjectRoot}:/workspace" `
+            --workdir /workspace `
+            node:25-alpine node test/check-instructions.mjs 2>&1
+        $exitCode = $LASTEXITCODE
+    }
+
+    if ($exitCode -eq 0) {
+        Write-Result "Instruction Files" 0
+    } else {
+        Write-Result "Instruction Files" 1 $output
     }
 }
 

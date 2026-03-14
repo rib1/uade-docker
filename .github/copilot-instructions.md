@@ -20,6 +20,7 @@ This is a Docker-based system for playing/converting **Amiga music modules** (10
 - Frontend: Pure JavaScript (no bundlers, no frameworks) - just `app.js`, `index.html`, `style.css`
 - Backend: Single `server.py` file instead of complex module structure
 - Code quality: `./test/check-code-quality.sh` runs all checks in Docker with zero local installs
+- Testing: Integration tests implemented with shell scripts and run via Docker Compose, no local test dependencies
 
 ## Architecture Pattern: Versioned Base Image
 
@@ -27,8 +28,8 @@ This is a Docker-based system for playing/converting **Amiga music modules** (10
 
 - `Dockerfile` builds `uade-cli:<VERSION>-base.<BUILD>` (e.g., `3.05-base.2`)
 - `Dockerfile.web` references this via `ARG BASE_IMAGE=ghcr.io/rib1/uade-cli:3.05-base.1`
-- Base image updates are **separate CI pipeline** (`.github/workflows/build-base-image.yml`)
-- Web player depends on stable base; see [docs/DOCKER_VERSIONING.md](docs/DOCKER_VERSIONING.md)
+- Base image updates are **handled by a separate CI pipeline** (`.github/workflows/build-base-image.yml`)
+- Web player depends on stable base; see [docs/DOCKER_VERSIONING.md](../docs/DOCKER_VERSIONING.md)
 
 **When editing Dockerfiles:**
 - Never change base image version in `Dockerfile.web` without checking versioning docs
@@ -41,13 +42,13 @@ This is a Docker-based system for playing/converting **Amiga music modules** (10
 
 ### Backend (web/server.py)
 
-The Flask app is a **single 2000+ line file** with clear functional sections:
+The Flask app is a **single 2200+ line file** with clear functional sections:
 
-1. **Lines 1-90:** Imports, logging, Flask app init, rate limiting setup
-2. **Lines 90-400:** Utility functions (filesystem abstractions via `fsspec`, cache management, cleanup)
-3. **Lines 400-900:** Archive handling (LHA/ZIP extraction, dual-file module detection)
-4. **Lines 900-1600:** Core UADE conversion logic (metadata detection, subsong parsing, WAV/FLAC compression)
-5. **Lines 1600-2098:** Flask routes (`/upload`, `/play`, `/download`, `/health`, `/examples`)
+1. **Lines 1-225:** Imports, logging, Flask app init, rate limiting setup
+2. **Lines 226-650:** Constants (extensions, dual-file modules), utility functions (filesystem, cache, cleanup)
+3. **Lines 651-985:** Archive handling (LHA/ZIP extraction, module detection, metadata)
+4. **Lines 986-1400:** Core UADE conversion logic (subprocess execution, subsong parsing, WAV/FLAC compression)
+5. **Lines 1406-2259:** Flask routes (`/upload`, `/play`, `/download`, `/health`, `/examples`)
 
 **Key patterns:**
 - All file operations use `Path` objects from `pathlib`
@@ -59,12 +60,12 @@ The Flask app is a **single 2000+ line file** with clear functional sections:
 
 **Structure:**
 - `index.html` - Single-page app with sections: examples grid, drag-drop upload, URL download form, audio player
-- `app.js` (789 lines) - Vanilla JavaScript, no frameworks
+- `app.js` (900+ lines) - Vanilla JavaScript, no frameworks
 - `style.css` - Responsive design with mobile-first approach
 
 **JavaScript Architecture:**
 - **Global state:** `currentDownloadUrl`, `currentSubsongIndex`, `currentSubsongDurations`
-- **UI Lock Pattern:** `setUiLock()` / `releaseUiLock()` prevents concurrent conversions
+- **UI Lock Pattern:** `setUiLock()` / `releaseUiLock()` prevent concurrent conversions
 - **Async workflows:** All conversions go through `performConversion()` which handles status updates, errors, and success callbacks
 - **Large file downloads:** `downloadWithRangeRequests()` uses 10MB chunks to avoid 32MB Cloud Run response limits
 - **Media Session API:** `updateMediaSession()` enables lock screen controls on mobile
@@ -84,8 +85,11 @@ The Flask app is a **single 2000+ line file** with clear functional sections:
 
 ### Local Testing
 ```powershell
-# Start web player with live reload (source mounted read-only):
+# Start the production-like local web player:
 docker compose up -d --build uade-web
+
+# Start the development stack with hot reload:
+docker compose -f docker-compose.yml -f docker-compose.dev.yml up --build uade-web
 
 # View logs:
 docker compose logs -f uade-web
@@ -120,7 +124,7 @@ docker compose -f docker-compose.yml -f test/docker-compose.endpoints.yml up --b
 ## CI/CD Pipeline Specifics
 
 **Build Triggers (`.github/workflows/build-deploy-web-player.yml`):**
-- Runs on push to `main` when `web/**`, `Dockerfile.web`, or workflow file changes
+- Runs on push to `main` when `web/**`, `Dockerfile.web`, or `.github/workflows/build-deploy-web-player.yml` changes
 - **Does NOT rebuild base image** - pulls `ghcr.io/rib1/uade-cli:latest` from cache
 - Tags: `latest`, `stable` (main branch), `<git-sha>` (every commit)
 
@@ -180,7 +184,7 @@ Uses `flask-limiter` with Redis-like storage (in-memory for now):
 @limiter.limit(f"{RATE_LIMIT}/hour")             # 200/hour global limit
 ```
 
-**Test mode bypass:** Set `UADE_TEST_MODE=1` to disable rate limits (used in `test/docker-compose.endpoints.yml`).
+**Test mode note:** `UADE_TEST_MODE=1` enables app test behavior such as internal test-server allowances. Rate limiting is controlled separately via `RATE_LIMIT_DISABLED`.
 
 ## Archive Handling (LHA/ZIP)
 
@@ -188,12 +192,12 @@ Amiga modules often come in **LHA archives** (classic Amiga compression). The sy
 
 1. Detects LHA/ZIP via magic bytes: `is_lha_file()`, `is_zip_file()`
 2. Extracts to temp dir: `extract_lha()` uses `/usr/bin/lha` binary
-3. Searches for first playable module: `find_music_file()` checks file extensions
+3. Searches for the first playable module: `find_music_file()` checks file extensions
 4. Dual-file modules (TFMX mdat/smpl, RJP .mdat/.smp) auto-detected and paired
 
-**Supported module extensions** (line 536):
+**Supported module extensions** (line 226):
 ```python
-MUSIC_EXTENSIONS = {'.mod', '.s3m', '.it', '.xm', '.tfmx', '.ahx', '.hvl', '.mdat', '.smp', ...}
+MODULE_FILE_EXTENSIONS = {'mod', 's3m', 'it', 'xm', 'tfmx', 'ahx', 'hvl', 'mdat', 'smp', ...}
 ```
 
 ## Testing Structure
@@ -205,14 +209,14 @@ MUSIC_EXTENSIONS = {'.mod', '.s3m', '.it', '.xm', '.tfmx', '.ahx', '.hvl', '.mda
 ## Common Pitfalls
 
 1. **Don't use `docker build` directly for web player** - use `docker compose` to inject `GIT_COMMIT` env var
-2. **Archive extraction requires temp storage** - Cloud Run needs `/tmp` mounted as volume (handled in `docker-compose.yml`)
-3. **UADE needs audio device even in conversion mode** - Workaround uses SUID bit: `chmod 4750 /usr/local/bin/uade123` allows non-root user to run as root (see Dockerfile lines 100-102)
+2. **Archive extraction requires temp storage** - local Docker Compose provides persistent temp storage via a `/tmp` volume, while Cloud Run uses the container filesystem at runtime
+3. **UADE needs an audio device even in conversion mode** - The workaround uses the SUID bit: `chmod 4750 /usr/local/bin/uade123` allows a non-root user to run as root (see Dockerfile lines 100-102)
 4. **Dual-file modules need special handling** - Look for `.mdat`/`.smpl` pairs in `detect_module_metadata()`
-5. **Windows paths** - Use `Path` objects and forward slashes in Docker volume mounts
+5. **Windows paths:** Use `Path` objects and forward slashes in Docker volume mounts
 
 ## File References
 
-- Architecture diagram: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)
-- Versioning strategy: [docs/DOCKER_VERSIONING.md](docs/DOCKER_VERSIONING.md)
-- Code quality setup: [docs/CODE-QUALITY.md](docs/CODE-QUALITY.md)
-- Web player guide: [docs/WEB-PLAYER.md](docs/WEB-PLAYER.md)
+- Architecture diagram: [docs/ARCHITECTURE.md](../docs/ARCHITECTURE.md)
+- Versioning strategy: [docs/DOCKER_VERSIONING.md](../docs/DOCKER_VERSIONING.md)
+- Code quality setup: [docs/CODE-QUALITY.md](../docs/CODE-QUALITY.md)
+- Web player guide: [docs/WEB-PLAYER.md](../docs/WEB-PLAYER.md)

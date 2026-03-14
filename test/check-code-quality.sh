@@ -18,6 +18,7 @@
 #   ./test/check-code-quality.sh --stylelint  # Stylelint only
 #   ./test/check-code-quality.sh --htmlhint   # HTMLHint only
 #   ./test/check-code-quality.sh --mypy       # mypy only
+#   ./test/check-code-quality.sh --instructions # Instruction files only
 
 # Don't use set -e because we want to run all checks even if one fails
 # We handle errors manually and exit at the end based on FAILED_CHECKS count
@@ -134,6 +135,7 @@ RUN_YAMLLINT=true
 RUN_STYLELINT=true
 RUN_HTMLHINT=true
 RUN_MYPY=true
+RUN_INSTRUCTIONS=true
 
 for arg in "$@"; do
     case $arg in
@@ -295,9 +297,24 @@ for arg in "$@"; do
             RUN_HTMLHINT=false
             shift
             ;;
+        --instructions)
+            RUN_INSTRUCTIONS=true
+            RUN_ESLINT=false
+            RUN_BLACK=false
+            RUN_RUFF=false
+            RUN_ACTIONLINT=false
+            RUN_HADOLINT=false
+            RUN_COMPOSE=false
+            RUN_SHELLCHECK=false
+            RUN_YAMLLINT=false
+            RUN_STYLELINT=false
+            RUN_HTMLHINT=false
+            RUN_MYPY=false
+            shift
+            ;;
         *)
             echo "Unknown option: $arg"
-            echo "Usage: $0 [--fix] [--eslint|--stylelint|--htmlhint|--black|--ruff|--mypy|--actionlint|--hadolint|--compose|--shellcheck|--yamllint]"
+            echo "Usage: $0 [--fix] [--eslint|--stylelint|--htmlhint|--black|--ruff|--mypy|--actionlint|--hadolint|--compose|--shellcheck|--yamllint|--instructions]"
             exit 1
             ;;
     esac
@@ -786,6 +803,30 @@ if [ "$RUN_ACTIONLINT" = true ]; then
                 print_result "ActionLint" 0
             fi
         fi
+    fi
+fi
+
+# Instruction Files Check
+if [ "$RUN_INSTRUCTIONS" = true ]; then
+    print_header "Instruction Files - Repo Guidance Validation"
+
+    echo "Running repo-specific checks on instruction files..."
+
+    if command -v node >/dev/null 2>&1; then
+        OUTPUT=$(cd "${PROJECT_ROOT}" && node test/check-instructions.mjs 2>&1)
+        EXIT_CODE=$?
+    else
+        OUTPUT=$(docker run --rm \
+               -v "${PROJECT_ROOT}:/workspace" \
+               --workdir /workspace \
+               node:25-alpine node test/check-instructions.mjs 2>&1)
+        EXIT_CODE=$?
+    fi
+
+    if [ $EXIT_CODE -eq 0 ]; then
+        print_result "Instruction Files" 0
+    else
+        print_result "Instruction Files" $EXIT_CODE "$OUTPUT"
     fi
 fi
 

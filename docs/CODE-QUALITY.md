@@ -4,7 +4,7 @@ This document explains the code quality checks and how to run them for the UADE 
 
 ## Overview
 
-The UADE Docker project uses eleven automated code quality tools:
+The UADE Docker project uses twelve automated code quality tools:
 
 1. **ESLint** - JavaScript linting and style checking
 2. **Stylelint** - CSS linting and style checking
@@ -17,6 +17,7 @@ The UADE Docker project uses eleven automated code quality tools:
 9. **ActionLint** - GitHub Actions workflow validation
 10. **ShellCheck** - Shell script linting and bug detection
 11. **Yamllint** - YAML syntax and style validation
+12. **Instruction Files** - Repo guidance validation for instruction markdown and skill files
 
 ## How to Run Checks
 
@@ -37,10 +38,26 @@ docker compose -f docker-compose.yml -f test/docker-compose.quality.yml run --rm
 
 This approach:
 
-- Runs ESLint, Stylelint, HTMLHint, Black, Ruff, mypy, Hadolint, ActionLint, ShellCheck, and Yamllint in an isolated container
+- Runs ESLint, Stylelint, HTMLHint, Black, Ruff, mypy, Hadolint, ActionLint, ShellCheck, Yamllint, and instruction-file checks in an isolated container
 - No local installation required
 - Consistent results across all environments
 - Properly exits with code 1 on failures
+
+### Instruction Files
+
+**Purpose:** Catch broken relative links and known stale guidance patterns in repo instruction files such as `.github/copilot-instructions.md`, `SKILL.md`, and `references/project-lessons.md`.
+
+**Implementation:** `test/check-instructions.mjs`
+
+**Recommended commands:**
+
+```bash
+./test/check-code-quality.sh --instructions
+```
+
+```powershell
+.\test\check-code-quality.ps1 -Instructions
+```
 
 ## Tools
 
