@@ -58,6 +58,9 @@ ignore = [
     "S104", # Ignore `bind_all_interfaces` for the local dev server
 ]
 
+[tool.ruff.lint.flake8-bandit]
+check-typed-exception = true
+
 [tool.pylint]
 max-line-length = 100
 

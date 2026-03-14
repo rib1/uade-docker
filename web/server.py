@@ -722,7 +722,10 @@ def update_cache_access_record(cache_hash, *, force=False):
             try:
                 fs_cache.rm_file(access_record_path)
             except FileNotFoundError:
-                pass
+                logger.debug(
+                    "Cache access record already removed before replacement: %s",
+                    access_record_path,
+                )
             except OSError as exc:
                 if getattr(exc, "errno", None) != ENOENT_ERRNO:
                     raise
@@ -2620,8 +2623,10 @@ def serve_audio_file(file_id, *, as_attachment=False, custom_filename=None):
                         filename = f"uade_{safe_file_id}{ext}"
                     break
                 except ValueError:
-                    # Path not contained within converted_dir_base, skip this candidate
-                    continue
+                    logger.debug(
+                        "Skipping candidate outside converted directory: %s",
+                        candidate_path,
+                    )
 
         if not file_path:
             return json_response({"error": "File not found or forbidden"}, 404)
