@@ -111,6 +111,7 @@ jobs:
         with:
           scan-type: 'fs'
           scan-ref: '.'
+          trivyignores: '.trivyignore.yaml'
           format: 'sarif'
           output: 'trivy-results.sarif'
           severity: 'CRITICAL,HIGH,MEDIUM'
@@ -127,6 +128,7 @@ jobs:
         with:
           scan-type: 'config'
           scan-ref: 'Dockerfile'
+          trivyignores: '.trivyignore.yaml'
           format: 'sarif'
           output: 'trivy-dockerfile.sarif'
 
