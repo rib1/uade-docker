@@ -109,6 +109,17 @@ def get_uade_version():
 
 def get_image_build_time():
     """Get image build timestamp recorded in the built image."""
+    app_mode = get_app_mode()
+    if app_mode == "development":
+        try:
+            source_mtime = Path(__file__).stat().st_mtime
+            return datetime.fromtimestamp(source_mtime, UTC).isoformat().replace("+00:00", "Z")
+        except OSError:
+            logger.warning(
+                "Could not read source timestamp for development build time fallback",
+                exc_info=True,
+            )
+
     image_build_time = os.getenv("IMAGE_BUILD_TIME")
     if image_build_time and image_build_time != "unknown":
         return image_build_time
@@ -121,6 +132,23 @@ def get_image_build_time():
     except OSError:
         logger.warning("Could not read image build timestamp file", exc_info=True)
 
+    return "unknown"
+
+
+def get_app_mode():
+    """Return the current application mode."""
+    hot_reload_enabled = os.getenv("FLASK_DEBUG", "0") == "1"
+    development_mode = os.getenv("FLASK_ENV") == "development"
+    if hot_reload_enabled or development_mode:
+        return "development"
+    return "production"
+
+
+def get_web_server_name():
+    """Return the current HTTP server name when available."""
+    server_software = request.environ.get("SERVER_SOFTWARE") or os.getenv("SERVER_SOFTWARE")
+    if server_software:
+        return server_software
     return "unknown"
 
 
@@ -1645,6 +1673,8 @@ def health():
     return json_response(
         {
             "status": "healthy",
+            "mode": get_app_mode(),
+            "web_server": get_web_server_name(),
             "version": GIT_COMMIT,
             "image_build_time": IMAGE_BUILD_TIME,
             "uade_version": UADE_VERSION,
@@ -2759,11 +2789,11 @@ logger.info(f"Cache cleanup interval: {CACHE_CLEANUP_INTERVAL}s")
 cleanup_cache_files()
 
 if __name__ == "__main__":
-    hot_reload_enabled = os.getenv("FLASK_DEBUG", "0") == "1"
+    development_mode = get_app_mode() == "development"
     # Dev-only Flask entrypoint; production containers use Gunicorn from Dockerfile.web.
     app.run(  # nosem
         host="0.0.0.0",  # nosec B104
         port=PORT,
-        debug=hot_reload_enabled,
-        use_reloader=hot_reload_enabled,
+        debug=development_mode,
+        use_reloader=development_mode,
     )

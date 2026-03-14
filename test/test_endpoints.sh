@@ -1203,7 +1203,7 @@ test_health_endpoint() {
     fi
 
     # Check for presence of required keys
-    REQUIRED_KEYS=("uptime_seconds" "python_version" "os_platform" "memory" "disk" "binaries" "cache" "temp_files" "config" "uade_version" "version" "image_build_time" "uade_available")
+    REQUIRED_KEYS=("uptime_seconds" "python_version" "os_platform" "memory" "disk" "binaries" "cache" "temp_files" "config" "uade_version" "version" "image_build_time" "uade_available" "mode" "web_server")
     for key in "${REQUIRED_KEYS[@]}"; do
         if ! echo "$RESPONSE" | jq -e "has(\"$key\")" > /dev/null; then
             echo "ERROR: Missing key '$key' in health response"
@@ -1216,6 +1216,27 @@ test_health_endpoint() {
     UPTIME=$(echo "$RESPONSE" | jq -r .uptime_seconds)
     if [[ ! "$UPTIME" =~ ^[0-9]+$ ]]; then
         echo "ERROR: uptime_seconds is not a number: $UPTIME"
+        exit 1
+    fi
+
+    MODE=$(echo "$RESPONSE" | jq -r .mode)
+    if [ "$MODE" != "development" ] && [ "$MODE" != "production" ]; then
+        echo "ERROR: mode is invalid: $MODE"
+        exit 1
+    fi
+
+    WEB_SERVER=$(echo "$RESPONSE" | jq -r .web_server)
+    if [ -z "$WEB_SERVER" ] || [ "$WEB_SERVER" = "null" ]; then
+        echo "ERROR: web_server is missing or empty"
+        exit 1
+    fi
+    WEB_SERVER_LOWER=$(printf '%s' "$WEB_SERVER" | tr '[:upper:]' '[:lower:]')
+    if [ "$MODE" = "development" ] && [[ "$WEB_SERVER_LOWER" != *"werkzeug"* ]]; then
+        echo "ERROR: development mode should report a Werkzeug web_server, got: $WEB_SERVER"
+        exit 1
+    fi
+    if [ "$MODE" = "production" ] && [[ "$WEB_SERVER_LOWER" != *"gunicorn"* ]]; then
+        echo "ERROR: production mode should report a Gunicorn web_server, got: $WEB_SERVER"
         exit 1
     fi
 
