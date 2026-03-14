@@ -4,12 +4,15 @@ const { chromium, devices } = require("playwright-core");
 const {
   accessibilityScenarios,
   buildPa11yConfig,
+  validateAccessibilityScenarios,
 } = require("./accessibility-scenarios");
 
 async function main() {
   const args = process.argv.slice(2);
   const writeConfigPath = args.find((arg) => arg.startsWith("--write-config="))?.split("=")[1];
   const chromePath = args.find((arg) => arg.startsWith("--chrome-path="))?.split("=")[1];
+
+  validateAccessibilityScenarios();
 
   // 1. Run Playwright Preflight
   // This verifies that the UI actually reaches the intended states and

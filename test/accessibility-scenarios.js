@@ -216,6 +216,29 @@ const accessibilityScenarios = [
   },
 ];
 
+function validateAccessibilityScenarios() {
+  const missingPreflight = accessibilityScenarios
+    .filter((scenario) => scenario.actions && typeof scenario.preflight !== "function")
+    .map((scenario) => scenario.label);
+  const missingActions = accessibilityScenarios
+    .filter((scenario) => typeof scenario.preflight === "function" && !scenario.actions)
+    .map((scenario) => scenario.label);
+
+  if (missingPreflight.length > 0) {
+    throw new Error(
+      "Every Pa11y scenario with actions must define a matching preflight function. " +
+      `Missing preflight for: ${missingPreflight.join(", ")}`
+    );
+  }
+
+  if (missingActions.length > 0) {
+    throw new Error(
+      "Every accessibility preflight scenario must define matching Pa11y actions. " +
+      `Missing actions for: ${missingActions.join(", ")}`
+    );
+  }
+}
+
 function buildPa11yConfig() {
   return {
     concurrency: 1,
@@ -251,4 +274,5 @@ module.exports = {
   STATUS_EXPECTATIONS,
   accessibilityScenarios,
   buildPa11yConfig,
+  validateAccessibilityScenarios,
 };
