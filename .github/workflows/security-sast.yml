@@ -64,11 +64,18 @@ jobs:
             p/ci
             p/secrets
 
+      - name: Filter suppressed Semgrep SARIF results
+        uses: advanced-security/filter-sarif@main
+        with:
+          input: semgrep.sarif
+          output: semgrep.filtered.sarif
+          patterns: '-suppressions'
+
       - name: Upload Semgrep results to GitHub
         uses: github/codeql-action/upload-sarif@v4
         if: always()
         with:
-          sarif_file: semgrep.sarif
+          sarif_file: semgrep.filtered.sarif
           category: semgrep
 
   bandit:
