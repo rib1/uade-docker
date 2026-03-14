@@ -1203,7 +1203,7 @@ test_health_endpoint() {
     fi
 
     # Check for presence of required keys
-    REQUIRED_KEYS=("uptime_seconds" "python_version" "os_platform" "memory" "disk" "binaries" "cache" "temp_files" "config" "uade_version" "version" "uade_available")
+    REQUIRED_KEYS=("uptime_seconds" "python_version" "os_platform" "memory" "disk" "binaries" "cache" "temp_files" "config" "uade_version" "version" "image_build_time" "uade_available")
     for key in "${REQUIRED_KEYS[@]}"; do
         if ! echo "$RESPONSE" | jq -e "has(\"$key\")" > /dev/null; then
             echo "ERROR: Missing key '$key' in health response"
@@ -1216,6 +1216,17 @@ test_health_endpoint() {
     UPTIME=$(echo "$RESPONSE" | jq -r .uptime_seconds)
     if [[ ! "$UPTIME" =~ ^[0-9]+$ ]]; then
         echo "ERROR: uptime_seconds is not a number: $UPTIME"
+        exit 1
+    fi
+
+    # Verify image build time is a real ISO-8601 timestamp in the past
+    if ! echo "$RESPONSE" | jq -e '
+        .image_build_time != null
+        and .image_build_time != "unknown"
+        and ((.image_build_time | fromdateiso8601) <= now)
+    ' > /dev/null; then
+        echo "ERROR: image_build_time is missing, invalid, or not in the past"
+        echo "Response: $RESPONSE"
         exit 1
     fi
 

@@ -107,6 +107,23 @@ def get_uade_version():
         return "unknown"
 
 
+def get_image_build_time():
+    """Get image build timestamp recorded in the built image."""
+    image_build_time = os.getenv("IMAGE_BUILD_TIME")
+    if image_build_time and image_build_time != "unknown":
+        return image_build_time
+
+    image_build_time_file = Path("/opt/uade-web/image-build-time")
+    try:
+        value = image_build_time_file.read_text(encoding="utf-8").strip()
+        if value:
+            return value
+    except OSError:
+        logger.warning("Could not read image build timestamp file", exc_info=True)
+
+    return "unknown"
+
+
 def get_memory_usage():
     """Get system memory usage from /proc/meminfo (Linux only)"""
     try:
@@ -154,6 +171,7 @@ def get_disk_usage(path):
 
 
 GIT_COMMIT: Final = get_git_commit()
+IMAGE_BUILD_TIME: Final = get_image_build_time()
 UADE_VERSION: Final = get_uade_version()
 
 # Configuration from environment variables (cloud-ready)
@@ -1625,6 +1643,7 @@ def health():
         {
             "status": "healthy",
             "version": GIT_COMMIT,
+            "image_build_time": IMAGE_BUILD_TIME,
             "uade_version": UADE_VERSION,
             "timestamp": datetime.now(UTC).isoformat(),
             "uptime_seconds": int(time.time() - START_TIME),
@@ -2720,7 +2739,10 @@ def parse_range_header(range_header, file_size):
     return start, end, length
 
 
-logger.info(f"Starting UADE Web Player (commit: {GIT_COMMIT}) on port {PORT}")
+logger.info(
+    "Starting UADE Web Player "
+    f"(commit: {GIT_COMMIT}, build_time: {IMAGE_BUILD_TIME}) on port {PORT}"
+)
 logger.info(f"Max upload size: {MAX_UPLOAD_SIZE / 1024 / 1024}MB")
 logger.info(f"Max download size: {MAX_DOWNLOAD_SIZE / 1024 / 1024}MB")
 logger.info(f"Rate limit: {RATE_LIMIT}/hour (enabled: {rate_limit_enabled})")

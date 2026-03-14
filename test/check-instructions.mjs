@@ -175,6 +175,78 @@ function validateCopilotInstructions(relativePath, content) {
       "hot-reload guidance should mention docker-compose.dev.yml",
     );
   }
+
+  const requiredTestingExpectations = [
+    /after (a )?(feature|fix|code changes?) (is|are) ready/i,
+    /check-code-quality\.(ps1|sh)/i,
+    /relevant .*test/i,
+  ];
+
+  for (const pattern of requiredTestingExpectations) {
+    if (!pattern.test(content)) {
+      addFailure(
+        relativePath,
+        "must explicitly require running code quality and relevant tests after a feature or fix is ready",
+      );
+      break;
+    }
+  }
+
+  validateNearDuplicatePolicyLines(relativePath, content);
+}
+
+function normalizePolicyLine(value) {
+  return value
+    .toLowerCase()
+    .replace(/\*\*/g, "")
+    .replace(/[`'".,():;-]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function tokenizePolicyLine(value) {
+  return new Set(
+    normalizePolicyLine(value)
+      .split(" ")
+      .filter((token) => token.length >= 4),
+  );
+}
+
+function jaccardSimilarity(leftTokens, rightTokens) {
+  const intersectionSize = [...leftTokens].filter((token) => rightTokens.has(token)).length;
+  const unionSize = new Set([...leftTokens, ...rightTokens]).size;
+  return unionSize === 0 ? 0 : intersectionSize / unionSize;
+}
+
+function validateNearDuplicatePolicyLines(relativePath, content) {
+  const policyLines = content
+    .split("\n")
+    .map((line) => line.trim())
+    .filter((line) => line.startsWith("**") && line.endsWith("**") === false);
+
+  for (let i = 0; i < policyLines.length; i += 1) {
+    const leftLine = policyLines[i];
+    const leftTokens = tokenizePolicyLine(leftLine);
+    if (leftTokens.size < 4) {
+      continue;
+    }
+
+    for (let j = i + 1; j < policyLines.length; j += 1) {
+      const rightLine = policyLines[j];
+      const rightTokens = tokenizePolicyLine(rightLine);
+      if (rightTokens.size < 4) {
+        continue;
+      }
+
+      const similarity = jaccardSimilarity(leftTokens, rightTokens);
+      if (similarity >= 0.6) {
+        addFailure(
+          relativePath,
+          `near-duplicate policy lines detected: "${leftLine}" vs "${rightLine}"`,
+        );
+      }
+    }
+  }
 }
 
 for (const relativePath of instructionFiles) {

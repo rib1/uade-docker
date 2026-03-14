@@ -1620,42 +1620,75 @@ async function loadVersionInfo() {
     const response = await fetch("/health");
     const data = await response.json();
     const versionElement = document.getElementById("version-info");
+    const hasUadeVersion = data.uade_version && data.uade_version !== "unknown";
+    const hasGitVersion = data.version && data.version !== "unknown";
+    const hasBuildTime = data.image_build_time && data.image_build_time !== "unknown";
+    let formattedBuildTime = data.image_build_time;
+
+    if (hasBuildTime) {
+      const buildTime = new Date(data.image_build_time);
+      if (!Number.isNaN(buildTime.getTime())) {
+        const year = String(buildTime.getFullYear());
+        const month = String(buildTime.getMonth() + 1).padStart(2, "0");
+        const day = String(buildTime.getDate()).padStart(2, "0");
+        const hours = String(buildTime.getHours()).padStart(2, "0");
+        const minutes = String(buildTime.getMinutes()).padStart(2, "0");
+        const seconds = String(buildTime.getSeconds()).padStart(2, "0");
+        formattedBuildTime = `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`;
+      }
+    }
 
     // Build version info string
     const parts = [];
 
     // Add UADE version if available
-    if (data.uade_version && data.uade_version !== "unknown") {
+    if (hasUadeVersion) {
       parts.push(`UADE ${data.uade_version}`);
     }
 
     // Add git commit version if available
-    if (data.version && data.version !== "unknown") {
-      parts.push(`Build: ${data.version.substring(0, 7)}`);
+    if (hasGitVersion) {
+      parts.push(`Web ${data.version.substring(0, 7)}`);
+    }
+
+    if (hasBuildTime) {
+      parts.push(formattedBuildTime);
     }
 
     if (parts.length > 0) {
       versionElement.textContent = "";
 
       // Add UADE version as plain text
-      if (data.uade_version && data.uade_version !== "unknown") {
+      if (hasUadeVersion) {
         versionElement.appendChild(document.createTextNode(`UADE ${data.uade_version}`));
       }
 
       // Add separator and git link if both exist
-      if (data.uade_version && data.uade_version !== "unknown" && data.version && data.version !== "unknown") {
+      if (hasUadeVersion && hasGitVersion) {
         versionElement.appendChild(document.createTextNode(" • "));
       }
 
       // Add git commit as clickable link
-      if (data.version && data.version !== "unknown") {
+      if (hasGitVersion) {
         const link = document.createElement("a");
         link.href = `https://github.com/rib1/uade-docker/commit/${encodeURIComponent(data.version)}`;
         link.target = "_blank";
         link.style.color = "#666";
         link.style.textDecoration = "none";
-        link.textContent = `Build ${data.version.substring(0, 7)}`;
+        link.textContent = `Web ${data.version.substring(0, 7)}`;
         versionElement.appendChild(link);
+      }
+
+      if ((hasUadeVersion || hasGitVersion) && hasBuildTime) {
+        versionElement.appendChild(document.createTextNode(" • "));
+      }
+
+      if (hasBuildTime) {
+        const buildTimeElement = document.createElement("time");
+        buildTimeElement.dateTime = data.image_build_time;
+        buildTimeElement.title = data.image_build_time;
+        buildTimeElement.textContent = formattedBuildTime;
+        versionElement.appendChild(buildTimeElement);
       }
     } else {
       versionElement.textContent = "";

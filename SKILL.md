@@ -13,6 +13,7 @@ Prefer the repo's Docker-first workflows over local-tool assumptions:
 
 - Run quality checks with `.\test\check-code-quality.ps1` on Windows or `./test/check-code-quality.sh` where appropriate.
 - Use Docker Compose for integration and accessibility coverage.
+- After a feature or fix is ready, run the relevant automated tests before finishing. At minimum, run the Docker-based quality suite and the most relevant Docker Compose test flow for the changed area.
 - Keep changes aligned with the project's minimal-dependency approach.
 - When you learn something non-obvious and repo-specific while working, update `references/project-lessons.md` so the next pass does not have to rediscover it.
 - When you discover instruction drift or a docs regression pattern, update `test/check-instructions.mjs` so the quality pipeline can catch it automatically next time.

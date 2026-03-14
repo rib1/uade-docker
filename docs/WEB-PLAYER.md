@@ -243,7 +243,7 @@ GET /health
 
 Returns comprehensive server health status, including:
 
-- **Service Status**: "healthy" status, versions (UADE, Git commit), and timestamp.
+- **Service Status**: "healthy" status, versions (UADE, Git commit), image build time, and timestamp.
 - **Runtime Stats**: Uptime, Python version, and OS platform.
 - **System Resources**: Memory and disk usage statistics (Linux only for memory).
 - **Dependency Check**: Availability verification for `uade123`, `flac`, `lha`, and `unzip` binaries.

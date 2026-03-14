@@ -11,6 +11,7 @@ This document contains project-specific learnings and regression-avoidance notes
 - [Test Lessons](#test-lessons)
 - [Code Quality Lessons](#code-quality-lessons)
 - [Development Mode Lessons](#development-mode-lessons)
+- [Build Metadata Lessons](#build-metadata-lessons)
 - [Security Scan Lessons](#security-scan-lessons)
 
 ---
@@ -106,6 +107,16 @@ This document contains project-specific learnings and regression-avoidance notes
 - **Live Reload:** Gate Flask's debug/reload mode on the `FLASK_DEBUG=1` environment variable in `server.py`.
 - **Documentation:** Explicitly document the difference between static asset and backend reload behavior.
 - **Documentation:** If dev mode is mentioned in the main compose comments or docs, keep the wording explicit that reload is enabled only through `docker-compose.dev.yml`, not in live or production deployments.
+
+## Build Metadata Lessons
+
+**Key Takeaways:** Keep image build time metadata generated at build time, not runtime. Use one source of truth when CI provides it, and keep a local fallback for developer builds.
+
+- **Single Source of Truth:** If CI provides `IMAGE_CREATED`, use that same value for both `org.opencontainers.image.created` and the app-readable build-time file so image metadata and runtime health output stay aligned.
+- **Local Fallback:** Keep the baked file fallback in the image for local builds. Requiring compose or runtime env-var injection for `image_build_time` adds avoidable complexity and is easy to forget.
+- **Runtime Override:** `get_image_build_time()` should still honor `IMAGE_BUILD_TIME` when explicitly set so operators can override the reported value for exceptional deployments or debugging.
+- **OCI vs Runtime:** OCI labels are the best-practice place for container image metadata, but the app still needs its own readable source at runtime because a running container cannot easily introspect its own image labels.
+- **Health Test Coverage:** If `/health` exposes `image_build_time`, tests should verify it is non-null, parseable, and in the past rather than only checking that the field exists.
 
 ## Security Scan Lessons
 

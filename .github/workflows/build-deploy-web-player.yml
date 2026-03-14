@@ -38,6 +38,11 @@ jobs:
         username: ${{ github.actor }}
         password: ${{ secrets.GITHUB_TOKEN }}
 
+    - name: Capture image metadata
+      id: image-metadata
+      run: |
+        echo "created=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_OUTPUT"
+
     - name: Build and Push Web Player image
       id: build-and-push
       uses: docker/build-push-action@v7
@@ -58,6 +63,7 @@ jobs:
         build-args: |
           BASE_IMAGE=ghcr.io/${{ github.repository_owner }}/uade-cli:latest
           GIT_COMMIT=${{ github.sha }}
+          IMAGE_CREATED=${{ steps.image-metadata.outputs.created }}
 
     - name: Start Web Player container
       run: |

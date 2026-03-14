@@ -98,7 +98,7 @@ docker compose logs -f uade-web
 docker compose -f docker-compose.yml -f test/docker-compose.endpoints.yml up --build uade-test-runner
 ```
 
-**⚠️ Critical: Always test before committing** - Run code quality checks and integration tests to verify changes work correctly.
+**⚠️ Critical: Always test before committing and before wrapping up a ready feature or fix** - Run the Docker-based code quality suite plus the most relevant automated test coverage for the area you changed, and report the results.
 
 ### Code Quality (Zero Local Dependencies)
 ```bash
@@ -205,6 +205,7 @@ MODULE_FILE_EXTENSIONS = {'mod', 's3m', 'it', 'xm', 'tfmx', 'ahx', 'hvl', 'mdat'
 - **Integration tests:** Shell scripts in `test/` directory (`test_endpoints.sh`, `test_ratelimit.sh`, `test_race_condition.sh`)
 - **Test execution:** Docker Compose orchestrates tests via `test/docker-compose.*.yml` files
 - **DAST scanning:** OWASP ZAP via `docker compose up zap-scan` (reports to `./reports/`)
+- **Agent expectation:** After code changes are ready, run the matching Docker-first verification workflow before handing off. Use `.\test\check-code-quality.ps1` (or `./test/check-code-quality.sh`) and the relevant Docker Compose test stack for the touched behavior.
 
 ## Common Pitfalls
 

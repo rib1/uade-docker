@@ -12,7 +12,11 @@ FROM debian:stable-slim
 
 # Build argument for git commit hash
 ARG GIT_COMMIT=unknown
+ARG IMAGE_CREATED=unknown
 ENV GIT_COMMIT=${GIT_COMMIT}
+LABEL org.opencontainers.image.created=${IMAGE_CREATED}
+LABEL org.opencontainers.image.revision=${GIT_COMMIT}
+LABEL org.opencontainers.image.source=https://github.com/rib1/uade-docker
 
 # Install runtime dependencies + Python + tools for cloud environments
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -43,9 +47,9 @@ ENV PATH="/opt/venv/bin:$PATH"
 
 # Create app directory structure and non-root user
 # hadolint ignore=DL3059
-RUN mkdir -p /app /tmp/modules /tmp/converted /tmp/cache && \
+RUN mkdir -p /app /opt/uade-web /tmp/modules /tmp/converted /tmp/cache && \
     useradd -m -u 1000 -s /bin/bash uade && \
-    chown -R uade:uade /app /opt/venv && \
+    chown -R uade:uade /app /opt/uade-web /opt/venv && \
     chmod -R 777 /tmp/modules /tmp/converted /tmp/cache
 
 
@@ -57,6 +61,7 @@ RUN pip install --no-cache-dir -r /app/requirements.txt
 
 # Copy web application
 COPY web/ /app/
+RUN if [ "$IMAGE_CREATED" = "unknown" ]; then date -u +"%Y-%m-%dT%H:%M:%SZ" > /opt/uade-web/image-build-time; else printf "%s\n" "$IMAGE_CREATED" > /opt/uade-web/image-build-time; fi
 
 WORKDIR /app
 
