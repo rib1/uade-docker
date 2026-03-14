@@ -75,6 +75,8 @@ jobs:
       - name: Dismiss suppressed Semgrep alerts
         uses: advanced-security/dismiss-alerts@v2.0.2
         if: always() && github.ref == 'refs/heads/main'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           sarif-id: ${{ steps.upload-semgrep.outputs.sarif-id }}
           sarif-file: semgrep.sarif
