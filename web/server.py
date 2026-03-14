@@ -2761,9 +2761,8 @@ cleanup_cache_files()
 if __name__ == "__main__":
     hot_reload_enabled = os.getenv("FLASK_DEBUG", "0") == "1"
     # Dev-only Flask entrypoint; production containers use Gunicorn from Dockerfile.web.
-    # nosemgrep: python.flask.security.audit.app-run-param-config.avoid_app_run_with_bad_host
-    app.run(  # nosec B104
-        host="0.0.0.0",
+    app.run(  # nosem
+        host="0.0.0.0",  # nosec B104
         port=PORT,
         debug=hot_reload_enabled,
         use_reloader=hot_reload_enabled,
