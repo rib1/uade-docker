@@ -25,7 +25,9 @@ async function main() {
 
   try {
     for (const scenario of accessibilityScenarios) {
-      if (!scenario.preflight) continue;
+      if (!scenario.preflight) {
+        continue;
+      }
 
       console.log(`Running preflight for: ${scenario.label}`);
       const context = scenario.viewport
