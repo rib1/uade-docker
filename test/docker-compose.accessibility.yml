@@ -2,6 +2,8 @@
 #    docker compose -f docker-compose.yml -f test/docker-compose.accessibility.yml up --build uade-test-accessibility-runner
 services:
   uade-test-accessibility-runner:
+    # Keep this Playwright image version aligned with
+    # test/package.json devDependencies.playwright-core.
     image: mcr.microsoft.com/playwright:v1.51.1-jammy
     user: pwuser
     depends_on:
