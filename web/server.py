@@ -2760,5 +2760,11 @@ cleanup_cache_files()
 
 if __name__ == "__main__":
     hot_reload_enabled = os.getenv("FLASK_DEBUG", "0") == "1"
-    # Only the dedicated development compose path should enable Flask reload/debug mode.
-    app.run(host="0.0.0.0", port=PORT, debug=hot_reload_enabled, use_reloader=hot_reload_enabled)
+    # Dev-only Flask entrypoint; production containers use Gunicorn from Dockerfile.web.
+    # nosemgrep: python.flask.security.audit.app-run-param-config.avoid_app_run_with_bad_host
+    app.run(  # nosec B104
+        host="0.0.0.0",
+        port=PORT,
+        debug=hot_reload_enabled,
+        use_reloader=hot_reload_enabled,
+    )
