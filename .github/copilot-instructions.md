@@ -44,11 +44,11 @@ This is a Docker-based system for playing/converting **Amiga music modules** (10
 
 The Flask app is a **single 2200+ line file** with clear functional sections:
 
-1. **Lines 1-225:** Imports, logging, Flask app init, rate limiting setup
-2. **Lines 226-650:** Constants (extensions, dual-file modules), utility functions (filesystem, cache, cleanup)
-3. **Lines 651-985:** Archive handling (LHA/ZIP extraction, module detection, metadata)
-4. **Lines 986-1400:** Core UADE conversion logic (subprocess execution, subsong parsing, WAV/FLAC compression)
-5. **Lines 1406-2259:** Flask routes (`/upload`, `/play`, `/download`, `/health`, `/examples`)
+1. **Initialization section:** Imports, logging, Flask app init, rate limiting setup
+2. **Configuration and utility section:** Constants (extensions, dual-file modules), filesystem, cache, and cleanup helpers
+3. **Archive and metadata section:** LHA/ZIP extraction, module detection, and metadata handling
+4. **Conversion section:** UADE subprocess execution, subsong parsing, and WAV/FLAC handling
+5. **Route section:** Flask routes such as `/upload`, `/play`, `/download`, `/health`, and `/examples`
 
 **Key patterns:**
 - All file operations use `Path` objects from `pathlib`
@@ -195,7 +195,7 @@ Amiga modules often come in **LHA archives** (classic Amiga compression). The sy
 3. Searches for the first playable module: `find_music_file()` checks file extensions
 4. Dual-file modules (TFMX mdat/smpl, RJP .mdat/.smp) auto-detected and paired
 
-**Supported module extensions** (line 226):
+**Supported module extensions** are defined in `MODULE_FILE_EXTENSIONS`:
 ```python
 MODULE_FILE_EXTENSIONS = {'mod', 's3m', 'it', 'xm', 'tfmx', 'ahx', 'hvl', 'mdat', 'smp', ...}
 ```
@@ -210,7 +210,7 @@ MODULE_FILE_EXTENSIONS = {'mod', 's3m', 'it', 'xm', 'tfmx', 'ahx', 'hvl', 'mdat'
 
 1. **Don't use `docker build` directly for web player** - use `docker compose` to inject `GIT_COMMIT` env var
 2. **Archive extraction requires temp storage** - local Docker Compose provides persistent temp storage via a `/tmp` volume, while Cloud Run uses the container filesystem at runtime
-3. **UADE needs an audio device even in conversion mode** - The workaround uses the SUID bit: `chmod 4750 /usr/local/bin/uade123` allows a non-root user to run as root (see Dockerfile lines 100-102)
+3. **UADE needs an audio device even in conversion mode** - The workaround uses the SUID bit: `chmod 4750 /usr/local/bin/uade123` allows a non-root user to run as root (see `Dockerfile`)
 4. **Dual-file modules need special handling** - Look for `.mdat`/`.smpl` pairs in `detect_module_metadata()`
 5. **Windows paths:** Use `Path` objects and forward slashes in Docker volume mounts
 

@@ -56,11 +56,11 @@
 - Accessibility checks belong with integration tests, not static code-quality checks. They need a running web app, a real browser runtime, and interactive state setup.
 - The accessibility runner should use a Playwright/Chromium-capable container and run a preflight that proves the player is actually loaded before `pa11y-ci` scans.
 - Keep accessibility scenarios in one shared source (`test/accessibility-scenarios.js`) and generate the Pa11y config on the fly instead of maintaining a checked-in snapshot.
-- Use `node test/generate-pa11y-config.js <output-path> [chrome-path]` to write the runtime Pa11y config that matches the shared scenario source.
+- Use `node test/accessibility-preflight.js --write-config=<output-path> --chrome-path=<chrome-path>` to validate the interactive states first and then write the runtime Pa11y config that matches the shared scenario source.
 - For SPA accessibility coverage, have `pa11y-ci` actions click a real example flow and wait for `#player-section` to become visible before auditing the loaded player state.
 - Every Pa11y scenario that defines `actions` should also have a matching Playwright preflight path. The preflight is only useful if it proves the same interactive states that Pa11y later audits.
 - If the accessibility runner installs `pa11y-ci` dynamically, print `pa11y-ci --version` in the logs so the exact runtime version is visible during test runs.
-- On this repo, the accessibility suite currently passes eight scenarios: desktop home, iPhone 15 home, iPhone 15 info status, iPhone 15 success status, desktop warning status, desktop error status, iPhone 15 queue open, and desktop queue open.
+- On this repo, the accessibility suite currently passes eight scenarios: `desktop-home`, `iphone15-home`, `iphone15-example-info`, `iphone15-example-playing`, `desktop-url-warning-empty`, `desktop-url-error-invalid`, `iphone15-queue-open`, and `desktop-queue-open`.
 - Status coverage should be explicit in both layers for `info`, `success`, `warning`, and `error`.
 - For queue accessibility coverage, prefer a deterministic preloaded `?queue=` URL over async UI setup inside `pa11y-ci` actions. That makes the scan start from a known queue state and avoids flaky waits on add-to-queue interactions.
 - To verify the open-queue state in accessibility scans, trigger the explicit queue toggle and wait for the queue panel itself to become visible before auditing.
