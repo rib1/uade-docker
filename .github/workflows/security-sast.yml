@@ -65,6 +65,7 @@ jobs:
             p/secrets
 
       - name: Upload Semgrep results to GitHub
+        id: upload-semgrep
         uses: github/codeql-action/upload-sarif@v4
         if: always()
         with:
@@ -72,9 +73,10 @@ jobs:
           category: semgrep
 
       - name: Dismiss suppressed Semgrep alerts
-        uses: advanced-security/dismiss-alerts@v1
-        if: always()
+        uses: advanced-security/dismiss-alerts@v2.0.2
+        if: always() && github.ref == 'refs/heads/main'
         with:
+          sarif-id: ${{ steps.upload-semgrep.outputs.sarif-id }}
           sarif-file: semgrep.sarif
 
   bandit:
