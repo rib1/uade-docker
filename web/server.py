@@ -892,7 +892,7 @@ def extract_lha(lha_path, extract_dir):
 
         if result.returncode != 0:
             logger.error(f"LHA extraction error: {result.stderr}")
-            return False, f"LHA extraction failed: {result.stderr}", None
+            return False, "LHA extraction failed", None
 
         music_file, count = find_music_file(extract_dir)
         if not music_file:
@@ -903,9 +903,9 @@ def extract_lha(lha_path, extract_dir):
 
     except subprocess.TimeoutExpired:
         return False, "LHA extraction timeout", None
-    except Exception as e:
+    except Exception:
         logger.error("LHA extraction exception", exc_info=True)
-        return False, str(e), None
+        return False, "LHA extraction failed", None
 
 
 def extract_zip(zip_path, extract_dir):
@@ -928,9 +928,9 @@ def extract_zip(zip_path, extract_dir):
 
     except zipfile.BadZipFile:
         return False, "ZIP extraction failed: Bad ZIP file", None
-    except Exception as e:
+    except Exception:
         logger.error("ZIP extraction exception", exc_info=True)
-        return False, str(e), None
+        return False, "ZIP extraction failed", None
 
 
 def save_to_cache(cache_hash, file, ext):
