@@ -205,6 +205,7 @@ function updatePrimaryPlayerActions() {
  */
 function syncUiLockState(locked) {
   isUiLocked = locked;
+  const hasPlaylist = playlistTracks.length > 0;
   const dynamicElements = document.querySelectorAll(
     ".play-btn, .add-playlist-btn, .playlist-play-btn, .playlist-remove-btn, .playlist-move-btn, .playlist-toggle-btn, .playlist-prev-btn, .playlist-next-btn, .playlist-save-btn, .playlist-bookmark-btn, .playlist-share-btn, .playlist-clear-btn",
   );
@@ -218,8 +219,14 @@ function syncUiLockState(locked) {
   });
 
   // Handle specific elements not caught by the broad selector or requiring extra logic
+  if (playlistLauncher) {
+    playlistLauncher.hidden = !hasPlaylist;
+  }
   if (playlistLauncherHitbox) {
-    playlistLauncherHitbox.disabled = locked || playlistTracks.length === 0;
+    playlistLauncherHitbox.disabled = locked || !hasPlaylist;
+  }
+  if (playlistPanel) {
+    playlistPanel.hidden = !isPlaylistPanelOpen || !hasPlaylist;
   }
 
   downloadBtn.disabled = locked || !currentDownloadUrl;
@@ -235,6 +242,9 @@ function syncUiLockState(locked) {
   addCurrentToPlaylistBtn.setAttribute("aria-busy", locked ? "true" : "false");
   downloadBtn.setAttribute("aria-busy", locked ? "true" : "false");
   shareBtn.setAttribute("aria-busy", locked ? "true" : "false");
+
+  // Update overall section visibility in case it changed
+  updatePlayerSectionVisibility();
 }
 
 async function loadSupportedExtensions() {
