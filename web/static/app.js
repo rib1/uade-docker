@@ -200,12 +200,13 @@ function updatePrimaryPlayerActions() {
 }
 
 /**
- * Synchronizes the disabled/busy state of all lockable UI elements with the provided lock state.
- * Also updates the global isUiLocked flag to ensure consistent state across the application.
+ * Synchronizes the disabled/busy state of lockable UI elements.
+ * Internal implementation detail for setUiLock and releaseUiLock.
  */
 function syncUiLockState(locked) {
   isUiLocked = locked;
   const hasPlaylist = playlistTracks.length > 0;
+
   const dynamicElements = document.querySelectorAll(
     ".play-btn, .add-playlist-btn, .playlist-play-btn, .playlist-remove-btn, .playlist-move-btn, .playlist-toggle-btn, .playlist-prev-btn, .playlist-next-btn, .playlist-save-btn, .playlist-bookmark-btn, .playlist-share-btn, .playlist-clear-btn",
   );
@@ -214,7 +215,8 @@ function syncUiLockState(locked) {
     if (!el) {
       return;
     }
-    el.disabled = locked;
+    const baseDisabled = el.dataset.baseDisabled === "true";
+    el.disabled = locked || baseDisabled;
     el.setAttribute("aria-busy", locked ? "true" : "false");
   });
 
@@ -229,6 +231,7 @@ function syncUiLockState(locked) {
     playlistPanel.hidden = !isPlaylistPanelOpen || !hasPlaylist;
   }
 
+  // Primary action buttons always depend on content availability AND the global lock
   downloadBtn.disabled = locked || !currentDownloadUrl;
   shareBtn.disabled = locked || !currentShareableUrl;
   addCurrentToPlaylistBtn.disabled = locked || !currentShareableUrl;
@@ -238,13 +241,26 @@ function syncUiLockState(locked) {
     uploadLabel.setAttribute("aria-busy", locked ? "true" : "false");
   }
 
-  // Handle specific busy states for the primary action buttons
+  // Update busy indicators
   addCurrentToPlaylistBtn.setAttribute("aria-busy", locked ? "true" : "false");
   downloadBtn.setAttribute("aria-busy", locked ? "true" : "false");
   shareBtn.setAttribute("aria-busy", locked ? "true" : "false");
 
-  // Update overall section visibility in case it changed
   updatePlayerSectionVisibility();
+}
+
+/**
+ * Disables interactive elements to prevent concurrent conversions.
+ */
+function setUiLock() {
+  syncUiLockState(true);
+}
+
+/**
+ * Re-enables elements after a conversion completes, preserving content-dependent states.
+ */
+function releaseUiLock() {
+  syncUiLockState(false);
 }
 
 async function loadSupportedExtensions() {
@@ -266,7 +282,7 @@ function resetButtonAfterDelay(button, originalText, delay = 2000) {
   button.textContent = "✓ Playing";
   setTimeout(() => {
     button.textContent = originalText;
-    syncUiLockState(false);
+    releaseUiLock();
   }, delay);
 }
 
@@ -363,7 +379,7 @@ async function handleFileUpload(file) {
 
 // Perform a conversion (upload, URL, or example)
 async function performConversion(endpoint, options, button, initialStatusMessage, successMessageTemplate, moduleNameOverride, onSuccessCallback = () => {}) {
-  syncUiLockState(true);
+  setUiLock();
   const originalBtnText = showButtonLoadingAndGetOriginal(button);
   showStatus(initialStatusMessage, "info");
 
@@ -400,11 +416,11 @@ async function performConversion(endpoint, options, button, initialStatusMessage
   // This part is only reached if the conversion failed
   // (i.e., if `response.ok` was false or an error was thrown).
   button.textContent = originalBtnText;
-  syncUiLockState(false);
+  releaseUiLock();
 }
 
 async function performProbe(url, sampleUrl, button) {
-  syncUiLockState(true);
+  setUiLock();
   const originalBtnText = showButtonLoadingAndGetOriginal(button, "Checking...");
   showStatus("Checking module metadata...", "info");
 
@@ -444,7 +460,7 @@ async function performProbe(url, sampleUrl, button) {
     return null;
   } finally {
     button.textContent = originalBtnText;
-    syncUiLockState(false);
+    releaseUiLock();
   }
 }
 
@@ -1020,12 +1036,27 @@ function renderPlaylist() {
   playlistLauncherNext.textContent = getPlaylistNextLabel();
   playlistToggleBtn.textContent = isPlaylistPanelOpen ? "Hide" : "Open";
   playlistToggleBtn.setAttribute("aria-label", isPlaylistPanelOpen ? "Hide queue" : "Open queue");
+  
+  // Important: renderPlaylist() sets the complex base-disabled states based on content
+  playlistToggleBtn.dataset.baseDisabled = (!hasPlaylist).toString();
   playlistToggleBtn.disabled = isUiLocked || !hasPlaylist;
+
+  playlistPrevBtn.dataset.baseDisabled = (!hasPreviousTrack).toString();
   playlistPrevBtn.disabled = isUiLocked || !hasPreviousTrack;
+
+  playlistNextBtn.dataset.baseDisabled = (!hasNextTrack).toString();
   playlistNextBtn.disabled = isUiLocked || !hasNextTrack;
+
+  playlistSaveBtn.dataset.baseDisabled = (!hasPlaylist).toString();
   playlistSaveBtn.disabled = isUiLocked || !hasPlaylist;
+
+  playlistBookmarkBtn.dataset.baseDisabled = (!hasPlaylist).toString();
   playlistBookmarkBtn.disabled = isUiLocked || !hasPlaylist;
+
+  playlistShareBtn.dataset.baseDisabled = (!hasPlaylist).toString();
   playlistShareBtn.disabled = isUiLocked || !hasPlaylist;
+
+  playlistClearBtn.dataset.baseDisabled = (!hasPlaylist).toString();
   playlistClearBtn.disabled = isUiLocked || !hasPlaylist;
 
   playlistList.replaceChildren();
@@ -1072,12 +1103,15 @@ function renderPlaylist() {
     removeBtn.setAttribute("aria-label", `Remove ${track.name} from queue`);
     removeBtn.disabled = isUiLocked;
     removeBtn.addEventListener("click", () => removeTrackFromPlaylist(track.id));
+
     const moveUpBtn = document.createElement("button");
     moveUpBtn.type = "button";
     moveUpBtn.className = "btn btn-secondary btn-small playlist-move-btn";
     moveUpBtn.textContent = "↑";
     moveUpBtn.setAttribute("aria-label", `Move ${track.name} up in queue`);
-    moveUpBtn.disabled = isUiLocked || playlistTracks.length === 1 || index === 0;
+    const moveUpBaseDisabled = playlistTracks.length === 1 || index === 0;
+    moveUpBtn.dataset.baseDisabled = moveUpBaseDisabled.toString();
+    moveUpBtn.disabled = isUiLocked || moveUpBaseDisabled;
     moveUpBtn.addEventListener("click", () => movePlaylistTrack(track.id, -1));
     actions.appendChild(moveUpBtn);
 
@@ -1086,7 +1120,9 @@ function renderPlaylist() {
     moveDownBtn.className = "btn btn-secondary btn-small playlist-move-btn";
     moveDownBtn.textContent = "↓";
     moveDownBtn.setAttribute("aria-label", `Move ${track.name} down in queue`);
-    moveDownBtn.disabled = isUiLocked || playlistTracks.length === 1 || index === playlistTracks.length - 1;
+    const moveDownBaseDisabled = playlistTracks.length === 1 || index === playlistTracks.length - 1;
+    moveDownBtn.dataset.baseDisabled = moveDownBaseDisabled.toString();
+    moveDownBtn.disabled = isUiLocked || moveDownBaseDisabled;
     moveDownBtn.addEventListener("click", () => movePlaylistTrack(track.id, 1));
     actions.appendChild(moveDownBtn);
 
