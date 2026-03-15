@@ -196,9 +196,45 @@ function updatePlayerMetaVisibility() {
 }
 
 function updatePrimaryPlayerActions() {
-  downloadBtn.disabled = isUiLocked || !currentDownloadUrl;
-  shareBtn.disabled = isUiLocked || !currentShareableUrl;
-  addCurrentToPlaylistBtn.disabled = isUiLocked || !currentShareableUrl;
+  syncUiLockState(isUiLocked);
+}
+
+/**
+ * Synchronizes the disabled/busy state of all lockable UI elements with the provided lock state.
+ * Also updates the global isUiLocked flag to ensure consistent state across the application.
+ */
+function syncUiLockState(locked) {
+  isUiLocked = locked;
+  const dynamicElements = document.querySelectorAll(
+    ".play-btn, .add-playlist-btn, .playlist-play-btn, .playlist-remove-btn, .playlist-move-btn, .playlist-toggle-btn, .playlist-prev-btn, .playlist-next-btn, .playlist-save-btn, .playlist-bookmark-btn, .playlist-share-btn, .playlist-clear-btn",
+  );
+
+  [...elementsToDisable, ...dynamicElements].forEach((el) => {
+    if (!el) {
+      return;
+    }
+    el.disabled = locked;
+    el.setAttribute("aria-busy", locked ? "true" : "false");
+  });
+
+  // Handle specific elements not caught by the broad selector or requiring extra logic
+  if (playlistLauncherHitbox) {
+    playlistLauncherHitbox.disabled = locked || playlistTracks.length === 0;
+  }
+
+  downloadBtn.disabled = locked || !currentDownloadUrl;
+  shareBtn.disabled = locked || !currentShareableUrl;
+  addCurrentToPlaylistBtn.disabled = locked || !currentShareableUrl;
+
+  if (uploadLabel) {
+    uploadLabel.classList.toggle("disabled", locked);
+    uploadLabel.setAttribute("aria-busy", locked ? "true" : "false");
+  }
+
+  // Handle specific busy states for the primary action buttons
+  addCurrentToPlaylistBtn.setAttribute("aria-busy", locked ? "true" : "false");
+  downloadBtn.setAttribute("aria-busy", locked ? "true" : "false");
+  shareBtn.setAttribute("aria-busy", locked ? "true" : "false");
 }
 
 async function loadSupportedExtensions() {
@@ -214,73 +250,13 @@ async function loadSupportedExtensions() {
 }
 
 /**
- * Disables all interactive elements to prevent simultaneous conversions.
- */
-function setUiLock() {
-  isUiLocked = true;
-  const dynamicElements = document.querySelectorAll(
-    ".play-btn, .add-playlist-btn, .playlist-play-btn, .playlist-remove-btn, .playlist-move-btn, .playlist-toggle-btn, .playlist-prev-btn, .playlist-next-btn, .playlist-save-btn, .playlist-bookmark-btn, .playlist-share-btn, .playlist-clear-btn",
-  );
-  [...elementsToDisable, ...dynamicElements].forEach((el) => {
-    if (!el) {
-      return;
-    }
-    el.disabled = true;
-    el.setAttribute("aria-busy", "true");
-  });
-  addCurrentToPlaylistBtn.disabled = true;
-  addCurrentToPlaylistBtn.setAttribute("aria-busy", "true");
-  downloadBtn.disabled = true;
-  downloadBtn.setAttribute("aria-busy", "true");
-  shareBtn.disabled = true;
-  shareBtn.setAttribute("aria-busy", "true");
-  if (uploadLabel) {
-    uploadLabel.classList.add("disabled");
-    uploadLabel.setAttribute("aria-busy", "true");
-  }
-
-  // Keep queue controls in sync with the common lock state immediately.
-  renderPlaylist();
-}
-
-/**
- * Re-enables all interactive elements after a conversion is complete.
- */
-function releaseUiLock() {
-  isUiLocked = false;
-  const dynamicElements = document.querySelectorAll(
-    ".play-btn, .add-playlist-btn, .playlist-play-btn, .playlist-remove-btn, .playlist-move-btn, .playlist-toggle-btn, .playlist-prev-btn, .playlist-next-btn, .playlist-save-btn, .playlist-bookmark-btn, .playlist-share-btn, .playlist-clear-btn",
-  );
-  [...elementsToDisable, ...dynamicElements].forEach((el) => {
-    if (!el) {
-      return;
-    }
-    el.disabled = false;
-    el.setAttribute("aria-busy", "false");
-  });
-  addCurrentToPlaylistBtn.setAttribute("aria-busy", "false");
-  downloadBtn.setAttribute("aria-busy", "false");
-  shareBtn.setAttribute("aria-busy", "false");
-  if (uploadLabel) {
-    uploadLabel.classList.remove("disabled");
-    uploadLabel.setAttribute("aria-busy", "false");
-  }
-
-  // Restore primary player controls immediately, even if nothing else re-renders.
-  updatePrimaryPlayerActions();
-
-  // Re-apply queue state after the general UI unlock.
-  renderPlaylist();
-}
-
-/**
  * Shows '✓ Playing' on the button, then resets its HTML after a delay and unlocks the UI.
  */
 function resetButtonAfterDelay(button, originalText, delay = 2000) {
   button.textContent = "✓ Playing";
   setTimeout(() => {
     button.textContent = originalText;
-    releaseUiLock();
+    syncUiLockState(false);
   }, delay);
 }
 
@@ -377,7 +353,7 @@ async function handleFileUpload(file) {
 
 // Perform a conversion (upload, URL, or example)
 async function performConversion(endpoint, options, button, initialStatusMessage, successMessageTemplate, moduleNameOverride, onSuccessCallback = () => {}) {
-  setUiLock();
+  syncUiLockState(true);
   const originalBtnText = showButtonLoadingAndGetOriginal(button);
   showStatus(initialStatusMessage, "info");
 
@@ -414,11 +390,11 @@ async function performConversion(endpoint, options, button, initialStatusMessage
   // This part is only reached if the conversion failed
   // (i.e., if `response.ok` was false or an error was thrown).
   button.textContent = originalBtnText;
-  releaseUiLock();
+  syncUiLockState(false);
 }
 
 async function performProbe(url, sampleUrl, button) {
-  setUiLock();
+  syncUiLockState(true);
   const originalBtnText = showButtonLoadingAndGetOriginal(button, "Checking...");
   showStatus("Checking module metadata...", "info");
 
@@ -458,7 +434,7 @@ async function performProbe(url, sampleUrl, button) {
     return null;
   } finally {
     button.textContent = originalBtnText;
-    releaseUiLock();
+    syncUiLockState(false);
   }
 }
 
