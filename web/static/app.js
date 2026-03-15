@@ -1077,7 +1077,7 @@ function renderPlaylist() {
     moveUpBtn.className = "btn btn-secondary btn-small playlist-move-btn";
     moveUpBtn.textContent = "↑";
     moveUpBtn.setAttribute("aria-label", `Move ${track.name} up in queue`);
-    moveUpBtn.disabled = isUiLocked || index === 0;
+    moveUpBtn.disabled = isUiLocked || playlistTracks.length === 1 || index === 0;
     moveUpBtn.addEventListener("click", () => movePlaylistTrack(track.id, -1));
     actions.appendChild(moveUpBtn);
 
@@ -1086,7 +1086,7 @@ function renderPlaylist() {
     moveDownBtn.className = "btn btn-secondary btn-small playlist-move-btn";
     moveDownBtn.textContent = "↓";
     moveDownBtn.setAttribute("aria-label", `Move ${track.name} down in queue`);
-    moveDownBtn.disabled = isUiLocked || index === playlistTracks.length - 1;
+    moveDownBtn.disabled = isUiLocked || playlistTracks.length === 1 || index === playlistTracks.length - 1;
     moveDownBtn.addEventListener("click", () => movePlaylistTrack(track.id, 1));
     actions.appendChild(moveDownBtn);
 
