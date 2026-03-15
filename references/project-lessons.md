@@ -95,8 +95,17 @@ This document contains project-specific learnings and regression-avoidance notes
 - **Best Practices:** When enabling stricter Ruff rules (e.g., `FBT`, `SLF`, `ARG`), prefer fixing code over adding ignores.
 - **Toolchain:** The repo's quality flow should validate the full supported stack: frontend assets, Python, Dockerfiles, Compose files, workflows, shell scripts, YAML, and instruction files.
 - **Toolchain:** The Ruff portion of the quality check should run both `ruff format --check` and `ruff check`.
-- **Scripting:** Aggregate multi-file failures in PowerShell scripts to show all errors, not just the last one.
+- **Toolchain:** Aggregate multi-file failures in PowerShell scripts to show all errors, not just the last one.
 - **Validation Scope:** Explicitly include `docker-compose.dev.yml` in validation scripts and quality-check container mounts if it's part of the supported workflow.
+
+## UI State Management Lessons
+
+**Key Takeaways:** Centralize UI state synchronization to prevent drift. Decouple lightweight state toggles from heavy DOM rendering.
+
+- **Parameterized Sync:** Use a single parameterized function (e.g., `syncUiLockState(locked)`) to update both the global state variable and the DOM in one pass. This is more robust and efficient than separate `set/release` wrapper functions.
+- **Decouple Rendering:** Do not use heavy DOM-rebuilding functions (like `renderPlaylist`) as the primary path for simple state toggles. Keep state synchronization lightweight to avoid unnecessary churn and performance hits.
+- **Dynamic Coverage:** Use broad CSS selectors (e.g., `.play-btn`, `.playlist-remove-btn`) within the centralized sync function. This ensures that dynamically added elements are automatically covered by the global lock/state logic without requiring per-item manual updates.
+- **Consistency:** Ensure that `aria-busy` and `disabled` states are updated together in the same sync path to maintain a coherent and accessible UI.
 
 ## Development Mode Lessons
 
