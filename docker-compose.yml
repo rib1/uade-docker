@@ -16,26 +16,26 @@
 # To run integration tests:
 # 1. Build and run the test runner service (this sets UADE_TEST_MODE=1 for uade-web):
 #    powershell:
-#    $env:GIT_COMMIT = (git rev-parse HEAD); docker compose -f docker-compose.yml -f test/docker-compose.endpoints.yml up --build uade-web uade-test-runner test-http-server
+#    $env:GIT_COMMIT = (git rev-parse HEAD); docker compose -f docker-compose.yml -f test/docker-compose.endpoints.yml run --rm --build uade-test-runner
 #    or in bash:
-#    GIT_COMMIT=$(git rev-parse HEAD); docker compose -f docker-compose.yml -f test/docker-compose.endpoints.yml up --build uade-web uade-test-runner test-http-server
+#    GIT_COMMIT=$(git rev-parse HEAD); docker compose -f docker-compose.yml -f test/docker-compose.endpoints.yml run --rm --build uade-test-runner
 # 2. To run integration tests again:
 #    docker compose -f docker-compose.yml -f test/docker-compose.endpoints.yml run --rm uade-test-runner
 # 3. To run ratelimit-tests (RATE_LIMIT_DISABLED set ON by docker-compose.ratelimit.yml):
-#    docker compose -f docker-compose.yml -f test/docker-compose.ratelimit.yml up --build uade-test-ratelimit-runner
+#    docker compose -f docker-compose.yml -f test/docker-compose.ratelimit.yml run --rm --build uade-test-ratelimit-runner
 # 4. To run the accessibility test:
-#    docker compose -f docker-compose.yml -f test/docker-compose.accessibility.yml up --build uade-test-accessibility-runner
+#    docker compose -f docker-compose.yml -f test/docker-compose.accessibility.yml run --rm --build uade-test-accessibility-runner
 # 5. To run the race condition test:
-#    docker compose up --build uade-test-race-condition-runner
+#    docker compose run --rm --build uade-test-race-condition-runner
 # 6. To run a DAST scan (UADE_TEST_MODE is OFF by default):
-#    docker compose up --build zap-scan
+#    docker compose run --rm --build zap-scan
 #    To run a DAST scan with local-only ZAP seed requests (UADE_TEST_MODE is ON):
-#    docker compose up --build zap-scan-seeded
+#    docker compose run --rm --build zap-scan-seeded
 #    The HTML report will be in the ./reports directory.
 # 7. To run a full DAST scan (UADE_TEST_MODE is OFF by default):
-#    docker compose up --build zap-full-scan
+#    docker compose run --rm --build zap-full-scan
 #    To run a full DAST scan with local-only ZAP seed requests (UADE_TEST_MODE is ON):
-#    docker compose up --build zap-full-scan-seeded
+#    docker compose run --rm --build zap-full-scan-seeded
 #    The HTML report will be in the ./reports directory.
 
 services:

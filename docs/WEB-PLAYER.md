@@ -525,22 +525,21 @@ If issues persist, run with debug logging enabled and check cloud provider logs 
 
 To run the integration tests using Docker Compose:
 
-1. **Build and run the test runner service (one time setup):**
+1. **Build and run the endpoint tests:**
 
     ```powershell
-    $env:GIT_COMMIT = (git rev-parse HEAD); docker compose up --build uade-test-runner
+    $env:GIT_COMMIT = (git rev-parse HEAD); docker compose -f docker-compose.yml -f test/docker-compose.endpoints.yml run --rm --build uade-test-runner
     ```
 
-    This will build the `uade-test-runner` image and run the tests. The container will exit after the tests are completed.
+    This builds the test image, starts any required dependencies, runs the endpoint tests, and removes the one-off `uade-test-runner` container when it exits.
 
 2. **To run tests again (after initial setup):**
 
     ```powershell
-    docker compose run --rm uade-test-runner
+    docker compose -f docker-compose.yml -f test/docker-compose.endpoints.yml run --rm uade-test-runner
     ```
 
-    This command will run the tests in a new container and remove it upon completion (`--rm`).
-    The `uade-web` service must be running and healthy for the tests to pass.
+    This reruns the same one-off test container without rebuilding it first.
 
 3. **To run the accessibility test:**
 
