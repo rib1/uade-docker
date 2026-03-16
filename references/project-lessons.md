@@ -143,6 +143,7 @@ This document contains project-specific learnings and regression-avoidance notes
 - **Build Numbers:** Increment `base.<BUILD_NUMBER>` for base image security fixes, dependency changes, and other Dockerfile changes that should produce a new published image, even if the effective package set appears unchanged.
 - **Version Source:** Treat the version comment in `Dockerfile` as the source that the base-image publish workflow reads for automatic tagging on `main`.
 - **Documentation:** Update `docs/UADE_VERSIONS.md` whenever cutting a new CLI base image so the published tag history and current stable version stay aligned.
+- **Documentation Order:** Keep `docs/UADE_VERSIONS.md` in strict descending release order (`newest` to `oldest`) and sanity-check for duplicated or misplaced version headings after manual edits.
 - **Stable Version Docs:** Update user-facing version references such as `README.md` when the stable CLI base image changes.
 - **Package Pinning Scope:** Hadolint package pinning guidance applies to both build-stage and runtime `apt-get install` steps. Do not stop after pinning only the final runtime dependencies.
 - **CI Publish Model:** The CI workflow publishes the version you set in `Dockerfile`; it does not choose or auto-increment the next `base.<BUILD_NUMBER>` for you.
