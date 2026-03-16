@@ -201,23 +201,29 @@ function updatePrimaryPlayerActions() {
 
 /**
  * Synchronizes the disabled/busy state of lockable UI elements.
- * Internal implementation detail for setUiLock and releaseUiLock.
  */
-function syncUiLockState(locked) {
-  isUiLocked = locked;
+function syncUiLockState(uiLocked) {
+  isUiLocked = uiLocked;
   const hasPlaylist = playlistTracks.length > 0;
+  const ariaBusy = uiLocked ? "true" : "false";
 
-  const dynamicElements = document.querySelectorAll(
-    ".play-btn, .add-playlist-btn, .playlist-play-btn, .playlist-remove-btn, .playlist-move-btn, .playlist-toggle-btn, .playlist-prev-btn, .playlist-next-btn, .playlist-save-btn, .playlist-bookmark-btn, .playlist-share-btn, .playlist-clear-btn",
+  const selectorMatchedElements = document.querySelectorAll(
+    ".play-btn, .add-playlist-btn, .playlist-play-btn, .playlist-remove-btn, .playlist-move-btn, .playlist-toggle-btn, .playlist-prev-btn, .playlist-next-btn, .playlist-save-btn, .playlist-bookmark-btn, .playlist-share-btn, #playlist-clear-btn",
   );
+  const lockableElements = [...elementsToDisable, ...selectorMatchedElements];
+  const primaryActionButtons = [
+    [downloadBtn, Boolean(currentDownloadUrl)],
+    [shareBtn, Boolean(currentShareableUrl)],
+    [addCurrentToPlaylistBtn, Boolean(currentShareableUrl)],
+  ];
 
-  [...elementsToDisable, ...dynamicElements].forEach((el) => {
+  lockableElements.forEach((el) => {
     if (!el) {
       return;
     }
-    const baseDisabled = el.dataset.baseDisabled === "true";
-    el.disabled = locked || baseDisabled;
-    el.setAttribute("aria-busy", locked ? "true" : "false");
+    const contentDisabled = el.dataset.contentDisabled === "true";
+    el.disabled = uiLocked || contentDisabled;
+    el.setAttribute("aria-busy", ariaBusy);
   });
 
   // Handle specific elements not caught by the broad selector or requiring extra logic
@@ -225,42 +231,24 @@ function syncUiLockState(locked) {
     playlistLauncher.hidden = !hasPlaylist;
   }
   if (playlistLauncherHitbox) {
-    playlistLauncherHitbox.disabled = locked || !hasPlaylist;
+    playlistLauncherHitbox.disabled = uiLocked || !hasPlaylist;
   }
   if (playlistPanel) {
     playlistPanel.hidden = !isPlaylistPanelOpen || !hasPlaylist;
   }
 
-  // Primary action buttons always depend on content availability AND the global lock
-  downloadBtn.disabled = locked || !currentDownloadUrl;
-  shareBtn.disabled = locked || !currentShareableUrl;
-  addCurrentToPlaylistBtn.disabled = locked || !currentShareableUrl;
+  // Primary action buttons always depend on content availability AND the global lock.
+  primaryActionButtons.forEach(([button, isAvailable]) => {
+    button.disabled = uiLocked || !isAvailable;
+    button.setAttribute("aria-busy", ariaBusy);
+  });
 
   if (uploadLabel) {
-    uploadLabel.classList.toggle("disabled", locked);
-    uploadLabel.setAttribute("aria-busy", locked ? "true" : "false");
+    uploadLabel.classList.toggle("disabled", uiLocked);
+    uploadLabel.setAttribute("aria-busy", ariaBusy);
   }
 
-  // Update busy indicators
-  addCurrentToPlaylistBtn.setAttribute("aria-busy", locked ? "true" : "false");
-  downloadBtn.setAttribute("aria-busy", locked ? "true" : "false");
-  shareBtn.setAttribute("aria-busy", locked ? "true" : "false");
-
   updatePlayerSectionVisibility();
-}
-
-/**
- * Disables interactive elements to prevent concurrent conversions.
- */
-function setUiLock() {
-  syncUiLockState(true);
-}
-
-/**
- * Re-enables elements after a conversion completes, preserving content-dependent states.
- */
-function releaseUiLock() {
-  syncUiLockState(false);
 }
 
 async function loadSupportedExtensions() {
@@ -282,7 +270,7 @@ function resetButtonAfterDelay(button, originalText, delay = 2000) {
   button.textContent = "✓ Playing";
   setTimeout(() => {
     button.textContent = originalText;
-    releaseUiLock();
+    syncUiLockState(false);
   }, delay);
 }
 
@@ -379,7 +367,7 @@ async function handleFileUpload(file) {
 
 // Perform a conversion (upload, URL, or example)
 async function performConversion(endpoint, options, button, initialStatusMessage, successMessageTemplate, moduleNameOverride, onSuccessCallback = () => {}) {
-  setUiLock();
+  syncUiLockState(true);
   const originalBtnText = showButtonLoadingAndGetOriginal(button);
   showStatus(initialStatusMessage, "info");
 
@@ -416,11 +404,11 @@ async function performConversion(endpoint, options, button, initialStatusMessage
   // This part is only reached if the conversion failed
   // (i.e., if `response.ok` was false or an error was thrown).
   button.textContent = originalBtnText;
-  releaseUiLock();
+  syncUiLockState(false);
 }
 
 async function performProbe(url, sampleUrl, button) {
-  setUiLock();
+  syncUiLockState(true);
   const originalBtnText = showButtonLoadingAndGetOriginal(button, "Checking...");
   showStatus("Checking module metadata...", "info");
 
@@ -460,7 +448,7 @@ async function performProbe(url, sampleUrl, button) {
     return null;
   } finally {
     button.textContent = originalBtnText;
-    releaseUiLock();
+    syncUiLockState(false);
   }
 }
 
@@ -1037,26 +1025,26 @@ function renderPlaylist() {
   playlistToggleBtn.textContent = isPlaylistPanelOpen ? "Hide" : "Open";
   playlistToggleBtn.setAttribute("aria-label", isPlaylistPanelOpen ? "Hide queue" : "Open queue");
   
-  // Important: renderPlaylist() sets the complex base-disabled states based on content
-  playlistToggleBtn.dataset.baseDisabled = (!hasPlaylist).toString();
+  // Important: renderPlaylist() sets the complex content-disabled states based on queue state
+  playlistToggleBtn.dataset.contentDisabled = (!hasPlaylist).toString();
   playlistToggleBtn.disabled = isUiLocked || !hasPlaylist;
 
-  playlistPrevBtn.dataset.baseDisabled = (!hasPreviousTrack).toString();
+  playlistPrevBtn.dataset.contentDisabled = (!hasPreviousTrack).toString();
   playlistPrevBtn.disabled = isUiLocked || !hasPreviousTrack;
 
-  playlistNextBtn.dataset.baseDisabled = (!hasNextTrack).toString();
+  playlistNextBtn.dataset.contentDisabled = (!hasNextTrack).toString();
   playlistNextBtn.disabled = isUiLocked || !hasNextTrack;
 
-  playlistSaveBtn.dataset.baseDisabled = (!hasPlaylist).toString();
+  playlistSaveBtn.dataset.contentDisabled = (!hasPlaylist).toString();
   playlistSaveBtn.disabled = isUiLocked || !hasPlaylist;
 
-  playlistBookmarkBtn.dataset.baseDisabled = (!hasPlaylist).toString();
+  playlistBookmarkBtn.dataset.contentDisabled = (!hasPlaylist).toString();
   playlistBookmarkBtn.disabled = isUiLocked || !hasPlaylist;
 
-  playlistShareBtn.dataset.baseDisabled = (!hasPlaylist).toString();
+  playlistShareBtn.dataset.contentDisabled = (!hasPlaylist).toString();
   playlistShareBtn.disabled = isUiLocked || !hasPlaylist;
 
-  playlistClearBtn.dataset.baseDisabled = (!hasPlaylist).toString();
+  playlistClearBtn.dataset.contentDisabled = (!hasPlaylist).toString();
   playlistClearBtn.disabled = isUiLocked || !hasPlaylist;
 
   playlistList.replaceChildren();
@@ -1109,9 +1097,9 @@ function renderPlaylist() {
     moveUpBtn.className = "btn btn-secondary btn-small playlist-move-btn";
     moveUpBtn.textContent = "↑";
     moveUpBtn.setAttribute("aria-label", `Move ${track.name} up in queue`);
-    const moveUpBaseDisabled = playlistTracks.length === 1 || index === 0;
-    moveUpBtn.dataset.baseDisabled = moveUpBaseDisabled.toString();
-    moveUpBtn.disabled = isUiLocked || moveUpBaseDisabled;
+    const moveUpContentDisabled = playlistTracks.length === 1 || index === 0;
+    moveUpBtn.dataset.contentDisabled = moveUpContentDisabled.toString();
+    moveUpBtn.disabled = isUiLocked || moveUpContentDisabled;
     moveUpBtn.addEventListener("click", () => movePlaylistTrack(track.id, -1));
     actions.appendChild(moveUpBtn);
 
@@ -1120,9 +1108,10 @@ function renderPlaylist() {
     moveDownBtn.className = "btn btn-secondary btn-small playlist-move-btn";
     moveDownBtn.textContent = "↓";
     moveDownBtn.setAttribute("aria-label", `Move ${track.name} down in queue`);
-    const moveDownBaseDisabled = playlistTracks.length === 1 || index === playlistTracks.length - 1;
-    moveDownBtn.dataset.baseDisabled = moveDownBaseDisabled.toString();
-    moveDownBtn.disabled = isUiLocked || moveDownBaseDisabled;
+    const moveDownContentDisabled =
+      playlistTracks.length === 1 || index === playlistTracks.length - 1;
+    moveDownBtn.dataset.contentDisabled = moveDownContentDisabled.toString();
+    moveDownBtn.disabled = isUiLocked || moveDownContentDisabled;
     moveDownBtn.addEventListener("click", () => movePlaylistTrack(track.id, 1));
     actions.appendChild(moveDownBtn);
 

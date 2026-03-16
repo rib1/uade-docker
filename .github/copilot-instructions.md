@@ -65,7 +65,7 @@ The Flask app is a **single 2200+ line file** with clear functional sections:
 
 **JavaScript Architecture:**
 - **Global state:** `currentDownloadUrl`, `currentSubsongIndex`, `currentSubsongDurations`
-- **UI Lock Pattern:** `setUiLock()` / `releaseUiLock()` prevent concurrent conversions
+- **UI Lock Pattern:** `syncUiLockState(true|false)` prevents concurrent conversions while preserving content-dependent disabled states
 - **Async workflows:** All conversions go through `performConversion()` which handles status updates, errors, and success callbacks
 - **Large file downloads:** `downloadWithRangeRequests()` uses 10MB chunks to avoid 32MB Cloud Run response limits
 - **Media Session API:** `updateMediaSession()` enables lock screen controls on mobile
