@@ -10,6 +10,7 @@ This document contains project-specific learnings and regression-avoidance notes
 - [Backend Hardening Lessons](#backend-hardening-lessons)
 - [Test Lessons](#test-lessons)
 - [Code Quality Lessons](#code-quality-lessons)
+- [UI State Management Lessons](#ui-state-management-lessons)
 - [Development Mode Lessons](#development-mode-lessons)
 - [Build Metadata Lessons](#build-metadata-lessons)
 - [Security Scan Lessons](#security-scan-lessons)
@@ -102,10 +103,10 @@ This document contains project-specific learnings and regression-avoidance notes
 
 **Key Takeaways:** Centralize UI state synchronization to prevent drift. Decouple lightweight state toggles from heavy DOM rendering. Use an internal sync path to manage global lock states while preserving complex per-item logic.
 
-- **Internal Parameterized Sync:** Use an internal parameterized function (e.g., `syncUiLockState(locked)`) as the single source of truth for the global lock. Publicly, expose simple `setUiLock()` and `releaseUiLock()` helpers to manage this state without exposing internal complexity.
-- **Narrow Selector Scope:** Within the internal sync path, use blanket selectors (e.g., `.play-btn`, `.playlist-remove-btn`) to manage the primary lock state for generic controls.
-- **Base-Disabled Pattern:** To preserve context-dependent `disabled` states (e.g., a "Next" button that should stay disabled at the end of a queue even when the UI is unlocked), use a `data-base-disabled="true"` attribute. The sync path must combine the global `locked` state with this attribute: `el.disabled = locked || el.dataset.baseDisabled === "true"`.
-- **Decouple Rendering:** Avoid recommending or using heavy DOM-rebuild functions (like `renderPlaylist()`) as the primary path for simple lock toggles. Use the internal sync path with the base-disabled pattern to maintain performance and correct state.
+- **Internal Parameterized Sync:** Use a parameterized function (e.g., `syncUiLockState(locked)`) as the single source of truth for the global lock, and call it directly with explicit `true` or `false` values at each lock transition.
+- **Explicit Selector Scope:** Within the internal sync path, use a bounded, explicit selector list (e.g., `.play-btn`, `.playlist-remove-btn`) to manage the primary lock state for generic controls.
+- **Content-Disabled Pattern:** To preserve context-dependent `disabled` states (e.g., a "Next" button that should stay disabled at the end of a queue even when the UI is unlocked), use a `data-content-disabled="true"` attribute. The sync path must combine the global `locked` state with this attribute: `el.disabled = locked || el.dataset.contentDisabled === "true"`.
+- **Decouple Rendering:** Avoid recommending or using heavy DOM-rebuild functions (like `renderPlaylist()`) as the primary path for simple lock toggles. Use the internal sync path with the content-disabled pattern to maintain performance and correct state.
 - **Coherent Synchronization:** Always update `aria-busy` and `disabled` together in the same internal sync path to ensure a consistent and accessible UI experience.
 
 ## Development Mode Lessons
