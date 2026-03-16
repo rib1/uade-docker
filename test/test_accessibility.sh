@@ -11,7 +11,9 @@ export NODE_PATH="${NPM_CONFIG_PREFIX}/lib/node_modules"
 PA11Y_CI_VERSION="$(node -p 'require("/workspace/test/package.json").devDependencies["pa11y-ci"]')"
 PLAYWRIGHT_VERSION="$(node -p 'require("/workspace/test/package.json").devDependencies["playwright-core"]')"
 PLAYWRIGHT_IMAGE_TAG="$(sed -n 's/^    image: mcr\.microsoft\.com\/playwright:v\([^-[:space:]]*\)-.*$/\1/p' /workspace/test/docker-compose.accessibility.yml)"
-CHROME_PATH="$(find /ms-playwright -path '*/chrome-linux/chrome' -type f | head -n 1)"
+CHROME_PATH="$(
+    find /ms-playwright \( -path '*/chrome-linux/chrome' -o -path '*/chrome-linux64/chrome' \) -type f | head -n 1
+)"
 
 if [ -z "${CHROME_PATH}" ]; then
     echo "ERROR: Could not find Chromium in the Playwright image." >&2

@@ -81,6 +81,8 @@ This document contains project-specific learnings and regression-avoidance notes
 - **Accessibility:** Generate the Pa11y config on the fly from `test/accessibility-scenarios.js` rather than maintaining a static config file.
 - **Accessibility:** Ensure every Pa11y scenario with `actions` has a corresponding Playwright preflight path to validate the same interactive state.
 - **Accessibility:** If the accessibility runner installs `pa11y-ci` dynamically, print `pa11y-ci --version` in the logs so the exact runtime version is visible during test runs.
+- **Accessibility:** When bumping `test/package.json` `playwright-core`, also update the Playwright image tag in `test/docker-compose.accessibility.yml`.
+- **Accessibility:** Playwright image browser paths can change across versions; keep `test/test_accessibility.sh` compatible with both `chrome-linux/chrome` and `chrome-linux64/chrome`.
 - **Accessibility:** The number of passing scenarios may change. Treat `test/test_accessibility.sh` and current test output as the source of truth instead of hardcoding counts in prose.
 - **Accessibility:** Keep accessibility documentation tied to the actual scripts in `test/`. Script names and helper entry points can drift over time, so docs should be updated alongside the implementation.
 - **Accessibility:** For queue accessibility, use a preloaded `?queue=` URL to create a deterministic starting state for scans.
