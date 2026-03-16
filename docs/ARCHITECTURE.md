@@ -183,10 +183,15 @@ architecture-beta
 ### OWASP ZAP Integration
 
 - **Manual DAST:** DAST scans are not run automatically in CI/CD pipelines. Developers must manually run OWASP ZAP using docker-compose:
-  - Run: `docker compose up --build zap-scan`
+  - Baseline scan: `docker compose up --build zap-scan`
+  - Full scan: `docker compose up --build zap-full-scan`
+  - Seeded baseline scan: `docker compose up --build zap-scan-seeded`
+  - Seeded full scan: `docker compose up --build zap-full-scan-seeded`
   - The HTML report will be generated in the `./reports` directory.
-- **Scope:** ZAP scans the running `uade-web` service for common web vulnerabilities (XSS, CSRF, authentication flaws, misconfigurations).
+- **Scope:** Plain scans target the running `uade-web` service for common web vulnerabilities (XSS, CSRF, authentication flaws, misconfigurations).
+- **Seeded Coverage:** Seeded scans use a dedicated `uade-web-seeded` service with local-only fixture access enabled so ZAP can exercise non-crawlable POST endpoints and backend negative cases.
 - **Exclusions:** Health endpoints and static assets are excluded from scans to reduce noise.
+- **Exit Codes:** ZAP exit code `2` means the scan completed with warnings; it is not, by itself, an infrastructure failure.
 - **Remediation:** All detected vulnerabilities should be triaged and resolved before production deployment. Critical and high findings must block releases.
 
 ## Concurrency Testing

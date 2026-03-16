@@ -29,9 +29,13 @@
 #    docker compose up --build uade-test-race-condition-runner
 # 6. To run a DAST scan (UADE_TEST_MODE is OFF by default):
 #    docker compose up --build zap-scan
+#    To run a DAST scan with local-only ZAP seed requests (UADE_TEST_MODE is ON):
+#    docker compose up --build zap-scan-seeded
 #    The HTML report will be in the ./reports directory.
 # 7. To run a full DAST scan (UADE_TEST_MODE is OFF by default):
 #    docker compose up --build zap-full-scan
+#    To run a full DAST scan with local-only ZAP seed requests (UADE_TEST_MODE is ON):
+#    docker compose up --build zap-full-scan-seeded
 #    The HTML report will be in the ./reports directory.
 
 services:
@@ -55,6 +59,35 @@ services:
       - CLEANUP_INTERVAL=3600      # 1 hour in seconds
       - RATE_LIMIT_DISABLED=1  # disable rate limiting for local testing
       - DISABLE_SSL_VERIFY=1  # disable SSL verification for corporate proxies (Zscaler)
+      - UADE_TEST_MODE=${UADE_TEST_MODE:-0}  # enable local fixture host only when explicitly requested
+      - GIT_COMMIT=${GIT_COMMIT:-unknown}
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5000/health"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+      start_period: 10s
+    networks:
+      - uade-net
+
+  uade-web-seeded:
+    build:
+      context: .
+      dockerfile: Dockerfile.web
+      args:
+        - GIT_COMMIT=${GIT_COMMIT:-unknown}
+    container_name: uade-web-player-seeded
+    volumes:
+      - ./web:/app:ro
+      - uade-tmp:/tmp
+    environment:
+      - FLASK_ENV=production
+      - MAX_UPLOAD_SIZE=10485760  # 10MB in bytes
+      - CLEANUP_INTERVAL=3600      # 1 hour in seconds
+      - RATE_LIMIT_DISABLED=1  # disable rate limiting for local testing
+      - DISABLE_SSL_VERIFY=1  # disable SSL verification for corporate proxies (Zscaler)
+      - UADE_TEST_MODE=1  # enable local fixture host for seeded scans
       - GIT_COMMIT=${GIT_COMMIT:-unknown}
     restart: unless-stopped
     healthcheck:
@@ -109,6 +142,32 @@ services:
     extends:
       service: zap-scan
     command: zap-full-scan.py -t http://uade-web:5000 -j -a -r report.html -w report.md
+
+  zap-scan-seeded:
+    extends:
+      service: zap-scan
+    user: "0:0"
+    command: >-
+      sh -lc "python /zap/wrk/zap_seed_targets.py &&
+      python /zap/zap-baseline.py -t http://uade-web-player-seeded:5000 -j -a -r report.html -w report.md"
+    depends_on:
+      uade-web-seeded:
+        condition: service_healthy
+      test-http-server:
+        condition: service_started
+    environment:
+      - ZAP_TARGET_URL=http://uade-web-player-seeded:5000
+    volumes:
+      - ./reports:/zap/wrk
+      - ./test/zap_seed_targets.py:/zap/wrk/zap_seed_targets.py:ro
+      - test-tmp:/zap/fixtures
+
+  zap-full-scan-seeded:
+    extends:
+      service: zap-scan-seeded
+    command: >-
+      sh -lc "python /zap/wrk/zap_seed_targets.py &&
+      python /zap/zap-full-scan.py -t http://uade-web-player-seeded:5000 -j -a -r report.html -w report.md"
 
   uade-test-race-condition-runner:
     build:

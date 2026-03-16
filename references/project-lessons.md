@@ -73,6 +73,7 @@ This document contains project-specific learnings and regression-avoidance notes
 **Key Takeaways:** Use the local test server and Docker Compose workflows for reliable testing. Keep accessibility checks in sync with interactive scenarios.
 
 - **Negative Cases:** Use the local test server for negative cases that require hitting a real fetch path. Use external-looking dummy URLs for validation-only reject cases.
+- **Service Isolation:** If a scan or test flow needs app-side policy changes such as `UADE_TEST_MODE=1`, model it as a dedicated Compose service rather than relying on caller-managed environment setup.
 - **Shell Scripts:** Avoid `sed` when shell parameter expansion is sufficient, as flagged by ShellCheck.
 - **Expected Noise:** Expect some negative-path noise in Docker test logs, especially UADE metadata errors for intentionally unsupported files and test HTTP server `ConnectionResetError` when oversized downloads are aborted early.
 - **Test Environment:** Prefer the repo's Docker Compose flow for endpoint coverage over ad hoc local execution.
@@ -139,6 +140,10 @@ This document contains project-specific learnings and regression-avoidance notes
 - **False Positives:** ZAP SQL injection findings on `/convert-url` were false positives caused by incorrect error classification, not evidence of a real SQL-backed issue.
 - **False Positives:** Once `/convert-url` stopped surfacing hostile remote-fetch failures as `500`, the SQL injection findings disappeared in both quick and full ZAP scans.
 - **False Positives:** Remaining ZAP noise is mostly low-signal warnings like HTTP-only scanning context or suspicious comments, not active queue-related vulnerabilities.
+- **Seeded Scans:** Keep plain ZAP services and seeded ZAP services separate. Seeded scans are useful for coverage and regression checks, but the default scan path should still run without fixture-only setup.
+- **Seeded Scans:** When seeded scans need relaxed backend policy for internal fixture hosts, give them a dedicated app service instead of toggling shared runtime state.
+- **Compose Design:** Avoid using Compose `extends` when the seeded service needs materially different runtime wiring, especially ports or target hostnames. A standalone service definition is more reliable.
+- **Exit Codes:** Treat ZAP exit code `2` as "scan completed with warnings", not as an infrastructure failure.
 - **Cache Integrity:** Use a `HASH.cache-access.json` sidecar file for more reliable LRU cache management than `mtime`.
 - **Cache Integrity:** Sidecar access-record updates must tolerate concurrent writers. Handle `ENOENT` on file replacement as an expected condition.
 - **Cache Integrity:** Implement cleanup logic for orphaned `*.tmp` files to prevent cache pollution from failed sidecar updates.

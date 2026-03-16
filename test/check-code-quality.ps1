@@ -86,6 +86,7 @@ $BLACK_VERSION = $PyPins["black"]
 $RUFF_VERSION = $PyPins["ruff"]
 $MYPY_VERSION = $PyPins["mypy"]
 $YAMLLINT_VERSION = $PyPins["yamllint"]
+$PythonQualityTargets = @("web", "test/zap_seed_targets.py")
 
 $ToolingCompose = Get-Content -Path $ToolingImageManifest -Raw
 $HadolintImageMatch = [regex]::Match($ToolingCompose, "(?ms)^  hadolint:\s*$.*?^    image:\s*([^\r\n]+)")
@@ -217,16 +218,16 @@ if ($ESLint) {
 if ($Black) {
     Write-Header "Black - Python Code Formatting"
 
-    Write-Host "Running Black on /web..."
+    Write-Host "Running Black on /web and /test/zap_seed_targets.py..."
 
-    $blackArgs = @(".", "--line-length", "100")
+    $blackArgs = @($PythonQualityTargets + @("--line-length", "100"))
     if (-not $Fix) {
         $blackArgs += "--check"
     }
 
     $output = & docker run --rm `
         -v "${ProjectRoot}:/workspace" `
-        --workdir /workspace/web `
+        --workdir /workspace `
         pyfound/black:$BLACK_VERSION black @blackArgs 2>&1
 
     $exitCode = $LASTEXITCODE
@@ -287,26 +288,26 @@ if ($HTMLHint) {
 if ($Ruff) {
     Write-Header "Ruff - Python Linting and Formatting"
 
-    Write-Host "Running Ruff on /web..."
+    Write-Host "Running Ruff on /web and /test/zap_seed_targets.py..."
 
-    $ruffCheckArgs = @("check", ".")
-    $ruffFormatArgs = @("format", ".", "--check")
+    $ruffCheckArgs = @("check") + $PythonQualityTargets
+    $ruffFormatArgs = @("format") + $PythonQualityTargets + @("--check")
     if ($Fix) {
         $ruffCheckArgs += "--fix"
-        $ruffFormatArgs = @("format", ".")
+        $ruffFormatArgs = @("format") + $PythonQualityTargets
     }
 
     # Run format check
     $outputFormat = & docker run --rm `
         -v "${ProjectRoot}:/workspace" `
-        --workdir /workspace/web `
+        --workdir /workspace `
         ghcr.io/astral-sh/ruff:$RUFF_VERSION @ruffFormatArgs 2>&1
     $exitCodeFormat = $LASTEXITCODE
 
     # Run linter check
     $outputCheck = & docker run --rm `
         -v "${ProjectRoot}:/workspace" `
-        --workdir /workspace/web `
+        --workdir /workspace `
         ghcr.io/astral-sh/ruff:$RUFF_VERSION @ruffCheckArgs 2>&1
     $exitCodeCheck = $LASTEXITCODE
 

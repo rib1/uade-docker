@@ -282,6 +282,37 @@ test_probe_error() {
     echo ""
 }
 
+test_convert_url_error() {
+    TEST_NAME=$1
+    URL=$2
+    SAMPLE_URL=$3
+    EXPECTED_STATUS=$4
+    EXPECTED_ERROR_SUBSTRING=$5
+
+    echo "--- Testing Convert URL Error: $TEST_NAME ---"
+
+    HTTP_CODE_BODY=$(_perform_convert_url_call "$URL" "$SAMPLE_URL")
+    HTTP_CODE=$(echo "$HTTP_CODE_BODY" | head -n1)
+    BODY=$(echo "$HTTP_CODE_BODY" | tail -n1)
+
+    if [ "$HTTP_CODE" -ne "$EXPECTED_STATUS" ]; then
+        echo "ERROR: Convert URL returned HTTP $HTTP_CODE (expected $EXPECTED_STATUS) for '$TEST_NAME'"
+        echo "Response body: $BODY"
+        exit 1
+    fi
+
+    if [ -n "$EXPECTED_ERROR_SUBSTRING" ] && ! echo "$BODY" | grep -q "$EXPECTED_ERROR_SUBSTRING"; then
+        echo "ERROR: Convert URL error message mismatch for '$TEST_NAME'"
+        echo "Expected substring: '$EXPECTED_ERROR_SUBSTRING'"
+        echo "Response body: $BODY"
+        exit 1
+    fi
+
+    echo "SUCCESS: Convert URL returned expected error."
+    echo "Response body: $BODY"
+    echo ""
+}
+
 test_probe_oversized_remote_file() {
     TEST_NAME=$1
     URL_BASE=$2
@@ -1565,6 +1596,8 @@ test_probe_has_no_conversion_fields "Probe metadata only response" "https://modl
 test_probe_error "Probe reject localhost URL" "http://localhost:5000/health" "" 400 "Unsafe or disallowed URL provided"
 test_probe_missing_url
 test_probe_malformed_json
+test_probe_error "Probe local fixture server 404" "$LOCAL_TEST_SERVER_URL/fixtures/missing/not-found.mod" "" 400 "External module URL could not be fetched"
+test_probe_error "Probe local upstream transport failure" "http://uade-test-http-server:65534/fixtures/modules/space_debris.mod" "" 502 "Download failed for External module"
 test_probe_error "Probe reject mutated module URL" "$LOCAL_TEST_SERVER_URL/fixtures/modules/space_debris.mod;get-help" "" 400 "URL could not be fetched"
 test_probe_error "Probe reject mutated sample URL" "$LOCAL_TEST_SERVER_URL/fixtures/modules/mdat.turrican_2_level_0-intro" "$LOCAL_TEST_SERVER_URL/fixtures/modules/smpl.turrican_2_level_0-intro;sleep%2015.0;" 400 "URL could not be fetched"
 test_probe_oversized_remote_file "Probe oversized remote file" "$LOCAL_TEST_SERVER_URL/fixtures/invalid/too-large.bin"
@@ -1606,6 +1639,8 @@ test_security_url "Reject convert-url with quoted module URL" "https://modland.c
 test_security_url "Reject convert-url with quoted sample URL" "https://modland.com/pub/modules/TFMX/Chris%20Huelsbeck/mdat.turrican%202%20level%200-intro" "https://modland.com/pub/modules/TFMX/Chris%20Huelsbeck/smpl.turrican%202%20level%200-intro'"
 test_security_url "Reject convert-url with mutated module URL" "$LOCAL_TEST_SERVER_URL/fixtures/modules/space_debris.mod;get-help"
 test_security_url "Reject convert-url with mutated sample URL" "$LOCAL_TEST_SERVER_URL/fixtures/modules/mdat.turrican_2_level_0-intro" "$LOCAL_TEST_SERVER_URL/fixtures/modules/smpl.turrican_2_level_0-intro;sleep%2015.0;"
+test_convert_url_error "Convert URL local fixture server 404" "$LOCAL_TEST_SERVER_URL/fixtures/missing/not-found.mod" "" 400 "External module URL could not be fetched"
+test_convert_url_error "Convert URL local upstream transport failure" "http://uade-test-http-server:65534/fixtures/modules/space_debris.mod" "" 502 "Download failed for External module"
 test_convert_url_malformed_json
 test_convert_url_wrong_content_type
 

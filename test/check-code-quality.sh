@@ -116,6 +116,7 @@ MYPY_VERSION="$(read_pip_tool_version mypy)"
 YAMLLINT_VERSION="$(read_pip_tool_version yamllint)"
 HADOLINT_IMAGE="$(read_tool_image hadolint)"
 ACTIONLINT_IMAGE="$(read_tool_image actionlint)"
+PYTHON_QUALITY_TARGETS=(web test/zap_seed_targets.py)
 
 # Counters
 TOTAL_CHECKS=0
@@ -546,7 +547,7 @@ fi
 if [ "$RUN_BLACK" = true ]; then
     print_header "Black - Python Code Formatting"
 
-    echo "Running Black on /web..."
+    echo "Running Black on /web and /test/zap_seed_targets.py..."
 
     FIX_MODE_ARG="--check"
     if [ "$FIX_MODE" = true ]; then
@@ -556,14 +557,15 @@ if [ "$RUN_BLACK" = true ]; then
     # Check if black is available locally (in quality-check container)
     if command -v black >/dev/null 2>&1; then
         # Use local black (version pinned in test/Dockerfile.quality)
-        OUTPUT=$(cd "${PROJECT_ROOT}/web" && black . --line-length 100 $FIX_MODE_ARG 2>&1)
+        OUTPUT=$(cd "${PROJECT_ROOT}" && black "${PYTHON_QUALITY_TARGETS[@]}" --line-length 100 $FIX_MODE_ARG 2>&1)
         EXIT_CODE=$?
     else
         # Fall back to pinned Black image for consistent results across environments
         OUTPUT=$(docker run --rm \
                -v "${PROJECT_ROOT}:/workspace" \
-               --workdir /workspace/web \
-               "pyfound/black:${BLACK_VERSION}" black . --line-length 100 $FIX_MODE_ARG 2>&1)
+               --workdir /workspace \
+               "pyfound/black:${BLACK_VERSION}" \
+               black "${PYTHON_QUALITY_TARGETS[@]}" --line-length 100 $FIX_MODE_ARG 2>&1)
         EXIT_CODE=$?
     fi
 
@@ -578,7 +580,7 @@ fi
 if [ "$RUN_RUFF" = true ]; then
     print_header "Ruff - Python Linting and Formatting"
 
-    echo "Running Ruff on /web..."
+    echo "Running Ruff on /web and /test/zap_seed_targets.py..."
 
     RUFF_CHECK_ARGS=()
     RUFF_FORMAT_ARGS=(--check)
@@ -590,16 +592,17 @@ if [ "$RUN_RUFF" = true ]; then
     # Check if ruff is available locally (in Docker container)
     if command -v ruff >/dev/null 2>&1; then
         # Use local ruff
-        OUTPUT_FORMAT=$(cd "${PROJECT_ROOT}/web" && ruff format . "${RUFF_FORMAT_ARGS[@]}" 2>&1)
+        OUTPUT_FORMAT=$(cd "${PROJECT_ROOT}" && ruff format "${PYTHON_QUALITY_TARGETS[@]}" "${RUFF_FORMAT_ARGS[@]}" 2>&1)
         EXIT_CODE_FORMAT=$?
-        OUTPUT_CHECK=$(cd "${PROJECT_ROOT}/web" && ruff check . "${RUFF_CHECK_ARGS[@]}" 2>&1)
+        OUTPUT_CHECK=$(cd "${PROJECT_ROOT}" && ruff check "${PYTHON_QUALITY_TARGETS[@]}" "${RUFF_CHECK_ARGS[@]}" 2>&1)
         EXIT_CODE_CHECK=$?
     else
         # Fall back to Docker (for local dev environments)
         OUTPUT=$(docker run --rm \
                -v "${PROJECT_ROOT}:/workspace" \
-               --workdir /workspace/web \
-               "ghcr.io/astral-sh/ruff:${RUFF_VERSION}" check . "${RUFF_CHECK_ARGS[@]}" 2>&1)
+               --workdir /workspace \
+               "ghcr.io/astral-sh/ruff:${RUFF_VERSION}" \
+               check "${PYTHON_QUALITY_TARGETS[@]}" "${RUFF_CHECK_ARGS[@]}" 2>&1)
         EXIT_CODE=$?
         # Ruff format and check in one go with Docker is a bit more complex,
         # so we'll just show the check output for now. The CI uses local ruff.

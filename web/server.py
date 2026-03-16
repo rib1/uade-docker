@@ -2302,12 +2302,13 @@ def convert_url_payload(data):
     sample_url = data.get("sample_url")
 
     try:
-        # Check browser FLAC support
-        user_agent = request.headers.get("User-Agent", "")
-        use_flac = supports_flac(user_agent)
         remote_source, error_response = prepare_remote_module_source(url, sample_url)
         if error_response:
             return error_response
+
+        # Check browser FLAC support
+        user_agent = request.headers.get("User-Agent", "")
+        use_flac = supports_flac(user_agent)
         return process_module_and_respond(
             remote_source["module_path"],
             remote_source["filename"],
@@ -2315,13 +2316,15 @@ def convert_url_payload(data):
             url_cached=remote_source["url_cache_hit"],
             sample_files=remote_source["sample_files"],
         )
-
-    except requests.RequestException:
-        logger.error("Download error", exc_info=True)
-        return json_response({"error": "Download failed"}, 500)
     except Exception:
         logger.error("Convert URL error", exc_info=True)
-        return json_response({"error": "Internal server error during URL conversion"}, 500)
+        return json_response(
+            {
+                "error": "Internal server error during URL conversion",
+                "error_id": "convert_url_internal",
+            },
+            500,
+        )
 
 
 @app.route("/convert-url", methods=["POST"])
@@ -2361,12 +2364,15 @@ def probe_url_payload(data):
             url_cached=remote_source["url_cache_hit"],
             sample_files=remote_source["sample_files"],
         )
-    except requests.RequestException:
-        logger.error("Probe download error", exc_info=True)
-        return json_response({"error": "Download failed"}, 500)
     except Exception:
         logger.error("Probe URL error", exc_info=True)
-        return json_response({"error": "Internal server error during URL probe"}, 500)
+        return json_response(
+            {
+                "error": "Internal server error during URL probe",
+                "error_id": "probe_url_internal",
+            },
+            500,
+        )
 
 
 @app.route("/probe-url", methods=["POST"])

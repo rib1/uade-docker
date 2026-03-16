@@ -554,8 +554,15 @@ To run the integration tests using Docker Compose:
 
 UADE Web Player supports manual Dynamic Application Security Testing (DAST) using OWASP ZAP. To run a security scan against the running web service:
 
-- Run: `docker compose up --build zap-scan`
+- Baseline scan: `docker compose up --build zap-scan`
+- Full scan: `docker compose up --build zap-full-scan`
+- Seeded baseline scan: `docker compose up --build zap-scan-seeded`
+- Seeded full scan: `docker compose up --build zap-full-scan-seeded`
 - The HTML report will be generated in the `./reports` directory.
+
+Seeded scans use a dedicated `uade-web-seeded` service with internal fixture-host access enabled so ZAP can hit non-crawlable POST endpoints and backend error-mapping paths.
+
+ZAP exit code `2` means the scan completed with warnings. Treat it as a completed scan with findings, not as a broken Docker run.
 
 DAST scans are not automated in CI/CD and must be run manually by developers.
 
