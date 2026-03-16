@@ -13,6 +13,7 @@ This document contains project-specific learnings and regression-avoidance notes
 - [UI State Management Lessons](#ui-state-management-lessons)
 - [Development Mode Lessons](#development-mode-lessons)
 - [Build Metadata Lessons](#build-metadata-lessons)
+- [Docker Base Image (CLI) Release Lessons](#docker-base-image-cli-release-lessons)
 - [Security Scan Lessons](#security-scan-lessons)
 
 ---
@@ -77,6 +78,8 @@ This document contains project-specific learnings and regression-avoidance notes
 - **Shell Scripts:** Avoid `sed` when shell parameter expansion is sufficient, as flagged by ShellCheck.
 - **Expected Noise:** Expect some negative-path noise in Docker test logs, especially UADE metadata errors for intentionally unsupported files and test HTTP server `ConnectionResetError` when oversized downloads are aborted early.
 - **Test Environment:** Prefer the repo's Docker Compose flow for endpoint coverage over ad hoc local execution.
+- **Fixture Downloads:** Treat `test/test_endpoints.sh` fixture downloads as a flake risk. It currently uses `curl -s --insecure -o ...` without checking HTTP status or content, which can silently save an error page or truncated file as a module fixture.
+- **Upload Debugging:** When `/convert-url` tests pass but `/upload` fails with `Unknown format`, inspect the uploaded fixture bytes first. That pattern points more strongly to a bad fixture payload than to a regression in upload handling.
 - **CI/CD:** A long-running attached `docker compose up` can hit agent timeouts. Check `docker compose ps` or rerun in detached mode before assuming failure.
 - **Accessibility:** Run accessibility checks within an integration test environment that has a real browser and running application.
 - **Accessibility:** Use `test/accessibility-preflight.js` to verify the player reaches the intended interactive states before running `pa11y-ci`.
@@ -133,6 +136,19 @@ This document contains project-specific learnings and regression-avoidance notes
 - **OCI vs Runtime:** OCI labels are the best-practice place for container image metadata, but the app still needs its own readable source at runtime because a running container cannot easily introspect its own image labels.
 - **Health Test Coverage:** If `/health` exposes `image_build_time`, tests should verify it is non-null, parseable, and in the past rather than only checking that the field exists.
 
+## Docker Base Image (CLI) Release Lessons
+
+**Key Takeaways:** Treat CLI base image releases as explicit versioned artifacts. Bump versions and docs manually, then let CI publish exactly the version you set.
+
+- **Build Numbers:** Increment `base.<BUILD_NUMBER>` for base image security fixes, dependency changes, and other Dockerfile changes that should produce a new published image, even if the effective package set appears unchanged.
+- **Version Source:** Treat the version comment in `Dockerfile` as the source that the base-image publish workflow reads for automatic tagging on `main`.
+- **Documentation:** Update `docs/UADE_VERSIONS.md` whenever cutting a new CLI base image so the published tag history and current stable version stay aligned.
+- **Stable Version Docs:** Update user-facing version references such as `README.md` when the stable CLI base image changes.
+- **CI Publish Model:** The CI workflow publishes the version you set in `Dockerfile`; it does not choose or auto-increment the next `base.<BUILD_NUMBER>` for you.
+- **Release Trigger:** For automatic publish, the versioned `Dockerfile` change must be committed and pushed to `main`. Local validation alone does not publish anything.
+- **Pin Drift:** `Dockerfile.web` can intentionally lag behind the latest stable CLI base image. If it does, document both the current stable CLI base image and the current `Dockerfile.web` pin explicitly so the mismatch is understood rather than accidental.
+- **Validation:** Before releasing a new CLI base image version, run the repo quality flow, build the image locally, and exercise the documented examples in `docs/CLI-USAGE.md` to confirm the runtime dependencies still work.
+
 ## Security Scan Lessons
 
 **Key Takeaways:** Understand common false positives from security scanners. Focus on cache integrity and safe handling of external inputs.
@@ -140,6 +156,7 @@ This document contains project-specific learnings and regression-avoidance notes
 - **False Positives:** ZAP SQL injection findings on `/convert-url` were false positives caused by incorrect error classification, not evidence of a real SQL-backed issue.
 - **False Positives:** Once `/convert-url` stopped surfacing hostile remote-fetch failures as `500`, the SQL injection findings disappeared in both quick and full ZAP scans.
 - **False Positives:** Remaining ZAP noise is mostly low-signal warnings like HTTP-only scanning context or suspicious comments, not active queue-related vulnerabilities.
+- **Seed Fixtures:** Keep ZAP seed fixtures distinct from integration-test fixtures. Synthetic ZAP-only files should use unique names such as `zap-placeholder-*` so shared fixture volumes do not create confusing collisions.
 - **Seeded Scans:** Keep plain ZAP services and seeded ZAP services separate. Seeded scans are useful for coverage and regression checks, but the default scan path should still run without fixture-only setup.
 - **Seeded Scans:** When seeded scans need relaxed backend policy for internal fixture hosts, give them a dedicated app service instead of toggling shared runtime state.
 - **Compose Design:** Avoid using Compose `extends` when the seeded service needs materially different runtime wiring, especially ports or target hostnames. A standalone service definition is more reliable.

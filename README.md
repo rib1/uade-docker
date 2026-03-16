@@ -33,7 +33,7 @@ Features: Drag & drop files, download from URLs, queue save/share support, **LHA
 
 This project uses semantic versioning for the UADE CLI base image to ensure stability and predictable updates.
 
-**Current Stable version:** `uade-cli:3.05-base.2`
+**Current Stable version:** `uade-cli:3.05-base.3`
 
 - **[Docker Versioning Schema](docs/DOCKER_VERSIONING.md)** - Complete versioning strategy, update procedures, and CI/CD pipeline
 - **[UADE Docker Player Versions History](docs/UADE_VERSIONS.md)** - Release notes and changelog for all base image versions

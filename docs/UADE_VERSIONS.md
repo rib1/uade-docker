@@ -4,11 +4,42 @@ This file tracks all published versions of the `uade-cli` base Docker image and 
 
 ## Current Stable Version
 
-**`3.05-base.2`** (lha and zip extract support)
+**`3.05-base.3`** (security/compliance dependency pinning)
 
 ---
 
 ## Version History
+
+### 3.05-base.3 (2026-03-16) [SECURITY/COMPLIANCE PINNING]
+
+- **Image:** `ghcr.io/rib1/uade-cli:3.05-base.3`
+- **UADE Binary Version:** 3.05 (stable)
+- **Status:** Stable version
+- **Base Image:** `debian:stable-slim`
+
+**Changes:**
+
+- Pinned runtime `apt-get` package versions in `Dockerfile`
+- Pinned `ca-certificates` in the post-purge reinstall step
+- Addresses Hadolint package version pinning guidance for the base image
+- Version bump to `3.05-base.3`
+
+**Features:**
+
+- All features from `3.05-base.2`
+- Improved base-image supply-chain traceability through explicit Debian package pinning
+
+**Testing:**
+
+- ✅ Repository code quality suite passes after the Dockerfile update
+- ✅ Endpoint integration suite passes
+
+**Deployment Status:**
+
+- Available as: `ghcr.io/rib1/uade-cli:3.05-base.3`, `ghcr.io/rib1/uade-cli:3.05-base`, `ghcr.io/rib1/uade-cli:latest`
+- Verified binary: `uade123 3.05`
+
+---
 
 ### 3.05-base.1 (2025-11-11) [INITIAL RELEASE]
 
@@ -99,7 +130,7 @@ This file tracks all published versions of the `uade-cli` base Docker image and 
 
 | Dockerfile.web Version | UADE CLI Version | Release Date | Status |
 |---|---|---|---|
-| v1.0 | 3.05-base.1 | 2025-11-11 | Current stable version |
+| v1.0 | 3.05-base.1 | 2025-11-11 | Current Dockerfile.web pin |
 
 ---
 
@@ -110,11 +141,11 @@ This file tracks all published versions of the `uade-cli` base Docker image and 
 **Create a new build number (same UADE version):**
 
 ```bash
-# Example: 3.05-base.1 → 3.05-base.2 (security patch)
-docker build -f Dockerfile -t ghcr.io/rib1/uade-cli:3.05-base.2 .
-docker tag ghcr.io/rib1/uade-cli:3.05-base.2 ghcr.io/rib1/uade-cli:3.05-base
-docker tag ghcr.io/rib1/uade-cli:3.05-base.2 ghcr.io/rib1/uade-cli:latest
-docker push ghcr.io/rib1/uade-cli:3.05-base.2
+# Example: 3.05-base.2 → 3.05-base.3 (security/compliance patch)
+docker build -f Dockerfile -t ghcr.io/rib1/uade-cli:3.05-base.3 .
+docker tag ghcr.io/rib1/uade-cli:3.05-base.3 ghcr.io/rib1/uade-cli:3.05-base
+docker tag ghcr.io/rib1/uade-cli:3.05-base.3 ghcr.io/rib1/uade-cli:latest
+docker push ghcr.io/rib1/uade-cli:3.05-base.3
 ```
 
 **Create a new UADE version (reset build to 1):**
@@ -169,12 +200,12 @@ If a version has critical issues:
 ### Step 1: Revert Dockerfile.web to previous version
 
 ```dockerfile
-# If 3.05-base.2 has issues:
+# If 3.05-base.3 has issues:
 # Change:
-FROM ghcr.io/rib1/uade-cli:3.05-base.2
+FROM ghcr.io/rib1/uade-cli:3.05-base.3
 
 # To:
-FROM ghcr.io/rib1/uade-cli:3.05-base.1
+FROM ghcr.io/rib1/uade-cli:3.05-base.2
 ```
 
 ### Step 2: Rebuild and test
@@ -191,7 +222,7 @@ docker compose up --build uade-test-race-condition-runner
 
 ```bash
 git add Dockerfile.web
-git commit -m "Rollback to uade-cli:3.05-base.1 (critical fix for issue #X)"
+git commit -m "Rollback to uade-cli:3.05-base.2 (critical fix for issue #X)"
 git push origin main
 # Redeploy to Cloud Run, etc.
 ```
