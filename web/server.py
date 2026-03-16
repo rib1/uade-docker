@@ -23,6 +23,7 @@ import unicodedata
 import urllib.parse
 import uuid
 import zipfile
+from contextlib import contextmanager
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Final
@@ -52,6 +53,7 @@ ASCII_PRINTABLE_MAX: Final = 0x7E
 SANITIZED_URL_LOG_MAX_LEN: Final = 200
 CACHE_ACCESS_RECORD_SUFFIX: Final = ".cache-access.json"
 ENOENT_ERRNO: Final = 2
+MAX_REMOTE_REDIRECTS: Final = 5
 GIT_BIN: Final = "/usr/bin/git"
 UADE123_BIN: Final = "/usr/local/bin/uade123"
 FLAC_BIN: Final = "/usr/bin/flac"
@@ -2131,6 +2133,52 @@ def is_safe_url(u):
         return False
 
 
+def ensure_safe_remote_url(u, *, context="URL"):
+    """Normalize untrusted input and reject any URL that fails SSRF validation."""
+    normalized_url = sanitized_url(u, log=False)
+    if not normalized_url or not is_safe_url(normalized_url):
+        raise ValueError(f"Unsafe or disallowed {context.lower()} provided")
+    return normalized_url
+
+
+@contextmanager
+def open_safe_remote_stream(url, *, headers, timeout=30):
+    """Open a streaming HTTP response while validating each redirect target."""
+    current_url = ensure_safe_remote_url(url, context="URL")
+
+    with requests.Session() as session:
+        for _ in range(MAX_REMOTE_REDIRECTS + 1):
+            response = session.get(
+                current_url,
+                timeout=timeout,
+                verify=not DISABLE_SSL_VERIFY,
+                allow_redirects=False,
+                stream=True,
+                headers=headers,
+            )
+
+            if response.is_redirect or response.is_permanent_redirect:
+                redirect_target = response.headers.get("location")
+                response.close()
+
+                if not redirect_target:
+                    raise requests.RequestException("Redirect response missing Location header")
+
+                next_url = urllib.parse.urljoin(current_url, redirect_target)
+                current_url = ensure_safe_remote_url(next_url, context="redirect URL")
+                continue
+
+            try:
+                yield response, current_url
+            finally:
+                response.close()
+            return
+
+    raise requests.TooManyRedirects(
+        f"Too many redirects while fetching remote URL: {sanitized_url(current_url)}"
+    )
+
+
 def get_dual_file_module_filenames(filename):
     """
     Determine the correct filenames and suffixes for dual-file modules using DUAL_FILE_MODULES.
@@ -2165,7 +2213,11 @@ def get_dual_file_module_filenames(filename):
 
 def prepare_remote_module_source(url, sample_url=None):
     """Validate, download, and resolve a remote module source for probe/convert routes."""
-    if not is_safe_url(url) or (sample_url and not is_safe_url(sample_url)):
+    try:
+        url = ensure_safe_remote_url(url, context="module URL")
+        if sample_url:
+            sample_url = ensure_safe_remote_url(sample_url, context="sample URL")
+    except ValueError:
         return None, json_response({"error": "Unsafe or disallowed URL provided"}, 400)
 
     filename = extract_filename_from_url(url)
@@ -2445,19 +2497,13 @@ def download_and_limit_size(url, temp_file_path, error_context=""):
     max_size = app.config["MAX_DOWNLOAD_SIZE"]
 
     try:
+        url = ensure_safe_remote_url(url, context=error_context or "URL")
         # Set a proper User-Agent header
         headers = {
             "User-Agent": f"UADE-Web-Player/{GIT_COMMIT} (https://github.com/rib1/uade-docker)"
         }
 
-        with requests.get(
-            url,
-            timeout=30,
-            verify=not DISABLE_SSL_VERIFY,
-            allow_redirects=True,
-            stream=True,
-            headers=headers,
-        ) as response:
+        with open_safe_remote_stream(url, headers=headers, timeout=30) as (response, final_url):
             response.raise_for_status()
 
             # Check Content-Length header first to avoid unnecessary downloads
@@ -2468,7 +2514,7 @@ def download_and_limit_size(url, temp_file_path, error_context=""):
                     if content_length > max_size:
                         logger.error(
                             f"External download size ({content_length} bytes) exceeds limit "
-                            f"before download ({error_context}): {sanitized_url(url)}"
+                            f"before download ({error_context}): {sanitized_url(final_url)}"
                         )
                         # Create zero-byte file to cache that this URL is oversized
                         temp_file_path.touch()
@@ -2482,7 +2528,7 @@ def download_and_limit_size(url, temp_file_path, error_context=""):
                 except ValueError:
                     # Invalid Content-Length header, continue with chunked download
                     logger.info(
-                        f"Invalid Content-Length header for {sanitized_url(url)}, "
+                        f"Invalid Content-Length header for {sanitized_url(final_url)}, "
                         "continuing with chunked download"
                     )
 
@@ -2495,7 +2541,7 @@ def download_and_limit_size(url, temp_file_path, error_context=""):
                             response.close()
                             logger.error(
                                 f"External download exceeded limit during download "
-                                f"({error_context}): {sanitized_url(url)}"
+                                f"({error_context}): {sanitized_url(final_url)}"
                             )
                             return False, json_response(
                                 {
@@ -2531,6 +2577,14 @@ def download_and_limit_size(url, temp_file_path, error_context=""):
         return False, json_response(
             {"error": f"Download failed for {error_context}"}, HTTP_BAD_GATEWAY
         )
+    except ValueError:
+        logger.warning(
+            f"Rejected unsafe redirect target for {sanitized_url(url)} ({error_context})",
+            exc_info=True,
+        )
+        if temp_file_path.exists():
+            temp_file_path.unlink(missing_ok=True)
+        return False, json_response({"error": "Unsafe or disallowed URL provided"}, 400)
     except requests.RequestException:
         logger.error(f"Download failed for {sanitized_url(url)} ({error_context})", exc_info=True)
         # Clean up partial file

@@ -20,6 +20,11 @@ TOO_LARGE_BYTES = 11 * 1024 * 1024
 HTTP_SERVER_ERROR_MIN = 500
 HTTP_TIMEOUT_SECONDS = 20
 WAIT_TIMEOUT_SECONDS = 30
+ZAP_GUTENBERG_FIXTURE = "zap-placeholder-gutenberg.txt"
+ZAP_SPACE_DEBRIS_FIXTURE = "zap-placeholder-space-debris.mod"
+ZAP_MDAT_FIXTURE = "zap-placeholder-mdat.turrican_2_level_0-intro"
+ZAP_SMPL_FIXTURE = "zap-placeholder-smpl.turrican_2_level_0-intro"
+ZAP_TOO_LARGE_FIXTURE = "zap-placeholder-too-large.bin"
 
 
 def allowlisted_urlopen(
@@ -48,15 +53,15 @@ def ensure_local_fixtures() -> None:
     modules_dir.mkdir(parents=True, exist_ok=True)
     invalid_dir.mkdir(parents=True, exist_ok=True)
 
-    (modules_dir / "gutenberg.txt").write_text(
+    (modules_dir / ZAP_GUTENBERG_FIXTURE).write_text(
         "This is plain text, not an Amiga module.\n",
         encoding="utf-8",
     )
-    (modules_dir / "space_debris.mod").write_bytes(b"placeholder module bytes\n")
-    (modules_dir / "mdat.turrican_2_level_0-intro").write_bytes(b"placeholder mdat bytes\n")
-    (modules_dir / "smpl.turrican_2_level_0-intro").write_bytes(b"placeholder smpl bytes\n")
+    (modules_dir / ZAP_SPACE_DEBRIS_FIXTURE).write_bytes(b"placeholder module bytes\n")
+    (modules_dir / ZAP_MDAT_FIXTURE).write_bytes(b"placeholder mdat bytes\n")
+    (modules_dir / ZAP_SMPL_FIXTURE).write_bytes(b"placeholder smpl bytes\n")
 
-    too_large_file = invalid_dir / "too-large.bin"
+    too_large_file = invalid_dir / ZAP_TOO_LARGE_FIXTURE
     if not too_large_file.exists() or too_large_file.stat().st_size != TOO_LARGE_BYTES:
         too_large_file.write_bytes(b"0" * TOO_LARGE_BYTES)
 
@@ -132,7 +137,7 @@ def main() -> None:
     ensure_local_fixtures()
     wait_for_url(f"{BASE_URL}/health", timeout_seconds=WAIT_TIMEOUT_SECONDS)
     wait_for_url(
-        f"{LOCAL_TEST_SERVER_URL}/fixtures/modules/gutenberg.txt",
+        f"{LOCAL_TEST_SERVER_URL}/fixtures/modules/{ZAP_GUTENBERG_FIXTURE}",
         timeout_seconds=WAIT_TIMEOUT_SECONDS,
     )
     seed_case("health", path="/health", expected_status=200)
@@ -197,19 +202,28 @@ def main() -> None:
         (
             "transport-502",
             json_body(
-                {"url": ("http://uade-test-http-server:65534/fixtures/modules/space_debris.mod")}
+                {
+                    "url": (
+                        f"http://uade-test-http-server:65534/fixtures/modules/{ZAP_SPACE_DEBRIS_FIXTURE}"
+                    )
+                }
             ),
             502,
         ),
         (
             "unsupported-500",
-            json_body({"url": f"{LOCAL_TEST_SERVER_URL}/fixtures/modules/gutenberg.txt"}),
+            json_body({"url": f"{LOCAL_TEST_SERVER_URL}/fixtures/modules/{ZAP_GUTENBERG_FIXTURE}"}),
             500,
         ),
         (
             "mutated-module-400",
             json_body(
-                {"url": (f"{LOCAL_TEST_SERVER_URL}/fixtures/modules/space_debris.mod;get-help")}
+                {
+                    "url": (
+                        f"{LOCAL_TEST_SERVER_URL}/fixtures/modules/"
+                        f"{ZAP_SPACE_DEBRIS_FIXTURE};get-help"
+                    )
+                }
             ),
             400,
         ),
@@ -217,12 +231,9 @@ def main() -> None:
             "mutated-sample-400",
             json_body(
                 {
-                    "url": (
-                        f"{LOCAL_TEST_SERVER_URL}/fixtures/modules/mdat.turrican_2_level_0-intro"
-                    ),
+                    "url": f"{LOCAL_TEST_SERVER_URL}/fixtures/modules/{ZAP_MDAT_FIXTURE}",
                     "sample_url": (
-                        f"{LOCAL_TEST_SERVER_URL}/fixtures/modules/"
-                        "smpl.turrican_2_level_0-intro;sleep%2015.0;"
+                        f"{LOCAL_TEST_SERVER_URL}/fixtures/modules/{ZAP_SMPL_FIXTURE};sleep%2015.0;"
                     ),
                 }
             ),
@@ -238,7 +249,7 @@ def main() -> None:
                 json_body(
                     {
                         "url": (
-                            f"{LOCAL_TEST_SERVER_URL}/fixtures/invalid/too-large.bin"
+                            f"{LOCAL_TEST_SERVER_URL}/fixtures/invalid/{ZAP_TOO_LARGE_FIXTURE}"
                             f"?test_id={endpoint}-{uuid.uuid4().hex}"
                         )
                     }
