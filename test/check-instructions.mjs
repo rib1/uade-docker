@@ -42,6 +42,10 @@ function fileExists(relativePath) {
   return fs.existsSync(path.join(projectRoot, relativePath));
 }
 
+function readFile(relativePath) {
+  return fs.readFileSync(path.join(projectRoot, relativePath), "utf8");
+}
+
 function validateRelativeLinks(relativePath, content) {
   const linkPattern = /\[[^\]]*]\(([^)]+)\)/g;
   const fileDir = path.dirname(relativePath);
@@ -249,6 +253,50 @@ function validateNearDuplicatePolicyLines(relativePath, content) {
   }
 }
 
+function validatePlaywrightVersionAlignment() {
+  const packageJsonPath = "test/package.json";
+  const accessibilityComposePath = "test/docker-compose.accessibility.yml";
+
+  if (!fileExists(packageJsonPath) || !fileExists(accessibilityComposePath)) {
+    return;
+  }
+
+  let playwrightVersion;
+  try {
+    const packageJson = JSON.parse(readFile(packageJsonPath));
+    playwrightVersion = packageJson?.devDependencies?.["playwright-core"];
+  } catch {
+    addFailure(packageJsonPath, "could not parse JSON to read devDependencies.playwright-core");
+    return;
+  }
+
+  if (!playwrightVersion) {
+    addFailure(packageJsonPath, "missing devDependencies.playwright-core");
+    return;
+  }
+
+  const composeContent = readFile(accessibilityComposePath);
+  const imageTagMatch = composeContent.match(
+    /^\s*image:\s*mcr\.microsoft\.com\/playwright:v([^\s-]+)-/m,
+  );
+
+  if (!imageTagMatch) {
+    addFailure(
+      accessibilityComposePath,
+      "could not read Playwright image tag from mcr.microsoft.com/playwright image reference",
+    );
+    return;
+  }
+
+  const playwrightImageVersion = imageTagMatch[1];
+  if (playwrightVersion !== playwrightImageVersion) {
+    addFailure(
+      accessibilityComposePath,
+      `Playwright version mismatch: test/package.json has ${playwrightVersion}, image tag has ${playwrightImageVersion}`,
+    );
+  }
+}
+
 for (const relativePath of instructionFiles) {
   if (!fileExists(relativePath)) {
     addFailure(relativePath, "expected instruction file is missing");
@@ -266,6 +314,8 @@ for (const relativePath of instructionFiles) {
     validateCopilotInstructions(relativePath, content);
   }
 }
+
+validatePlaywrightVersionAlignment();
 
 if (failures.length > 0) {
   console.error("Instruction file checks failed:");
