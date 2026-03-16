@@ -144,10 +144,12 @@ This document contains project-specific learnings and regression-avoidance notes
 - **Version Source:** Treat the version comment in `Dockerfile` as the source that the base-image publish workflow reads for automatic tagging on `main`.
 - **Documentation:** Update `docs/UADE_VERSIONS.md` whenever cutting a new CLI base image so the published tag history and current stable version stay aligned.
 - **Stable Version Docs:** Update user-facing version references such as `README.md` when the stable CLI base image changes.
+- **Package Pinning Scope:** Hadolint package pinning guidance applies to both build-stage and runtime `apt-get install` steps. Do not stop after pinning only the final runtime dependencies.
 - **CI Publish Model:** The CI workflow publishes the version you set in `Dockerfile`; it does not choose or auto-increment the next `base.<BUILD_NUMBER>` for you.
 - **Release Trigger:** For automatic publish, the versioned `Dockerfile` change must be committed and pushed to `main`. Local validation alone does not publish anything.
 - **Pin Drift:** `Dockerfile.web` can intentionally lag behind the latest stable CLI base image. If it does, document both the current stable CLI base image and the current `Dockerfile.web` pin explicitly so the mismatch is understood rather than accidental.
 - **Validation:** Before releasing a new CLI base image version, run the repo quality flow, build the image locally, and exercise the documented examples in `docs/CLI-USAGE.md` to confirm the runtime dependencies still work.
+- **Fresh Verification:** If a lint warning appears to contradict the current `Dockerfile`, rerun the repo quality suite before changing code again. Old Hadolint output can reflect a previous file state rather than the current tree.
 
 ## Security Scan Lessons
 

@@ -4,13 +4,13 @@ This file tracks all published versions of the `uade-cli` base Docker image and 
 
 ## Current Stable Version
 
-**`3.05-base.3`** (security/compliance dependency pinning)
+**`3.05-base.3`** (security/compliance package pinning)
 
 ---
 
 ## Version History
 
-### 3.05-base.3 (2026-03-16) [SECURITY/COMPLIANCE PINNING]
+### 3.05-base.3 (2026-03-16) [SECURITY/COMPLIANCE PACKAGE PINNING]
 
 - **Image:** `ghcr.io/rib1/uade-cli:3.05-base.3`
 - **UADE Binary Version:** 3.05 (stable)
@@ -19,15 +19,16 @@ This file tracks all published versions of the `uade-cli` base Docker image and 
 
 **Changes:**
 
+- Pinned build-stage `apt-get` package versions in `Dockerfile`
 - Pinned runtime `apt-get` package versions in `Dockerfile`
-- Pinned `ca-certificates` in the post-purge reinstall step
+- Pinned `ca-certificates` in both the build dependency install step and the post-purge reinstall step
 - Addresses Hadolint package version pinning guidance for the base image
 - Version bump to `3.05-base.3`
 
 **Features:**
 
 - All features from `3.05-base.2`
-- Improved base-image supply-chain traceability through explicit Debian package pinning
+- Improved base-image supply-chain traceability through explicit Debian package pinning for both build and runtime dependencies
 
 **Testing:**
 

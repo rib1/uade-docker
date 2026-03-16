@@ -14,18 +14,18 @@ FROM debian:stable-slim
 # 1. Install dependencies for building UADE (gcc, make, git, libao for audio, etc.)
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
-        build-essential \
-        git \
-        autoconf \
-        automake \
-        libtool \
-        pkg-config \
-        libao-dev \
-        ca-certificates \
-        python3 \
-        meson \
-        ninja-build \
-        libsdl2-dev \
+        build-essential=12.12 \
+        git=1:2.47.3-0+deb13u1 \
+        autoconf=2.72-3.1 \
+        automake=1:1.17-4 \
+        libtool=2.5.4-4 \
+        pkg-config=1.8.1-4 \
+        libao-dev=1.2.2+20180113-1.2 \
+        ca-certificates=20250419 \
+        python3=3.13.5-1 \
+        meson=1.7.0-1 \
+        ninja-build=1.12.1-1 \
+        libsdl2-dev=2.32.4+dfsg-1 \
     && rm -rf /var/lib/apt/lists/*
 
 # 2. Set working directory for source code
