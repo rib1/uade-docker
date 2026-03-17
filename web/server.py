@@ -18,6 +18,7 @@ import socket
 import subprocess
 import sys
 import tempfile
+import threading
 import time
 import unicodedata
 import urllib.parse
@@ -46,6 +47,7 @@ START_TIME: Final = time.time()
 CLEANUP_TIMESTAMPS: dict[str, datetime | None] = {"local": None, "cache": None}
 CLEANUP_STATUSES: dict[str, str] = {"local": "not_run_yet", "cache": "not_run_yet"}
 LOCAL_CLEANUP_STATE = {"last_check_monotonic": 0.0}
+LOCAL_CLEANUP_LOCK = threading.Lock()
 UADE_VERSION_TOKEN_PARTS_MIN: Final = 2
 MEMINFO_LINE_PARTS_EXPECTED: Final = 2
 LHA_HEADER_MIN_BYTES: Final = 7
@@ -298,8 +300,8 @@ def add_security_headers(response):
 
 @app.before_request
 def maybe_cleanup_before_request():
-    """Apply local temp-file cleanup uniformly without scanning on every request."""
-    if request.path.startswith(("/play/", "/download/")):
+    """Apply gated local temp-file cleanup on eligible requests."""
+    if should_skip_request_cleanup(request.path):
         return
     maybe_run_local_cleanup()
 
@@ -565,10 +567,10 @@ def json_response(data, status=200):
     return response
 
 
-def cleanup_old_files():
+def _cleanup_old_files_impl():
     """
     Remove files older than CLEANUP_INTERVAL from local directories.
-    This function is designed to be thread-safe.
+    Callers should serialize concurrent runs when invoking this helper.
     """
     try:
         cutoff = time.time() - CLEANUP_INTERVAL
@@ -597,26 +599,71 @@ def cleanup_old_files():
         CLEANUP_STATUSES["local"] = "old_entries_removed" if removed > 0 else "no_old_entries_found"
 
 
+def should_run_local_cleanup(now, last_check):
+    """Return True when the local cleanup interval has elapsed."""
+    return (now - last_check) >= CLEANUP_INTERVAL
+
+
+def should_skip_request_cleanup(path):
+    """Return True for request paths that should not trigger local cleanup."""
+    return path.startswith(("/play/", "/download/"))
+
+
+def log_skipped_local_cleanup(elapsed):
+    """Log that request-triggered local cleanup was skipped due to interval gating."""
+    logger.info(
+        "Skipping local cleanup; last request-triggered cleanup check ran "
+        f"{elapsed:.1f}s ago (interval {CLEANUP_INTERVAL}s)"
+    )
+
+
+def run_local_cleanup_locked(*, source):
+    """
+    Run local cleanup while serializing concurrent local cleanup requests.
+
+    Request-triggered cleanup obeys the cleanup interval gate. Manual cleanup
+    requests share the same lock but bypass the interval so test and explicit
+    maintenance flows can force an immediate run.
+    """
+    with LOCAL_CLEANUP_LOCK:
+        now = time.monotonic()
+        last_check = LOCAL_CLEANUP_STATE["last_check_monotonic"]
+        elapsed = now - last_check
+        if source == "request" and not should_run_local_cleanup(now, last_check):
+            log_skipped_local_cleanup(elapsed)
+            return
+
+        LOCAL_CLEANUP_STATE["last_check_monotonic"] = now
+        if source == "request":
+            if last_check == 0.0:
+                logger.info(
+                    "Running local cleanup from request hook for the first time in this process"
+                )
+            else:
+                logger.info(
+                    "Running local cleanup from request hook after "
+                    f"{elapsed:.1f}s since the previous check"
+                )
+        else:
+            logger.info("Running local cleanup from manual trigger")
+        _cleanup_old_files_impl()
+
+
 def maybe_run_local_cleanup():
-    """Run local cleanup at most once per cleanup interval across incoming requests."""
+    """
+    Run local cleanup at most once per cleanup interval across incoming requests.
+
+    Avoid acquiring the lock if the current request clearly falls within the
+    existing cleanup interval; the lock-protected helper re-checks before running.
+    """
     now = time.monotonic()
     last_check = LOCAL_CLEANUP_STATE["last_check_monotonic"]
     elapsed = now - last_check
-    if elapsed < CLEANUP_INTERVAL:
-        logger.info(
-            "Skipping local cleanup; last request-triggered cleanup check ran "
-            f"{elapsed:.1f}s ago (interval {CLEANUP_INTERVAL}s)"
-        )
+    if not should_run_local_cleanup(now, last_check):
+        log_skipped_local_cleanup(elapsed)
         return
 
-    LOCAL_CLEANUP_STATE["last_check_monotonic"] = now
-    if last_check == 0.0:
-        logger.info("Running local cleanup from request hook for the first time in this process")
-    else:
-        logger.info(
-            f"Running local cleanup from request hook after {elapsed:.1f}s since the previous check"
-        )
-    cleanup_old_files()
+    run_local_cleanup_locked(source="request")
 
 
 def cleanup_cache_files():
@@ -1744,7 +1791,7 @@ def test_run_cleanup():
         return json_response({"error": "Invalid cleanup scope"}, 400)
 
     if scope in {"local", "all"}:
-        cleanup_old_files()
+        run_local_cleanup_locked(source="manual")
     if scope in {"cache", "all"}:
         cleanup_cache_files()
 

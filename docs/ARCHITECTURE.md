@@ -150,7 +150,7 @@ architecture-beta
 - UUID-based filenames (path traversal prevention)
 - File size limits (10MB uploads)
 - Process timeouts (300s max)
-- Automatic file cleanup
+- Automatic file cleanup on eligible requests
 - Input validation and sanitization
 - Zero HIGH severity security issues (Bandit, ESLint)
 
@@ -260,7 +260,9 @@ architecture-beta
 - Single Gunicorn worker (memory optimization)
 - 4 threads per worker
 - Connection pooling
-- Temporary file cleanup (hourly)
+- Temporary file cleanup on eligible requests after the configured interval
+  - Local files older than `CLEANUP_INTERVAL` are purged by a request-triggered cleanup pass.
+  - Cleanup runs at most once per interval per process, is serialized with a lock, and skips `/play/*` and `/download/*` requests.
 
 ### Cloud Run
 

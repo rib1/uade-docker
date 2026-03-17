@@ -329,7 +329,7 @@ FLASK_DEBUG: 0 # Development-only; set to 1 in docker-compose.dev.yml to enable 
 PORT: 5000 # Server port
 MAX_UPLOAD_SIZE: 10485760 # Max upload (10MB)
 MAX_DOWNLOAD_SIZE: 10485760 # Max download from URLs (10MB)
-CLEANUP_INTERVAL: 3600 # File cleanup (1 hour)
+CLEANUP_INTERVAL: 3600 # Local file age threshold and request-triggered cleanup gate (1 hour)
 CACHE_CLEANUP_INTERVAL: 86400 # Cache cleanup interval (24 hours)
 CACHE_URI: file:///tmp/cache # Remote cache URI (default: file:///tmp/cache)
 CACHE_ACCESS_UPDATE_INTERVAL_SECONDS: 300 # Minimum seconds between cache access sidecar rewrites
@@ -417,7 +417,8 @@ Older or unsupported browsers automatically receive WAV files as fallback. No co
 
 ### File Management
 
-- Automatic cleanup of local files older than 1 hour
+- Automatic cleanup of local files older than 1 hour on eligible requests
+- Cleanup is request-triggered, runs at most once per interval per process, and skips `/play/*` and `/download/*`
 - Separate directories: modules, conversions, cache
 - UUID-based filenames (no collisions)
 - URL-based caching: If the same URL is requested again, the cached file is reused instantly
