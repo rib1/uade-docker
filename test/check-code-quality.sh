@@ -116,6 +116,7 @@ MYPY_VERSION="$(read_pip_tool_version mypy)"
 YAMLLINT_VERSION="$(read_pip_tool_version yamllint)"
 HADOLINT_IMAGE="$(read_tool_image hadolint)"
 ACTIONLINT_IMAGE="$(read_tool_image actionlint)"
+SHELLCHECK_IMAGE="$(read_tool_image shellcheck)"
 PYTHON_QUALITY_TARGETS=(web test/zap_seed_targets.py)
 
 # Counters
@@ -485,7 +486,7 @@ if [ "$RUN_SHELLCHECK" = true ]; then
             OUTPUT=$(docker run --rm \
                 -v "${PROJECT_ROOT}:/workspace" \
                 --workdir /workspace \
-                koalaman/shellcheck:stable -x --severity=style "${SHELL_FILES_REL[@]}" 2>&1)
+                "${SHELLCHECK_IMAGE}" -x --severity=style "${SHELL_FILES_REL[@]}" 2>&1)
             EXIT_CODE=$?
         fi
 

@@ -1,6 +1,6 @@
 FROM alpine:latest
 
-RUN apk add --no-cache curl jq bash
+RUN apk add --no-cache curl=8.17.0-r1 jq=1.8.1-r0 bash=5.3.3-r1
 
 # Create a non-root user and group
 RUN addgroup -S tester && adduser -S tester -G tester

@@ -91,8 +91,10 @@ $PythonQualityTargets = @("web", "test/zap_seed_targets.py")
 $ToolingCompose = Get-Content -Path $ToolingImageManifest -Raw
 $HadolintImageMatch = [regex]::Match($ToolingCompose, "(?ms)^  hadolint:\s*$.*?^    image:\s*([^\r\n]+)")
 $ActionlintImageMatch = [regex]::Match($ToolingCompose, "(?ms)^  actionlint:\s*$.*?^    image:\s*([^\r\n]+)")
+$ShellcheckImageMatch = [regex]::Match($ToolingCompose, "(?ms)^  shellcheck:\s*$.*?^    image:\s*([^\r\n]+)")
 $HADOLINT_IMAGE = $HadolintImageMatch.Groups[1].Value.Trim().Trim('"')
 $ACTIONLINT_IMAGE = $ActionlintImageMatch.Groups[1].Value.Trim().Trim('"')
+$SHELLCHECK_IMAGE = $ShellcheckImageMatch.Groups[1].Value.Trim().Trim('"')
 
 foreach ($Required in @(
     @{ Name = "eslint"; Value = $ESLINT_VERSION },
@@ -103,7 +105,8 @@ foreach ($Required in @(
     @{ Name = "mypy"; Value = $MYPY_VERSION },
     @{ Name = "yamllint"; Value = $YAMLLINT_VERSION },
     @{ Name = "hadolint image"; Value = $HADOLINT_IMAGE },
-    @{ Name = "actionlint image"; Value = $ACTIONLINT_IMAGE }
+    @{ Name = "actionlint image"; Value = $ACTIONLINT_IMAGE },
+    @{ Name = "shellcheck image"; Value = $SHELLCHECK_IMAGE }
 )) {
     if (-not $Required.Value) {
         Write-Host "ERROR: Missing $($Required.Name) pin in quality manifests" @Red
@@ -511,7 +514,7 @@ if ($ShellCheck) {
             $output = & docker run --rm `
                 -v "${ProjectRoot}:/workspace" `
                 --workdir /workspace `
-                koalaman/shellcheck:stable -x --severity=style "$relativePath" 2>&1
+                $SHELLCHECK_IMAGE -x --severity=style "$relativePath" 2>&1
             $exitCode = $LASTEXITCODE
             if ($exitCode -ne 0) {
                 $ShellcheckFailed = $true

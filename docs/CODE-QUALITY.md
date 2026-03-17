@@ -23,7 +23,7 @@ The UADE Docker project uses twelve automated code quality tools:
 
 - JavaScript/CSS/HTML tool versions are pinned in `test/package.json`.
 - Python quality tool versions are pinned in `test/requirements-quality.txt`.
-- Hadolint and Actionlint Docker image tags are pinned in `test/docker-compose.tooling.yml`.
+- Hadolint, Actionlint and ShellCheck Docker image tags are pinned in `test/docker-compose.tooling.yml`.
 - Dependabot monitors both manifests and opens update PRs.
 - Dependabot also monitors Docker tags in `/test` (including `test/docker-compose.tooling.yml`).
 

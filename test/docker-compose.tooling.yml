@@ -5,3 +5,5 @@ services:
     image: hadolint/hadolint:v2.14.0
   actionlint:
     image: rhysd/actionlint:1.7.11
+  shellcheck:
+    image: koalaman/shellcheck:v0.11.0

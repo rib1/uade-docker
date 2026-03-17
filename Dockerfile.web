@@ -22,7 +22,7 @@ LABEL org.opencontainers.image.source=https://github.com/rib1/uade-docker
 RUN apt-get update && apt-get install -y --no-install-recommends \
     libao4=1.2.2+20180113-1.2 \
     curl=8.14.1-2+deb13u2 \
-    ca-certificates \
+    ca-certificates=20250419 \
     rsync=3.4.1+ds1-5+deb13u1 \
     unzip=6.0-29 \
     lhasa=0.4.0-1+b2 \
