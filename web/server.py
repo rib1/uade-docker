@@ -45,6 +45,7 @@ app = Flask(__name__, static_folder="static")
 START_TIME: Final = time.time()
 CLEANUP_TIMESTAMPS: dict[str, datetime | None] = {"local": None, "cache": None}
 CLEANUP_STATUSES: dict[str, str] = {"local": "not_run_yet", "cache": "not_run_yet"}
+LOCAL_CLEANUP_STATE = {"last_check_monotonic": 0.0}
 UADE_VERSION_TOKEN_PARTS_MIN: Final = 2
 MEMINFO_LINE_PARTS_EXPECTED: Final = 2
 LHA_HEADER_MIN_BYTES: Final = 7
@@ -293,6 +294,14 @@ def add_security_headers(response):
         "default-src 'self'; base-uri 'self'; form-action 'self'; frame-ancestors 'self'"
     )
     return response
+
+
+@app.before_request
+def maybe_cleanup_before_request():
+    """Apply local temp-file cleanup uniformly without scanning on every request."""
+    if request.path.startswith(("/play/", "/download/")):
+        return
+    maybe_run_local_cleanup()
 
 
 # Common Amiga module extensions and prefixes for detection module files in archives
@@ -586,6 +595,28 @@ def cleanup_old_files():
     else:
         CLEANUP_TIMESTAMPS["local"] = datetime.now(UTC)
         CLEANUP_STATUSES["local"] = "old_entries_removed" if removed > 0 else "no_old_entries_found"
+
+
+def maybe_run_local_cleanup():
+    """Run local cleanup at most once per cleanup interval across incoming requests."""
+    now = time.monotonic()
+    last_check = LOCAL_CLEANUP_STATE["last_check_monotonic"]
+    elapsed = now - last_check
+    if elapsed < CLEANUP_INTERVAL:
+        logger.info(
+            "Skipping local cleanup; last request-triggered cleanup check ran "
+            f"{elapsed:.1f}s ago (interval {CLEANUP_INTERVAL}s)"
+        )
+        return
+
+    LOCAL_CLEANUP_STATE["last_check_monotonic"] = now
+    if last_check == 0.0:
+        logger.info("Running local cleanup from request hook for the first time in this process")
+    else:
+        logger.info(
+            f"Running local cleanup from request hook after {elapsed:.1f}s since the previous check"
+        )
+    cleanup_old_files()
 
 
 def cleanup_cache_files():
@@ -1750,8 +1781,6 @@ def get_examples():
 @limiter.limit("10 per minute")
 def upload_file():
     """Handle file upload and conversion"""
-    cleanup_old_files()
-
     if "file" not in request.files:
         return json_response({"error": "No file provided"}, 400)
 
@@ -2042,7 +2071,15 @@ def is_safe_url(u):
             return True  # Allow immediately, skipping IP and other checks
 
         # IP resolution (avoid DNS rebinding, etc)
-        # Attempt to resolve; fallback to hostname if not an IP
+        # Attempt to resolve; fallback to hostname if not an IP.
+        #
+        # NOTE: This validation resolves DNS before the outbound fetch, but the
+        # actual HTTP client performs its own DNS resolution later when opening
+        # the connection. That leaves a small TOCTOU window for DNS rebinding:
+        # a public-looking URL could be fetched from localhost, private IP
+        # space, Docker-internal services, or cloud metadata endpoints
+        # reachable from the machine running the app. Fully addressing this
+        # requires connection-time IP pinning, especially for HTTPS.
         try:
             ip = ipaddress.ip_address(normalized_hostname)
             check_ips = [ip]
@@ -2392,7 +2429,6 @@ def convert_url():
             "sample_url": "<sample file URL>"  # Optional, only for dual-file modules
         }
     """
-    cleanup_old_files()
     return convert_url_payload(request.get_json(silent=True))
 
 
@@ -2431,7 +2467,6 @@ def probe_url_payload(data):
 @limiter.limit("10 per minute")
 def probe_url():
     """Validate a remote module and return metadata without converting audio."""
-    cleanup_old_files()
     return probe_url_payload(request.get_json(silent=True))
 
 
@@ -2632,8 +2667,6 @@ def extract_filename_from_url(url):
 @limiter.limit("10 per minute")
 def play_example(example_id):
     """Convert and play predefined example"""
-    cleanup_old_files()
-
     example = next((ex for ex in EXAMPLES if ex["id"] == example_id), None)
     if not example:
         return json_response({"error": "Example not found"}, 404)
