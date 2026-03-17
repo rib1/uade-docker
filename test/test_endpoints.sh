@@ -1448,6 +1448,228 @@ test_no_orphaned_cache_access_temp_files_under_parallel_hits() {
     echo ""
 }
 
+test_flac_request_promotes_cached_wav_locally() {
+    TEST_NAME=$1
+    URL=$2
+    CHROME_UA="Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 Chrome/120.0.0.0"
+
+    echo "--- Testing FLAC Promotion From Cached WAV: $TEST_NAME ---"
+
+    HTTP_CODE_BODY=$(_perform_convert_url_call "$URL")
+    HTTP_CODE=$(echo "$HTTP_CODE_BODY" | head -n1)
+    BODY=$(echo "$HTTP_CODE_BODY" | tail -n1)
+
+    if [ "$HTTP_CODE" -ne 200 ]; then
+        echo "ERROR: Initial WAV convert-url call failed with HTTP $HTTP_CODE for '$TEST_NAME'"
+        echo "Response body: $BODY"
+        exit 1
+    fi
+
+    FILE_ID=$(echo "$BODY" | jq -r .file_id)
+    AUDIO_FORMAT=$(echo "$BODY" | jq -r .audio_format)
+    LOCAL_WAV="/uade-tmp/converted/${FILE_ID}.wav"
+    LOCAL_FLAC="/uade-tmp/converted/${FILE_ID}.flac"
+
+    if [ -z "$FILE_ID" ] || [ "$FILE_ID" = "null" ]; then
+        echo "ERROR: file_id missing from initial response for '$TEST_NAME'"
+        echo "Response body: $BODY"
+        exit 1
+    fi
+
+    if [ "$AUDIO_FORMAT" != "wav" ]; then
+        echo "ERROR: Initial request did not return WAV for '$TEST_NAME'"
+        echo "Response body: $BODY"
+        exit 1
+    fi
+
+    if [ ! -f "$LOCAL_WAV" ]; then
+        echo "ERROR: Expected local WAV cache file not found for '$TEST_NAME'"
+        echo "Expected path: $LOCAL_WAV"
+        exit 1
+    fi
+
+    HTTP_CODE_BODY=$(_perform_convert_url_call_with_agent_header "$URL" "$CHROME_UA")
+    HTTP_CODE=$(echo "$HTTP_CODE_BODY" | head -n1)
+    BODY=$(echo "$HTTP_CODE_BODY" | tail -n1)
+    AUDIO_FORMAT=$(echo "$BODY" | jq -r .audio_format)
+
+    if [ "$HTTP_CODE" -ne 200 ] || [ "$AUDIO_FORMAT" != "flac" ]; then
+        echo "ERROR: FLAC follow-up request did not return FLAC for '$TEST_NAME'"
+        echo "Response body: $BODY"
+        exit 1
+    fi
+
+    if [ ! -f "$LOCAL_WAV" ] || [ ! -f "$LOCAL_FLAC" ]; then
+        echo "ERROR: Expected both local WAV and FLAC cache files after promotion for '$TEST_NAME'"
+        echo "WAV exists: $( [ -f "$LOCAL_WAV" ] && echo yes || echo no )"
+        echo "FLAC exists: $( [ -f "$LOCAL_FLAC" ] && echo yes || echo no )"
+        exit 1
+    fi
+
+    echo "SUCCESS: FLAC request promoted cached WAV and kept both local variants."
+    echo ""
+}
+
+test_local_cleanup_removes_stale_wav_after_flac_hits() {
+    TEST_NAME=$1
+    URL=$2
+    CHROME_UA="Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 Chrome/120.0.0.0"
+
+    echo "--- Testing Local Cleanup Removes Stale WAV After FLAC Hits: $TEST_NAME ---"
+
+    HTTP_CODE_BODY=$(_perform_convert_url_call "$URL")
+    HTTP_CODE=$(echo "$HTTP_CODE_BODY" | head -n1)
+    BODY=$(echo "$HTTP_CODE_BODY" | tail -n1)
+
+    if [ "$HTTP_CODE" -ne 200 ]; then
+        echo "ERROR: Initial WAV convert-url call failed with HTTP $HTTP_CODE for '$TEST_NAME'"
+        echo "Response body: $BODY"
+        exit 1
+    fi
+
+    FILE_ID=$(echo "$BODY" | jq -r .file_id)
+    LOCAL_WAV="/uade-tmp/converted/${FILE_ID}.wav"
+    LOCAL_FLAC="/uade-tmp/converted/${FILE_ID}.flac"
+
+    if [ -z "$FILE_ID" ] || [ "$FILE_ID" = "null" ]; then
+        echo "ERROR: file_id missing from initial response for '$TEST_NAME'"
+        echo "Response body: $BODY"
+        exit 1
+    fi
+
+    HTTP_CODE_BODY=$(_perform_convert_url_call_with_agent_header "$URL" "$CHROME_UA")
+    HTTP_CODE=$(echo "$HTTP_CODE_BODY" | head -n1)
+    BODY=$(echo "$HTTP_CODE_BODY" | tail -n1)
+    AUDIO_FORMAT=$(echo "$BODY" | jq -r .audio_format)
+
+    if [ "$HTTP_CODE" -ne 200 ] || [ "$AUDIO_FORMAT" != "flac" ]; then
+        echo "ERROR: FLAC promotion request failed for '$TEST_NAME'"
+        echo "Response body: $BODY"
+        exit 1
+    fi
+
+    if [ ! -f "$LOCAL_WAV" ] || [ ! -f "$LOCAL_FLAC" ]; then
+        echo "ERROR: Expected both local WAV and FLAC cache files before cleanup for '$TEST_NAME'"
+        exit 1
+    fi
+
+    _set_local_file_mtime "$FILE_ID" ".wav" 1577840460 > /dev/null
+    _set_local_file_mtime "$FILE_ID" ".flac" 1577840460 > /dev/null
+
+    HTTP_CODE_BODY=$(_perform_convert_url_call_with_agent_header "$URL" "$CHROME_UA")
+    HTTP_CODE=$(echo "$HTTP_CODE_BODY" | head -n1)
+    BODY=$(echo "$HTTP_CODE_BODY" | tail -n1)
+    AUDIO_FORMAT=$(echo "$BODY" | jq -r .audio_format)
+
+    if [ "$HTTP_CODE" -ne 200 ] || [ "$AUDIO_FORMAT" != "flac" ]; then
+        echo "ERROR: FLAC cache-hit refresh request failed for '$TEST_NAME'"
+        echo "Response body: $BODY"
+        exit 1
+    fi
+
+    WAV_TS_BEFORE_CLEANUP=$(stat -c %Y "$LOCAL_WAV")
+    FLAC_TS_BEFORE_CLEANUP=$(stat -c %Y "$LOCAL_FLAC")
+
+    if [ "$FLAC_TS_BEFORE_CLEANUP" -le "$WAV_TS_BEFORE_CLEANUP" ]; then
+        echo "ERROR: Expected FLAC cache hit to refresh local FLAC more recently than WAV for '$TEST_NAME'"
+        echo "WAV timestamp: $WAV_TS_BEFORE_CLEANUP"
+        echo "FLAC timestamp: $FLAC_TS_BEFORE_CLEANUP"
+        exit 1
+    fi
+
+    LOCAL_RESPONSE=$(_run_cleanup_scope "local")
+    LOCAL_STATUS=$(echo "$LOCAL_RESPONSE" | jq -r .local.cleanup_status)
+
+    if [ "$LOCAL_STATUS" != "old_entries_removed" ]; then
+        echo "ERROR: Expected local cleanup to remove the stale WAV for '$TEST_NAME', got '$LOCAL_STATUS'"
+        echo "Response body: $LOCAL_RESPONSE"
+        exit 1
+    fi
+
+    if [ -f "$LOCAL_WAV" ]; then
+        echo "ERROR: Stale WAV still exists after local cleanup for '$TEST_NAME'"
+        exit 1
+    fi
+
+    if [ ! -f "$LOCAL_FLAC" ]; then
+        echo "ERROR: Fresh FLAC was removed unexpectedly during local cleanup for '$TEST_NAME'"
+        exit 1
+    fi
+
+    echo "SUCCESS: Local cleanup removed the stale WAV while preserving the refreshed FLAC."
+    echo ""
+}
+
+test_play_endpoint_promotes_cached_wav_to_flac() {
+    TEST_NAME=$1
+    URL=$2
+
+    echo "--- Testing Play Endpoint FLAC Promotion: $TEST_NAME ---"
+
+    HTTP_CODE_BODY=$(_perform_convert_url_call "$URL")
+    HTTP_CODE=$(echo "$HTTP_CODE_BODY" | head -n1)
+    BODY=$(echo "$HTTP_CODE_BODY" | tail -n1)
+
+    if [ "$HTTP_CODE" -ne 200 ]; then
+        echo "ERROR: Initial WAV convert-url call failed with HTTP $HTTP_CODE for '$TEST_NAME'"
+        echo "Response body: $BODY"
+        exit 1
+    fi
+
+    FILE_ID=$(echo "$BODY" | jq -r .file_id)
+    AUDIO_FORMAT=$(echo "$BODY" | jq -r .audio_format)
+    LOCAL_WAV="/uade-tmp/converted/${FILE_ID}.wav"
+    LOCAL_FLAC="/uade-tmp/converted/${FILE_ID}.flac"
+    REMOTE_FLAC="/uade-tmp/cache/${FILE_ID}.flac"
+
+    if [ -z "$FILE_ID" ] || [ "$FILE_ID" = "null" ]; then
+        echo "ERROR: file_id missing from initial response for '$TEST_NAME'"
+        echo "Response body: $BODY"
+        exit 1
+    fi
+
+    if [ "$AUDIO_FORMAT" != "wav" ] || [ ! -f "$LOCAL_WAV" ]; then
+        echo "ERROR: Initial request did not establish a local WAV-only starting point for '$TEST_NAME'"
+        echo "Response body: $BODY"
+        exit 1
+    fi
+
+    _remove_cache_artifact "$FILE_ID" ".flac" > /dev/null
+
+    if [ -f "$LOCAL_FLAC" ] || [ -f "$REMOTE_FLAC" ]; then
+        echo "ERROR: FLAC artifact still exists after reset for '$TEST_NAME'"
+        echo "Local FLAC exists: $( [ -f "$LOCAL_FLAC" ] && echo yes || echo no )"
+        echo "Remote FLAC exists: $( [ -f "$REMOTE_FLAC" ] && echo yes || echo no )"
+        exit 1
+    fi
+
+    PLAY_RESPONSE=$(curl -s -D - -o /dev/null -w "\n%{http_code}" "$BASE_URL/play/$FILE_ID")
+    PLAY_HTTP_CODE=$(echo "$PLAY_RESPONSE" | tail -n1)
+    PLAY_HEADERS=$(echo "$PLAY_RESPONSE" | head -n -1)
+
+    if [ "$PLAY_HTTP_CODE" -ne 200 ] && [ "$PLAY_HTTP_CODE" -ne 206 ]; then
+        echo "ERROR: Play endpoint returned unexpected HTTP $PLAY_HTTP_CODE for '$TEST_NAME'"
+        echo "Headers: $PLAY_HEADERS"
+        exit 1
+    fi
+
+    if ! echo "$PLAY_HEADERS" | grep -qi "^Content-Type: audio/flac"; then
+        echo "ERROR: Play endpoint did not serve FLAC for '$TEST_NAME'"
+        echo "Headers: $PLAY_HEADERS"
+        exit 1
+    fi
+
+    if [ ! -f "$LOCAL_FLAC" ] || [ ! -f "$REMOTE_FLAC" ]; then
+        echo "ERROR: Expected play endpoint promotion to recreate local and remote FLAC for '$TEST_NAME'"
+        echo "Local FLAC exists: $( [ -f "$LOCAL_FLAC" ] && echo yes || echo no )"
+        echo "Remote FLAC exists: $( [ -f "$REMOTE_FLAC" ] && echo yes || echo no )"
+        exit 1
+    fi
+
+    echo "SUCCESS: Play endpoint promoted cached WAV to FLAC and served the FLAC variant."
+    echo ""
+}
+
 _run_cleanup_scope() {
     LOCAL_SCOPE=$1
 
@@ -1461,6 +1683,49 @@ _run_cleanup_scope() {
 
     if [ "$HTTP_CODE" -ne 200 ]; then
         echo "ERROR: Cleanup trigger failed for scope '$LOCAL_SCOPE'"
+        echo "Response body: $BODY"
+        exit 1
+    fi
+
+    echo "$BODY"
+}
+
+_set_local_file_mtime() {
+    LOCAL_FILE_ID=$1
+    LOCAL_EXT=$2
+    LOCAL_MTIME_EPOCH=$3
+
+    RESPONSE_ALL=$(curl -s -w "\n%{http_code}" -X POST \
+        -H "Content-Type: application/json" \
+        -d "{\"file_id\":\"$LOCAL_FILE_ID\",\"ext\":\"$LOCAL_EXT\",\"mtime_epoch\":$LOCAL_MTIME_EPOCH}" \
+        "$BASE_URL/test/set-local-file-mtime")
+
+    HTTP_CODE=$(echo "$RESPONSE_ALL" | tail -n1)
+    BODY=$(echo "$RESPONSE_ALL" | sed '$d')
+
+    if [ "$HTTP_CODE" -ne 200 ]; then
+        echo "ERROR: Failed to set local file mtime for ${LOCAL_FILE_ID}${LOCAL_EXT}"
+        echo "Response body: $BODY"
+        exit 1
+    fi
+
+    echo "$BODY"
+}
+
+_remove_cache_artifact() {
+    LOCAL_FILE_ID=$1
+    LOCAL_EXT=$2
+
+    RESPONSE_ALL=$(curl -s -w "\n%{http_code}" -X POST \
+        -H "Content-Type: application/json" \
+        -d "{\"file_id\":\"$LOCAL_FILE_ID\",\"ext\":\"$LOCAL_EXT\"}" \
+        "$BASE_URL/test/remove-cache-artifact")
+
+    HTTP_CODE=$(echo "$RESPONSE_ALL" | tail -n1)
+    BODY=$(echo "$RESPONSE_ALL" | sed '$d')
+
+    if [ "$HTTP_CODE" -ne 200 ]; then
+        echo "ERROR: Failed to remove cache artifact for ${LOCAL_FILE_ID}${LOCAL_EXT}"
         echo "Response body: $BODY"
         exit 1
     fi
@@ -1586,9 +1851,18 @@ done
 echo "Service is up!"
 
 test_health_endpoint
+
+# Cache behavior tests run early to reduce interference from warmed cache state.
+# Individual tests may still use unique URLs or explicit cache-reset helpers when
+# they need a precise starting condition.
 test_cleanup_status_and_timestamp_transitions
+test_cache_hit_url "Server-side cache hit for convert-url" "https://modland.com/pub/modules/Protracker/Lizardking/l.k%27s%20doskpop.mod"
+test_url_cache_logic "URL download cache" "https://modland.com/pub/modules/Protracker/Lizardking/l.k%27s%20doskpop.mod"
 test_remote_cache_access_record_refresh "Sidecar access record refresh" "https://modland.com/pub/modules/Protracker/Captain/space%20debris.mod"
 test_no_orphaned_cache_access_temp_files_under_parallel_hits "No orphaned sidecar temp files" "https://modland.com/pub/modules/Protracker/Captain/space%20debris.mod"
+test_flac_request_promotes_cached_wav_locally "FLAC promotion keeps WAV sibling" "https://modland.com/pub/modules/Protracker/4-Mat/agony-beginning.mod"
+test_play_endpoint_promotes_cached_wav_to_flac "Play endpoint FLAC promotion" "https://modland.com/pub/modules/Protracker/Captain/space%20debris.mod"
+test_local_cleanup_removes_stale_wav_after_flac_hits "Local cleanup ages out stale WAV after FLAC hits" "https://modland.com/pub/modules/Protracker/Captain/beyond%20music.mod"
 
 test_probe_url "Probe Protracker module" "https://modland.com/pub/modules/Protracker/Captain/space%20debris.mod"
 test_probe_url "Probe TFMX module" "https://modland.com/pub/modules/TFMX/Chris%20Huelsbeck/mdat.turrican%202%20level%200-intro" "https://modland.com/pub/modules/TFMX/Chris%20Huelsbeck/smpl.turrican%202%20level%200-intro"
@@ -1656,10 +1930,7 @@ test_range_request "Range request for large TFMX module" "https://modland.com/pu
 test_security_malformed_range "Reject malformed range" "https://modland.com/pub/modules/TFMX/Chris%20Huelsbeck/mdat.turrican%202%20level%200-intro" "https://modland.com/pub/modules/TFMX/Chris%20Huelsbeck/smpl.turrican%202%20level%200-intro"
 
 test_download_functionality "Download Protracker module" "https://modland.com/pub/modules/Protracker/Captain/space%20debris.mod"
-
-test_cache_hit_url "Server-side cache hit for convert-url" "https://modland.com/pub/modules/Protracker/Lizardking/l.k%27s%20doskpop.mod"
-
-test_url_cache_logic "URL download cache" "https://modland.com/pub/modules/Protracker/Lizardking/l.k%27s%20doskpop.mod"
+test_external_download_flow_with_oversized_file "Download file exceeding 10MB limit" "$LOCAL_TEST_SERVER_URL/fixtures/invalid/too-large.bin"
 
 # Metadata extraction tests
 test_metadata_extraction "Full metadata" "https://modland.com/pub/modules/Protracker/Captain/space%20debris.mod" "" "space debris" "Protracker" "Protracker and family" 1
@@ -1683,7 +1954,5 @@ test_upload_filename_extraction "Protracker module upload" "fixtures/modules/spa
 test_upload_negative_case "Non-module file upload" "fixtures/modules/gutenberg.txt"
 test_upload_error "Reject empty file upload" "fixtures/invalid/empty.bin" 400
 test_upload_error "Reject oversized file upload" "fixtures/invalid/too-large.bin" 413
-
-test_external_download_flow_with_oversized_file "Download file exceeding 10MB limit" "$LOCAL_TEST_SERVER_URL/fixtures/invalid/too-large.bin"
 
 echo "--- All tests passed! ---"

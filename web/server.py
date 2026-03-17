@@ -613,8 +613,7 @@ def should_skip_request_cleanup(path):
         "/robots.txt",
         "/sitemap.xml",
         "/supported-extensions",
-        "/test/run-cleanup",
-    } or path.startswith(("/play/", "/download/"))
+    } or path.startswith(("/play/", "/download/", "/test/"))
 
 
 def log_skipped_local_cleanup(elapsed):
@@ -1821,6 +1820,98 @@ def test_run_cleanup():
                     else None
                 ),
             },
+        }
+    )
+
+
+@app.route("/test/set-local-file-mtime", methods=["POST"])
+@limiter.exempt
+def test_set_local_file_mtime():
+    """Set a converted local file mtime in test mode to exercise cleanup behavior."""
+    if os.getenv("UADE_TEST_MODE") != "1":
+        return json_response({"error": "Not found"}, 404)
+
+    data = request.get_json(silent=True) or {}
+    file_id = data.get("file_id")
+    ext = data.get("ext")
+    mtime_epoch = data.get("mtime_epoch")
+
+    if not isinstance(file_id, str) or not re.fullmatch(r"[a-zA-Z0-9_-]+", file_id):
+        return json_response({"error": "Invalid file_id"}, 400)
+    if ext not in {".wav", ".flac", ".json"}:
+        return json_response({"error": "Invalid extension"}, 400)
+    if not isinstance(mtime_epoch, (int, float)):
+        return json_response({"error": "Invalid mtime_epoch"}, 400)
+
+    target_path = (CONVERTED_DIR / f"{secure_filename(file_id)}{ext}").resolve()
+    converted_dir_base = CONVERTED_DIR.resolve()
+    try:
+        target_path.relative_to(converted_dir_base)
+    except ValueError:
+        return json_response({"error": "Invalid target path"}, 400)
+
+    if not target_path.exists():
+        return json_response({"error": "File not found"}, 404)
+
+    try:
+        os.utime(target_path, (mtime_epoch, mtime_epoch))
+    except PermissionError:
+        temp_path = target_path.with_name(f"{target_path.name}.{uuid.uuid4()}.tmp")
+        try:
+            with Path(target_path).open("rb") as src, Path(temp_path).open("wb") as dst:
+                shutil.copyfileobj(src, dst, length=1024 * 1024)
+            Path.replace(temp_path, target_path)
+            os.utime(target_path, (mtime_epoch, mtime_epoch))
+        finally:
+            temp_path.unlink(missing_ok=True)
+    stat_result = target_path.stat()
+    return json_response(
+        {
+            "path": str(target_path),
+            "mtime_epoch": stat_result.st_mtime,
+        }
+    )
+
+
+@app.route("/test/remove-cache-artifact", methods=["POST"])
+@limiter.exempt
+def test_remove_cache_artifact():
+    """Remove a local and remote cache artifact in test mode to force specific cache paths."""
+    if os.getenv("UADE_TEST_MODE") != "1":
+        return json_response({"error": "Not found"}, 404)
+
+    data = request.get_json(silent=True) or {}
+    file_id = data.get("file_id")
+    ext = data.get("ext")
+
+    if not isinstance(file_id, str) or not re.fullmatch(r"[a-zA-Z0-9_-]+", file_id):
+        return json_response({"error": "Invalid file_id"}, 400)
+    if ext not in {".wav", ".flac", ".json"}:
+        return json_response({"error": "Invalid extension"}, 400)
+
+    safe_file_id = secure_filename(file_id)
+    local_path = (CONVERTED_DIR / f"{safe_file_id}{ext}").resolve()
+    converted_dir_base = CONVERTED_DIR.resolve()
+    try:
+        local_path.relative_to(converted_dir_base)
+    except ValueError:
+        return json_response({"error": "Invalid target path"}, 400)
+
+    remote_path = f"{root_cache}/{safe_file_id}{ext}"
+    local_removed = False
+    remote_removed = False
+
+    if local_path.exists():
+        local_path.unlink(missing_ok=True)
+        local_removed = True
+    if fs_cache.exists(remote_path):
+        fs_cache.rm_file(remote_path)
+        remote_removed = True
+
+    return json_response(
+        {
+            "local_removed": local_removed,
+            "remote_removed": remote_removed,
         }
     )
 

@@ -171,6 +171,7 @@ This document contains project-specific learnings and regression-avoidance notes
 - **Cache Integrity:** Sidecar access-record updates must tolerate concurrent writers. Handle `ENOENT` on file replacement as an expected condition.
 - **Cache Integrity:** Implement cleanup logic for orphaned `*.tmp` files to prevent cache pollution from failed sidecar updates.
 - **Cache Behavior:** The cache should promote a cached WAV file to FLAC on demand if a FLAC-capable request arrives, rather than returning the wrong format.
+- **Cache Behavior:** Verify WAV-to-FLAC promotion on read paths too. `/play/*` and `/download/*` should promote and serve FLAC correctly when only WAV is cached.
 - **Cache Behavior:** Under scanner-style concurrent load, cache health is better judged by leftover temp files and missing sidecars than by raw warning count in logs.
 - **Cache Behavior:** After the sidecar hardening patch, a healthy post-scan cache check is no `*.tmp` files in `/tmp/cache` and every cached audio object has a matching `.cache-access.json`.
 - **Log Noise:** Reduce log noise during DAST scans by logging expected hostile-input rejections and DNS lookup failures at the `INFO` level without tracebacks.
@@ -184,7 +185,8 @@ This document contains project-specific learnings and regression-avoidance notes
 - **Single Execution Path:** Route all local cleanup entrypoints through one lock-protected helper. Avoid direct calls to the raw file-removal routine from routes or tests.
 - **Internal Primitive:** Keep the raw deletion helper private-ish (for example `_cleanup_old_files_impl`) so future changes naturally use the gated and locked wrappers instead of bypassing them.
 - **Manual vs Request Cleanup:** Request-triggered cleanup should obey the interval gate, but explicit/manual cleanup paths such as `/test/run-cleanup` should still be able to force an immediate run while sharing the same lock.
-- **Hook Interactions:** When cleanup moves into a global `before_request` hook, explicitly exclude maintenance/test endpoints such as `/test/run-cleanup` if they already invoke cleanup themselves. Otherwise the hook can add a second cleanup pass and skew status or timestamp expectations.
+- **Hook Interactions:** When cleanup moves into a global `before_request` hook, exclude the full `/test/` namespace, not just one maintenance route. Otherwise new test helpers can accidentally pick up an extra cleanup pass and skew status or timestamp expectations.
 - **Fast Path Guard:** A lock-free fast-path check before acquiring the cleanup lock is fine as an optimization, but the actual interval decision must be re-checked inside the lock.
 - **State Scope:** For this app, a lock is the real concurrency control. Extra cleanup state such as `in_progress` is optional observability, not a correctness requirement.
+- **Shared-Volume Test Helpers:** In Docker-based tests, cache artifacts may be owned by another container or an earlier run. Test-only helpers that mutate cache-file mtimes should handle `PermissionError` and can fall back to atomic rewrite plus `utime`.
 - **Docs Accuracy:** If cleanup moves from route-local calls to a gated request hook, update docs to say it is request-triggered and not a background hourly job.
