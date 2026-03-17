@@ -10,7 +10,7 @@ export NODE_PATH="${NPM_CONFIG_PREFIX}/lib/node_modules"
 
 PA11Y_CI_VERSION="$(node -p 'require("/workspace/test/package.json").devDependencies["pa11y-ci"]')"
 PLAYWRIGHT_VERSION="$(node -p 'require("/workspace/test/package.json").devDependencies["playwright-core"]')"
-PLAYWRIGHT_IMAGE_TAG="$(sed -n 's/^    image: mcr\.microsoft\.com\/playwright:v\([^-[:space:]]*\)-.*$/\1/p' /workspace/test/docker-compose.accessibility.yml)"
+PLAYWRIGHT_IMAGE_TAG="$(sed -n '/^  playwright:$/,/^  [^ ]/s/^    image: mcr\.microsoft\.com\/playwright:v\([^-[:space:]]*\)-.*$/\1/p' /workspace/test/docker-compose.tooling.yml)"
 CHROME_PATH="$(
     find /ms-playwright \( -path '*/chrome-linux/chrome' -o -path '*/chrome-linux64/chrome' \) -type f | head -n 1
 )"
@@ -21,14 +21,14 @@ if [ -z "${CHROME_PATH}" ]; then
 fi
 
 if [ -z "${PLAYWRIGHT_IMAGE_TAG}" ]; then
-    echo "ERROR: Could not read Playwright image tag from test/docker-compose.accessibility.yml." >&2
+    echo "ERROR: Could not read Playwright image tag from test/docker-compose.tooling.yml." >&2
     exit 1
 fi
 
 if [ "${PLAYWRIGHT_VERSION}" != "${PLAYWRIGHT_IMAGE_TAG}" ]; then
     echo "ERROR: Playwright version mismatch." >&2
     echo "  test/package.json playwright-core: ${PLAYWRIGHT_VERSION}" >&2
-    echo "  test/docker-compose.accessibility.yml image tag: ${PLAYWRIGHT_IMAGE_TAG}" >&2
+    echo "  test/docker-compose.tooling.yml image tag: ${PLAYWRIGHT_IMAGE_TAG}" >&2
     exit 1
 fi
 

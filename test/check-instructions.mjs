@@ -255,9 +255,9 @@ function validateNearDuplicatePolicyLines(relativePath, content) {
 
 function validatePlaywrightVersionAlignment() {
   const packageJsonPath = "test/package.json";
-  const accessibilityComposePath = "test/docker-compose.accessibility.yml";
+  const toolingComposePath = "test/docker-compose.tooling.yml";
 
-  if (!fileExists(packageJsonPath) || !fileExists(accessibilityComposePath)) {
+  if (!fileExists(packageJsonPath) || !fileExists(toolingComposePath)) {
     return;
   }
 
@@ -275,15 +275,15 @@ function validatePlaywrightVersionAlignment() {
     return;
   }
 
-  const composeContent = readFile(accessibilityComposePath);
+  const composeContent = readFile(toolingComposePath);
   const imageTagMatch = composeContent.match(
-    /^\s*image:\s*mcr\.microsoft\.com\/playwright:v([^\s-]+)-/m,
+    /^  playwright:\s*$.*?^    image:\s*mcr\.microsoft\.com\/playwright:v([^\s-]+)-/ms,
   );
 
   if (!imageTagMatch) {
     addFailure(
-      accessibilityComposePath,
-      "could not read Playwright image tag from mcr.microsoft.com/playwright image reference",
+      toolingComposePath,
+      "could not read Playwright image tag from playwright service image reference",
     );
     return;
   }
@@ -291,7 +291,7 @@ function validatePlaywrightVersionAlignment() {
   const playwrightImageVersion = imageTagMatch[1];
   if (playwrightVersion !== playwrightImageVersion) {
     addFailure(
-      accessibilityComposePath,
+      toolingComposePath,
       `Playwright version mismatch: test/package.json has ${playwrightVersion}, image tag has ${playwrightImageVersion}`,
     );
   }
