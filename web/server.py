@@ -605,8 +605,16 @@ def should_run_local_cleanup(now, last_check):
 
 
 def should_skip_request_cleanup(path):
-    """Return True for request paths that should not trigger local cleanup."""
-    return path.startswith(("/play/", "/download/"))
+    """Return True for request paths that should stay on the fast path."""
+    return path in {
+        "/",
+        "/examples",
+        "/health",
+        "/robots.txt",
+        "/sitemap.xml",
+        "/supported-extensions",
+        "/test/run-cleanup",
+    } or path.startswith(("/play/", "/download/"))
 
 
 def log_skipped_local_cleanup(elapsed):

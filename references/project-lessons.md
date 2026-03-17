@@ -105,6 +105,7 @@ This document contains project-specific learnings and regression-avoidance notes
 - **Toolchain:** The repo's quality flow should validate the full supported stack: frontend assets, Python, Dockerfiles, Compose files, workflows, shell scripts, YAML, and instruction files.
 - **Toolchain:** The Ruff portion of the quality check should run both `ruff format --check` and `ruff check`.
 - **Toolchain:** Aggregate multi-file failures in PowerShell scripts to show all errors, not just the last one.
+- **Toolchain:** Keep quality-tool versions in Dependabot-managed manifests where possible. Docker-based tools such as Hadolint, Actionlint, and ShellCheck should be pinned in `test/docker-compose.tooling.yml`, while supporting `apk` packages in test Dockerfiles remain manual pins and should not be treated as Dependabot-managed.
 - **Validation Scope:** Explicitly include `docker-compose.dev.yml` in validation scripts and quality-check container mounts if it's part of the supported workflow.
 
 ## UI State Management Lessons
@@ -179,9 +180,11 @@ This document contains project-specific learnings and regression-avoidance notes
 **Key Takeaways:** Keep local temp-file cleanup centralized, serialized, and explicit about which request paths may trigger it. Treat the raw file-removal helper as internal-only.
 
 - **Read Path Safety:** Do not trigger local cleanup before `/play/*` or `/download/*`. Those read paths can legitimately need older local files and should not delete them immediately before serving.
+- **Informational Fast Paths:** Do not trigger local cleanup from lightweight informational routes such as `/health`, `/`, `/examples`, `/supported-extensions`, `robots.txt`, and `sitemap.xml`. These endpoints should stay as cheap as possible.
 - **Single Execution Path:** Route all local cleanup entrypoints through one lock-protected helper. Avoid direct calls to the raw file-removal routine from routes or tests.
 - **Internal Primitive:** Keep the raw deletion helper private-ish (for example `_cleanup_old_files_impl`) so future changes naturally use the gated and locked wrappers instead of bypassing them.
 - **Manual vs Request Cleanup:** Request-triggered cleanup should obey the interval gate, but explicit/manual cleanup paths such as `/test/run-cleanup` should still be able to force an immediate run while sharing the same lock.
+- **Hook Interactions:** When cleanup moves into a global `before_request` hook, explicitly exclude maintenance/test endpoints such as `/test/run-cleanup` if they already invoke cleanup themselves. Otherwise the hook can add a second cleanup pass and skew status or timestamp expectations.
 - **Fast Path Guard:** A lock-free fast-path check before acquiring the cleanup lock is fine as an optimization, but the actual interval decision must be re-checked inside the lock.
 - **State Scope:** For this app, a lock is the real concurrency control. Extra cleanup state such as `in_progress` is optional observability, not a correctness requirement.
 - **Docs Accuracy:** If cleanup moves from route-local calls to a gated request hook, update docs to say it is request-triggered and not a background hourly job.

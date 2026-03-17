@@ -150,7 +150,7 @@ architecture-beta
 - UUID-based filenames (path traversal prevention)
 - File size limits (10MB uploads)
 - Process timeouts (300s max)
-- Automatic file cleanup on eligible requests
+- Automatic file cleanup on write-oriented requests
 - Input validation and sanitization
 - Zero HIGH severity security issues (Bandit, ESLint)
 

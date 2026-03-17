@@ -44,7 +44,7 @@ docker compose up -d uade-web
 - Persistent storage for uploads/conversions
 - Web runtime environment configuration
 - Read-only source code mount for security
-- Cleanup of old files (1 hour interval)
+- Cleanup of old files on write-oriented requests (1 hour interval)
 
 **Managing the service:**
 
