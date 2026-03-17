@@ -15,6 +15,7 @@ This document contains project-specific learnings and regression-avoidance notes
 - [Build Metadata Lessons](#build-metadata-lessons)
 - [Docker Base Image (CLI) Release Lessons](#docker-base-image-cli-release-lessons)
 - [Security Scan Lessons](#security-scan-lessons)
+- [Local Cleanup Lessons](#local-cleanup-lessons)
 
 ---
 
@@ -172,3 +173,15 @@ This document contains project-specific learnings and regression-avoidance notes
 - **Cache Behavior:** Under scanner-style concurrent load, cache health is better judged by leftover temp files and missing sidecars than by raw warning count in logs.
 - **Cache Behavior:** After the sidecar hardening patch, a healthy post-scan cache check is no `*.tmp` files in `/tmp/cache` and every cached audio object has a matching `.cache-access.json`.
 - **Log Noise:** Reduce log noise during DAST scans by logging expected hostile-input rejections and DNS lookup failures at the `INFO` level without tracebacks.
+
+## Local Cleanup Lessons
+
+**Key Takeaways:** Keep local temp-file cleanup centralized, serialized, and explicit about which request paths may trigger it. Treat the raw file-removal helper as internal-only.
+
+- **Read Path Safety:** Do not trigger local cleanup before `/play/*` or `/download/*`. Those read paths can legitimately need older local files and should not delete them immediately before serving.
+- **Single Execution Path:** Route all local cleanup entrypoints through one lock-protected helper. Avoid direct calls to the raw file-removal routine from routes or tests.
+- **Internal Primitive:** Keep the raw deletion helper private-ish (for example `_cleanup_old_files_impl`) so future changes naturally use the gated and locked wrappers instead of bypassing them.
+- **Manual vs Request Cleanup:** Request-triggered cleanup should obey the interval gate, but explicit/manual cleanup paths such as `/test/run-cleanup` should still be able to force an immediate run while sharing the same lock.
+- **Fast Path Guard:** A lock-free fast-path check before acquiring the cleanup lock is fine as an optimization, but the actual interval decision must be re-checked inside the lock.
+- **State Scope:** For this app, a lock is the real concurrency control. Extra cleanup state such as `in_progress` is optional observability, not a correctness requirement.
+- **Docs Accuracy:** If cleanup moves from route-local calls to a gated request hook, update docs to say it is request-triggered and not a background hourly job.
