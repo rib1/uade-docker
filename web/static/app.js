@@ -15,6 +15,7 @@ let isPlaylistPanelOpen = false;
 let isUiLocked = false;
 const SAVED_QUEUE_STORAGE_KEY = "uade.savedQueue.v1";
 const QUEUE_URL_WARNING_LENGTH = 2000;
+const ADDED_TO_QUEUE_STATUS = (name) => `✓ Added ${name} to queue`;
 
 // DOM Elements
 const dropZone = document.getElementById("drop-zone");
@@ -77,6 +78,16 @@ function extractDownloadFilename(contentDisposition, fallback = "downloaded_file
   const rawFilename = filenameMatch ? (filenameMatch[1] || filenameMatch[2]) : "";
   const sanitizedFilename = rawFilename.replace(/["']/g, "").replace(/[/\\]/g, "_").trim();
   return sanitizedFilename || fallback;
+}
+
+function filenameFromUrl(url) {
+  try {
+    const pathname = new URL(url).pathname;
+    const lastSegment = decodeURIComponent(pathname.split("/").filter(Boolean).pop() || "");
+    return lastSegment || "Module";
+  } catch {
+    return "Module";
+  }
 }
 
 // Helper function to download large files using range requests
@@ -441,7 +452,6 @@ async function performProbe(url, sampleUrl, button) {
       throw new Error("Probe returned incomplete module metadata");
     }
 
-    showStatus(`✓ ${data.module_name || data.filename} is ready to add`, "success");
     return data;
   } catch (error) {
     showStatus(`✗ Probe failed: ${error.message}`, "error");
@@ -771,7 +781,7 @@ function handleAddCurrentToPlaylist() {
     format: currentPlayableTrackFormat || "Module",
     source: "current",
   });
-  showStatus(`✓ Added ${name} to queue`, "success");
+  showStatus(ADDED_TO_QUEUE_STATUS(name), "success");
 }
 
 async function handleUrlConvert() {
@@ -830,16 +840,18 @@ async function handleAddUrlToPlaylist() {
     return;
   }
 
+  const name = probeData.module_name || probeData.filename || filenameFromUrl(url);
   const shouldAutoPlay = playlistTracks.length === 0 && !audioPlayer.getAttribute("src");
   const track = {
     id: createPlaylistTrackId(),
-    name: probeData.module_name || probeData.filename || "Module",
+    name,
     url,
     sample_url: sampleUrl || null,
     format: probeData.module_format || probeData.player_format || "Module",
     source: "url",
   };
   addTrackToPlaylist(track);
+  showStatus(ADDED_TO_QUEUE_STATUS(name), "success");
   urlInput.value = "";
   sampleUrlInput.value = "";
   if (shouldAutoPlay) {
@@ -936,7 +948,7 @@ function handleExampleAddToPlaylist(example, button) {
     source: "example",
   };
   addTrackToPlaylist(track);
-  showStatus(`✓ Added ${example.name} to queue`, "success");
+  showStatus(ADDED_TO_QUEUE_STATUS(example.name), "success");
   if (shouldAutoPlay) {
     void playPlaylistTrack(track.id, button);
   }
@@ -1024,7 +1036,7 @@ function renderPlaylist() {
   playlistLauncherNext.textContent = getPlaylistNextLabel();
   playlistToggleBtn.textContent = isPlaylistPanelOpen ? "Hide" : "Open";
   playlistToggleBtn.setAttribute("aria-label", isPlaylistPanelOpen ? "Hide queue" : "Open queue");
-  
+
   // Important: renderPlaylist() sets the complex content-disabled states based on queue state
   playlistToggleBtn.dataset.contentDisabled = (!hasPlaylist).toString();
   playlistToggleBtn.disabled = isUiLocked || !hasPlaylist;
