@@ -10,14 +10,6 @@ FROM ${BASE_IMAGE} AS uade-base
 # Runtime stage - Add web server
 FROM debian:stable-slim
 
-# Build argument for git commit hash
-ARG GIT_COMMIT=unknown
-ARG IMAGE_CREATED=unknown
-ENV GIT_COMMIT=${GIT_COMMIT}
-LABEL org.opencontainers.image.created=${IMAGE_CREATED}
-LABEL org.opencontainers.image.revision=${GIT_COMMIT}
-LABEL org.opencontainers.image.source=https://github.com/rib1/uade-docker
-
 # Install runtime dependencies + Python + tools for cloud environments
 RUN apt-get update && apt-get install -y --no-install-recommends \
     libao4=1.2.2+20180113-1.2 \
@@ -61,6 +53,16 @@ RUN pip install --no-cache-dir -r /app/requirements.txt
 
 # Copy web application
 COPY web/ /app/
+
+# Build metadata - placed late to avoid busting cache for unchanged layers
+# GIT_COMMIT changes every build; keeping it here means apt-get, pip install,
+# and UADE binary layers stay cached.
+ARG GIT_COMMIT=unknown
+ARG IMAGE_CREATED=unknown
+ENV GIT_COMMIT=${GIT_COMMIT}
+LABEL org.opencontainers.image.source=https://github.com/rib1/uade-docker
+LABEL org.opencontainers.image.created=${IMAGE_CREATED}
+LABEL org.opencontainers.image.revision=${GIT_COMMIT}
 RUN if [ "$IMAGE_CREATED" = "unknown" ]; then date -u +"%Y-%m-%dT%H:%M:%SZ" > /opt/uade-web/image-build-time; else printf "%s\n" "$IMAGE_CREATED" > /opt/uade-web/image-build-time; fi
 
 WORKDIR /app
