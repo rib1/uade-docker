@@ -1,5 +1,5 @@
 # To run accessibility tests:
-#    docker compose -f docker-compose.yml -f test/docker-compose.accessibility.yml up --build uade-test-accessibility-runner
+#    docker compose -f docker-compose.yml -f test/docker-compose.accessibility.yml run --rm --build uade-test-accessibility-runner
 services:
   uade-test-accessibility-runner:
     extends:

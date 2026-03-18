@@ -183,10 +183,10 @@ architecture-beta
 ### OWASP ZAP Integration
 
 - **Manual DAST:** DAST scans are not run automatically in CI/CD pipelines. Developers must manually run OWASP ZAP using docker-compose:
-  - Baseline scan: `docker compose up --build zap-scan`
-  - Full scan: `docker compose up --build zap-full-scan`
-  - Seeded baseline scan: `docker compose up --build zap-scan-seeded`
-  - Seeded full scan: `docker compose up --build zap-full-scan-seeded`
+  - Baseline scan: `docker compose run --rm --build zap-scan`
+  - Full scan: `docker compose run --rm --build zap-full-scan`
+  - Seeded baseline scan: `docker compose run --rm --build zap-scan-seeded`
+  - Seeded full scan: `docker compose run --rm --build zap-full-scan-seeded`
   - The HTML report will be generated in the `./reports` directory.
 - **Scope:** Plain scans target the running `uade-web` service for common web vulnerabilities (XSS, CSRF, authentication flaws, misconfigurations).
 - **Seeded Coverage:** Seeded scans use a dedicated `uade-web-seeded` service with local-only fixture access enabled so ZAP can exercise non-crawlable POST endpoints and backend negative cases.
@@ -197,7 +197,7 @@ architecture-beta
 ## Concurrency Testing
 
 - **Manual Stress and Concurrency Testing:** Concurrency tests are not run automatically in CI/CD pipelines. Developers must manually run the race condition test using docker-compose:
-  - Run: `docker compose up --build uade-test-race-condition-runner`
+  - Run: `docker compose run --rm --build uade-test-race-condition-runner`
   - This executes the custom shell script `test/test_race_condition.sh`, which fires multiple simultaneous requests to the conversion endpoint and checks for race conditions.
 - **Race Condition Defense:** All conversion logic uses atomic file locks and double-checked caching to prevent race conditions and ensure correct results under load.
 

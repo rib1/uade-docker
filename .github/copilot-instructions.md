@@ -85,17 +85,22 @@ The Flask app is a **single 2200+ line file** with clear functional sections:
 
 ### Local Testing
 ```powershell
+# Treat the command comments in docker-compose.yml as the source of truth for one-off Compose test jobs.
+
 # Start the production-like local web player:
 docker compose up -d --build uade-web
 
 # Start the development stack with hot reload:
-docker compose -f docker-compose.yml -f docker-compose.dev.yml up --build uade-web
+docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d --build uade-web
 
 # View logs:
 docker compose logs -f uade-web
 
-# Run integration tests (requires running web player):
-docker compose -f docker-compose.yml -f test/docker-compose.endpoints.yml up --build uade-test-runner
+# Run integration tests (starts required services, runs tests, then exits the runner):
+docker compose -f docker-compose.yml -f test/docker-compose.endpoints.yml run --rm --build uade-test-runner
+
+# Stop the integration test services after the run:
+docker compose -f docker-compose.yml -f test/docker-compose.endpoints.yml down -v
 ```
 
 **⚠️ Critical: Always test before committing and before wrapping up a ready feature or fix** - Run the Docker-based code quality suite plus the most relevant automated test coverage for the area you changed, and report the results.
@@ -204,7 +209,7 @@ MODULE_FILE_EXTENSIONS = {'mod', 's3m', 'it', 'xm', 'tfmx', 'ahx', 'hvl', 'mdat'
 
 - **Integration tests:** Shell scripts in `test/` directory (`test_endpoints.sh`, `test_ratelimit.sh`, `test_race_condition.sh`)
 - **Test execution:** Docker Compose orchestrates tests via `test/docker-compose.*.yml` files
-- **DAST scanning:** OWASP ZAP via `docker compose up zap-scan` (reports to `./reports/`)
+- **DAST scanning:** OWASP ZAP via `docker compose run --rm --build zap-scan` (reports to `./reports/`)
 - **Agent expectation:** After code changes are ready, run the matching Docker-first verification workflow before handing off. Use `.\test\check-code-quality.ps1` (or `./test/check-code-quality.sh`) and the relevant Docker Compose test stack for the touched behavior.
 
 ## Common Pitfalls

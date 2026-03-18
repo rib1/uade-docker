@@ -545,7 +545,7 @@ To run the integration tests using Docker Compose:
 3. **To run the accessibility test:**
 
     ```powershell
-    docker compose -f docker-compose.yml -f test/docker-compose.accessibility.yml up --build uade-test-accessibility-runner
+    docker compose -f docker-compose.yml -f test/docker-compose.accessibility.yml run --rm --build uade-test-accessibility-runner
     ```
 
     This starts the web app, then runs `pa11y-ci` in a Playwright/Chromium-capable container against `http://uade-web:5000`.
@@ -554,10 +554,10 @@ To run the integration tests using Docker Compose:
 
 UADE Web Player supports manual Dynamic Application Security Testing (DAST) using OWASP ZAP. To run a security scan against the running web service:
 
-- Baseline scan: `docker compose up --build zap-scan`
-- Full scan: `docker compose up --build zap-full-scan`
-- Seeded baseline scan: `docker compose up --build zap-scan-seeded`
-- Seeded full scan: `docker compose up --build zap-full-scan-seeded`
+- Baseline scan: `docker compose run --rm --build zap-scan`
+- Full scan: `docker compose run --rm --build zap-full-scan`
+- Seeded baseline scan: `docker compose run --rm --build zap-scan-seeded`
+- Seeded full scan: `docker compose run --rm --build zap-full-scan-seeded`
 - The HTML report will be generated in the `./reports` directory.
 
 Seeded scans use a dedicated `uade-web-seeded` service with internal fixture-host access enabled so ZAP can hit non-crawlable POST endpoints and backend error-mapping paths.
@@ -584,7 +584,7 @@ python server.py
 Use the dedicated development override file so production and live deployments stay on Gunicorn without reload mode:
 
 ```bash
-docker compose -f docker-compose.yml -f docker-compose.dev.yml up --build uade-web
+docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d --build uade-web
 ```
 
 `docker-compose.dev.yml` switches the web container to:
