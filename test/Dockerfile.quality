@@ -18,12 +18,11 @@ RUN apk add --no-cache \
     py3-pip=25.1.1-r1 \
     docker-cli=29.1.3-r3
 
-# Copy quality dependency manifests for reproducible installs
-COPY test/package.json /tmp/quality/package.json
-COPY test/requirements-quality.txt /tmp/quality/requirements-quality.txt
-COPY test/docker-compose.tooling.yml /tmp/quality/docker-compose.tooling.yml
+# Copy manifests individually so a change in one does not bust the
+# install layers that only depend on a different manifest.
 
 # Install hadolint and actionlint from tooling manifest tags
+COPY test/docker-compose.tooling.yml /tmp/quality/docker-compose.tooling.yml
 RUN ACTIONLINT_TAG="$(sed -n 's|^    image: rhysd/actionlint:||p' /tmp/quality/docker-compose.tooling.yml)" \
     && HADOLINT_TAG="$(sed -n 's|^    image: hadolint/hadolint:||p' /tmp/quality/docker-compose.tooling.yml)" \
     && HADOLINT_VERSION="${HADOLINT_TAG#v}" \
@@ -36,6 +35,7 @@ RUN ACTIONLINT_TAG="$(sed -n 's|^    image: rhysd/actionlint:||p' /tmp/quality/d
     && chmod +x /usr/local/bin/hadolint
 
 # Install frontend quality tools globally from manifest pins
+COPY test/package.json /tmp/quality/package.json
 RUN npm install -g \
     "eslint@$(node -p 'require("/tmp/quality/package.json").devDependencies.eslint')" \
     "stylelint@$(node -p 'require("/tmp/quality/package.json").devDependencies.stylelint')" \
@@ -43,11 +43,11 @@ RUN npm install -g \
 
 # Install Black, Ruff, mypy, and yamllint via pip
 # hadolint ignore=DL3042,DL3059
+COPY test/requirements-quality.txt /tmp/quality/requirements-quality.txt
 RUN pip3 install --no-cache-dir --break-system-packages -r /tmp/quality/requirements-quality.txt
 
 # Copy check script from test folder (context is project root)
-COPY test/check-code-quality.sh /usr/local/bin/check-code-quality.sh
-RUN chmod +x /usr/local/bin/check-code-quality.sh
+COPY --chmod=755 test/check-code-quality.sh /usr/local/bin/check-code-quality.sh
 
 # Set PROJECT_ROOT to the workspace mount point
 ENV PROJECT_ROOT=/workspace
