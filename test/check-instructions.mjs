@@ -33,6 +33,22 @@ const requiredReferencedFiles = {
 
 const failures = [];
 const foundInlineReferencesByFile = new Map();
+const canonicalComposePath = "docker-compose.yml";
+const canonicalIntegrationTestCommand =
+  "docker compose -f docker-compose.yml -f test/docker-compose.endpoints.yml run --rm --build uade-test-runner";
+const canonicalDevCommand =
+  "docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d --build uade-web";
+const oneOffComposeServices = [
+  "quality-check",
+  "uade-test-runner",
+  "uade-test-ratelimit-runner",
+  "uade-test-accessibility-runner",
+  "uade-test-race-condition-runner",
+  "zap-scan",
+  "zap-full-scan",
+  "zap-scan-seeded",
+  "zap-full-scan-seeded",
+];
 
 function addFailure(file, message) {
   failures.push(`${file}: ${message}`);
@@ -44,6 +60,10 @@ function fileExists(relativePath) {
 
 function readFile(relativePath) {
   return fs.readFileSync(path.join(projectRoot, relativePath), "utf8");
+}
+
+function escapeRegExp(value) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
 function validateRelativeLinks(relativePath, content) {
@@ -165,6 +185,20 @@ function validateCopilotInstructions(relativePath, content) {
       message:
         "base compose is production-like; hot reload instructions must use docker-compose.dev.yml",
     },
+    {
+      pattern:
+        /docker compose -f docker-compose\.yml -f docker-compose\.dev\.yml up --build uade-web/i,
+      message:
+        "development-stack guidance should use detached mode (`up -d --build`) so the start command does not block the terminal",
+    },
+    {
+      pattern: new RegExp(
+        `docker compose[^\\n]*\\bup\\b[^\\n]*\\b(?:${oneOffComposeServices.map(escapeRegExp).join("|")})\\b`,
+        "i",
+      ),
+      message:
+        "one-off Compose jobs should use `docker compose run --rm` instead of `up`",
+    },
   ];
 
   for (const { pattern, message } of forbiddenPatterns) {
@@ -177,6 +211,32 @@ function validateCopilotInstructions(relativePath, content) {
     addFailure(
       relativePath,
       "hot-reload guidance should mention docker-compose.dev.yml",
+    );
+  }
+
+  if (
+    !(
+      /source of truth[\s\S]{0,80}docker-compose\.yml/i.test(content) ||
+      /docker-compose\.yml[\s\S]{0,80}source of truth/i.test(content)
+    )
+  ) {
+    addFailure(
+      relativePath,
+      "must state that docker-compose.yml command comments are the source of truth for one-off Compose jobs",
+    );
+  }
+
+  if (!content.includes(canonicalIntegrationTestCommand)) {
+    addFailure(
+      relativePath,
+      `must include the canonical integration test command: ${canonicalIntegrationTestCommand}`,
+    );
+  }
+
+  if (!content.includes(canonicalDevCommand)) {
+    addFailure(
+      relativePath,
+      `must include the canonical detached dev command: ${canonicalDevCommand}`,
     );
   }
 
@@ -197,6 +257,100 @@ function validateCopilotInstructions(relativePath, content) {
   }
 
   validateNearDuplicatePolicyLines(relativePath, content);
+}
+
+function validateSkillInstructions(relativePath, content) {
+  const requiredPatterns = [
+    {
+      pattern: /Read \[?`?\.github\/copilot-instructions\.md`?\]?\([^)]+\) first/i,
+      message: "must direct agents to read .github/copilot-instructions.md first",
+    },
+    {
+      pattern: /references\/project-lessons\.md/i,
+      message: "must reference references/project-lessons.md for repo-specific learnings",
+    },
+    {
+      pattern: /Docker-first workflows|Docker Compose/i,
+      message: "must reinforce Docker-first workflows",
+    },
+    {
+      pattern: /After a feature or fix is ready[\s\S]{0,160}run the relevant automated tests/i,
+      message: "must require running relevant automated tests after a feature or fix is ready",
+    },
+    {
+      pattern: /update `references\/project-lessons\.md`/i,
+      message: "must tell contributors to record non-obvious lessons in references/project-lessons.md",
+    },
+    {
+      pattern: /update `test\/check-instructions\.mjs`/i,
+      message: "must tell contributors to harden test/check-instructions.mjs against repeated instruction drift",
+    },
+  ];
+
+  for (const { pattern, message } of requiredPatterns) {
+    if (!pattern.test(content)) {
+      addFailure(relativePath, message);
+    }
+  }
+}
+
+function validateProjectLessons(relativePath, content) {
+  const requiredPatterns = [
+    {
+      pattern:
+        /Compose Exit Behavior:[\s\S]{0,220}run --rm --build uade-test-runner/i,
+      message:
+        "must preserve the lesson that one-off endpoint tests should use `docker compose ... run --rm --build uade-test-runner`",
+    },
+    {
+      pattern: /docker-compose\.dev\.yml/i,
+      message: "must document docker-compose.dev.yml as the dev-mode override",
+    },
+    {
+      pattern: /pyproject\.toml[\s\S]{0,120}source of truth/i,
+      message: "must keep the Ruff source-of-truth lesson tied to pyproject.toml",
+    },
+    {
+      pattern:
+        /playwright-core[\s\S]{0,160}docker-compose\.tooling\.yml/i,
+      message:
+        "must keep the Playwright version-alignment lesson tied to test/docker-compose.tooling.yml",
+    },
+    {
+      pattern:
+        /test\/test_accessibility\.sh[\s\S]{0,120}source of truth/i,
+      message:
+        "must keep the accessibility-count source-of-truth lesson tied to test/test_accessibility.sh",
+    },
+  ];
+
+  for (const { pattern, message } of requiredPatterns) {
+    if (!pattern.test(content)) {
+      addFailure(relativePath, message);
+    }
+  }
+}
+
+function validateComposeCommandSourceOfTruth() {
+  if (!fileExists(canonicalComposePath)) {
+    addFailure(canonicalComposePath, "expected compose source-of-truth file is missing");
+    return;
+  }
+
+  const composeContent = readFile(canonicalComposePath);
+  if (!composeContent.includes(canonicalDevCommand)) {
+    addFailure(
+      canonicalComposePath,
+      `missing canonical detached dev command in compose comments: ${canonicalDevCommand}`,
+    );
+  }
+
+  if (!composeContent.includes(canonicalIntegrationTestCommand)) {
+    addFailure(
+      canonicalComposePath,
+      `missing canonical integration test command in compose comments: ${canonicalIntegrationTestCommand}`,
+    );
+  }
 }
 
 function normalizePolicyLine(value) {
@@ -312,10 +466,15 @@ for (const relativePath of instructionFiles) {
 
   if (relativePath === ".github/copilot-instructions.md") {
     validateCopilotInstructions(relativePath, content);
+  } else if (relativePath === "SKILL.md") {
+    validateSkillInstructions(relativePath, content);
+  } else if (relativePath === "references/project-lessons.md") {
+    validateProjectLessons(relativePath, content);
   }
 }
 
 validatePlaywrightVersionAlignment();
+validateComposeCommandSourceOfTruth();
 
 if (failures.length > 0) {
   console.error("Instruction file checks failed:");

@@ -215,8 +215,8 @@ FROM ghcr.io/rib1/uade-cli:3.05-base.2
 docker build -f Dockerfile.web -t uade-web:test .
 # Run integration and server regression tests
 docker compose -f docker-compose.yml -f test/docker-compose.endpoints.yml run --rm --build uade-test-runner
-docker compose -f docker-compose.yml -f test/docker-compose.ratelimit.yml up --build uade-test-ratelimit-runner
-docker compose up --build uade-test-race-condition-runner
+docker compose -f docker-compose.yml -f test/docker-compose.ratelimit.yml run --rm --build uade-test-ratelimit-runner
+docker compose run --rm --build uade-test-race-condition-runner
 ```
 
 ### Step 3: Commit and redeploy

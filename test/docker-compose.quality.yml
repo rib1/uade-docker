@@ -2,7 +2,7 @@
 #
 # Usage (from project root):
 #   # Run code quality checks
-#   docker compose -f docker-compose.yml -f test/docker-compose.quality.yml up --build quality-check
+#   docker compose -f docker-compose.yml -f test/docker-compose.quality.yml run --rm --build quality-check
 
 services:
   quality-check:

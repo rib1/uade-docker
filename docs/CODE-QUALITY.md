@@ -474,7 +474,7 @@ Then commit and push the fixes.
 1. Run code quality checks (Docker Compose - recommended):
 
    ```bash
-   docker compose -f docker-compose.yml -f test/docker-compose.quality.yml up --build quality-check
+   docker compose -f docker-compose.yml -f test/docker-compose.quality.yml run --rm --build quality-check
    ```
 
    Or using local scripts:

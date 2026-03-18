@@ -5,9 +5,9 @@
 #    GIT_COMMIT=$(git rev-parse HEAD); docker compose -f docker-compose.yml up -d --build uade-web
 # Development mode with hot reload (HTML/JS/CSS via refresh, Python via Flask reloader):
 #    powershell:
-#    $env:GIT_COMMIT = (git rev-parse HEAD); docker compose -f docker-compose.yml -f docker-compose.dev.yml up --build uade-web
+#    $env:GIT_COMMIT = (git rev-parse HEAD); docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d --build uade-web
 #    or in bash:
-#    GIT_COMMIT=$(git rev-parse HEAD); docker compose -f docker-compose.yml -f docker-compose.dev.yml up --build uade-web
+#    GIT_COMMIT=$(git rev-parse HEAD); docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d --build uade-web
 #    This keeps the base compose file production-like and enables reload only through docker-compose.dev.yml.
 # To stop and remove all containers:
 #    docker compose down -v
