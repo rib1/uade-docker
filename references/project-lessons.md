@@ -138,6 +138,8 @@ This document contains project-specific learnings and regression-avoidance notes
 - **Runtime Override:** `get_image_build_time()` should still honor `IMAGE_BUILD_TIME` when explicitly set so operators can override the reported value for exceptional deployments or debugging.
 - **OCI vs Runtime:** OCI labels are the best-practice place for container image metadata, but the app still needs its own readable source at runtime because a running container cannot easily introspect its own image labels.
 - **Health Test Coverage:** If `/health` exposes `image_build_time`, tests should verify it is non-null, parseable, and in the past rather than only checking that the field exists.
+- **Layer Cache Optimization:** `ARG` values that change every build (e.g. `GIT_COMMIT`, `IMAGE_CREATED`) bust the Docker layer cache for all subsequent layers. Place these ARGs as late as possible — after expensive layers like `apt-get install`, `pip install`, and `COPY --from` stages.
+- **Label Grouping:** Group all OCI metadata labels (`image.source`, `image.created`, `image.revision`) together in the late metadata block for readability, even if static labels don't affect caching.
 
 ## Docker Base Image (CLI) Release Lessons
 
