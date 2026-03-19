@@ -219,6 +219,10 @@ CLEANUP_INTERVAL: Final = int(os.getenv("CLEANUP_INTERVAL", "3600"))  # 1 hour
 CACHE_CLEANUP_INTERVAL: Final = int(os.getenv("CACHE_CLEANUP_INTERVAL", "86400"))  # 24 hours
 RATE_LIMIT: Final = int(os.getenv("RATE_LIMIT", "200"))  # requests per hour
 DOWNLOAD_RATE_LIMIT: Final = int(os.getenv("DOWNLOAD_RATE_LIMIT", "6"))  # downloads per minute
+CONVERSION_RATE_LIMIT_PER_MINUTE: Final = int(os.getenv("CONVERSION_RATE_LIMIT_PER_MINUTE", "10"))
+PROBE_UPLOAD_RATE_LIMIT_PER_MINUTE: Final = int(
+    os.getenv("PROBE_UPLOAD_RATE_LIMIT_PER_MINUTE", "30")
+)
 PORT: Final = int(os.getenv("PORT", "5000"))
 DISABLE_SSL_VERIFY: Final = os.getenv("DISABLE_SSL_VERIFY", "0") == "1"  # For corporate proxies
 HTTP_CLIENT_ERROR_MIN: Final = 400
@@ -1927,7 +1931,7 @@ def get_examples():
 
 
 @app.route("/upload", methods=["POST"])
-@limiter.limit("10 per minute")
+@limiter.limit(f"{CONVERSION_RATE_LIMIT_PER_MINUTE} per minute")
 def upload_file():
     """Handle file upload and conversion"""
     if "file" not in request.files:
@@ -1968,7 +1972,7 @@ def upload_file():
 
 
 @app.route("/probe-upload", methods=["POST"])
-@limiter.limit("10 per minute")
+@limiter.limit(f"{PROBE_UPLOAD_RATE_LIMIT_PER_MINUTE} per minute")
 def probe_upload():
     """Validate an uploaded module file and return metadata without converting audio.
 
@@ -2028,7 +2032,7 @@ def probe_upload():
 
 
 @app.route("/convert-probed", methods=["POST"])
-@limiter.limit("10 per minute")
+@limiter.limit(f"{CONVERSION_RATE_LIMIT_PER_MINUTE} per minute")
 def convert_probed():
     """Convert a previously probed module file using its content hash.
 
@@ -2663,7 +2667,7 @@ def convert_url_payload(data):
 
 
 @app.route("/convert-url", methods=["POST"])
-@limiter.limit("10 per minute")
+@limiter.limit(f"{CONVERSION_RATE_LIMIT_PER_MINUTE} per minute")
 def convert_url():
     """
     Download a module file from a given URL and convert it for playback.
@@ -2710,7 +2714,7 @@ def probe_url_payload(data):
 
 
 @app.route("/probe-url", methods=["POST"])
-@limiter.limit("10 per minute")
+@limiter.limit(f"{CONVERSION_RATE_LIMIT_PER_MINUTE} per minute")
 def probe_url():
     """Validate a remote module and return metadata without converting audio."""
     return probe_url_payload(request.get_json(silent=True))
@@ -2910,7 +2914,7 @@ def extract_filename_from_url(url):
 
 
 @app.route("/play-example/<example_id>", methods=["POST"])
-@limiter.limit("10 per minute")
+@limiter.limit(f"{CONVERSION_RATE_LIMIT_PER_MINUTE} per minute")
 def play_example(example_id):
     """Convert and play predefined example"""
     example = next((ex for ex in EXAMPLES if ex["id"] == example_id), None)

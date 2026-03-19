@@ -181,6 +181,7 @@ The Web Player Container is built using multi-stage Docker build with `FROM uade
 - **Responsibilities:**
   - Enforce per-endpoint and global rate limits to prevent abuse
   - Conversion endpoints: 10 requests/min per IP
+  - Queue probe endpoint (`/probe-upload`): 30 requests/min per IP
   - Play endpoints: 50 requests/min per IP
   - Download endpoint: 3 requests/min per IP
   - Global limit: 200 requests/hour per IP (all endpoints combined)
