@@ -541,8 +541,9 @@ audio::-webkit-media-controls-enclosure {
   z-index: 1;
   pointer-events: none;
   display: flex;
-  flex-direction: column;
-  gap: 4px;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 8px;
   min-width: 0;
 }
 
@@ -567,6 +568,7 @@ audio::-webkit-media-controls-enclosure {
   font-size: 0.85rem;
   min-width: 0;
   word-break: break-word;
+  flex-basis: 100%;
 }
 
 .playlist-panel {
@@ -598,6 +600,53 @@ audio::-webkit-media-controls-enclosure {
 .playlist-empty-state {
   color: var(--text-dim);
   font-size: 0.9rem;
+  border: 2px dashed var(--border);
+  border-radius: 8px;
+  padding: 16px;
+  text-align: center;
+}
+
+.playlist-panel.queue-drag-over {
+  border-color: var(--primary);
+  background: rgba(74, 158, 255, 0.08);
+  box-shadow: inset 0 0 0 2px var(--primary);
+}
+
+.playlist-launcher-bar.queue-drag-over {
+  border-color: var(--primary);
+  background: rgba(74, 158, 255, 0.08);
+  box-shadow: inset 0 0 0 2px var(--primary);
+  border-radius: 8px;
+}
+
+.playlist-launcher-drop-hint {
+  position: relative;
+  z-index: 2;
+  pointer-events: auto;
+  color: var(--text-dim);
+  font-size: 0.75rem;
+  cursor: pointer;
+  padding: 2px 8px;
+  border: 1px dashed var(--border);
+  border-radius: 4px;
+  white-space: nowrap;
+  transition: border-color 0.2s, color 0.2s;
+}
+
+.playlist-launcher-drop-hint:hover {
+  border-color: var(--primary);
+  color: var(--primary);
+}
+
+.playlist-launcher-drop-hint:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+}
+
+@media (hover: none) {
+  .playlist-launcher-drop-hint::after {
+    content: none;
+  }
 }
 
 .playlist-list {
@@ -659,10 +708,6 @@ audio::-webkit-media-controls-enclosure {
 }
 
 /* Hide player section, player metadata, custom info, and share button by default (shown when available). */
-#player-section {
-  display: none;
-}
-
 #track-format {
   display: none;
 }

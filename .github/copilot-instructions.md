@@ -60,7 +60,7 @@ The Flask app is a **single 2200+ line file** with clear functional sections:
 
 **Structure:**
 - `index.html` - Single-page app with sections: examples grid, drag-drop upload, URL download form, audio player
-- `app.js` (900+ lines) - Vanilla JavaScript, no frameworks
+- `app.js` (1700+ lines) - Vanilla JavaScript, no frameworks
 - `style.css` - Responsive design with mobile-first approach
 
 **JavaScript Architecture:**
@@ -74,17 +74,24 @@ The Flask app is a **single 2200+ line file** with clear functional sections:
 - `handleFileUpload()` - Drag-drop and file input handler; stores `currentLocalTrackData` on successful conversion
 - `handleUrlConvert()` - URL form with optional dual-file support (TFMX mdat/smpl)
 - `handleAddCurrentToPlaylist()` - Adds current track (URL or local) to queue; local tracks carry cached play/download URLs
+- `handleQueueFileDrop()` - Probes a local file via `/probe-upload`, adds deferred-conversion track to queue
 - `playFile()` - Plays audio, shows player UI, handles subsongs, updates Media Session
-- `playPlaylistTrack()` - Plays track from queue; repopulates `currentLocalTrackData` for local tracks
+- `playPlaylistTrack()` - Plays track from queue; handles three paths: already-converted local (instant), deferred local (upload+convert first, cache result), URL (convert-url)
 - `renderPlaylist()` - Orchestrates queue panel via `renderPlaylistLauncherBar()`, `renderPlaylistPanelControls()`, `renderPlaylistTrackItem()`
+- `setupQueueDropZone()` - Attaches drag-drop events to both launcher bar and queue panel, wires "+ Files" picker
+- `updatePlayerSectionVisibility()` - Shows/hides `#player-content` based on whether audio is loaded; the launcher bar stays always visible
 - `hasSerializableTracks()` - Checks if queue has any non-local (shareable) tracks
 - `loadExamples()` - Fetches `/examples` endpoint and populates grid
 - `setupDragAndDrop()` - Native HTML5 drag-drop events with visual feedback
 
 **Local Queue Track Model:**
 - Tracks with `source: "local"` carry extra fields: `playUrl`, `downloadUrl`, `audioFormat`, `moduleFormat`, `playerFormat`, `subsongs`, `subsongDurations`
+- Deferred-conversion tracks also carry `localFile` (File object); `playUrl` is null until first play triggers `/upload`
+- After conversion, `localFile` is set to null and `playUrl`/`downloadUrl` are cached on the track object for instant replay
 - Local tracks are excluded from playlist serialization (share/bookmark/save URLs)
 - Queue UI shows a `📁 local` badge for local tracks
+- Queue panel and launcher bar both support drag-drop; the launcher bar contains a unified "+ Files" label (triggers file picker on click, accepts drops)
+- The launcher bar is always visible on the page (not gated by queue contents); player content (heading, audio controls) is wrapped in a `#player-content` div that is hidden until a track loads
 
 **Client-Side Caching:**
 - Browser caches converted audio for 1 month via standard HTTP caching headers

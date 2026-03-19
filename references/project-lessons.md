@@ -5,6 +5,8 @@ This document contains project-specific learnings and regression-avoidance notes
 ## Table of Contents
 
 - [Queue Feature Lessons](#queue-feature-lessons)
+- [Local File Queue Lessons](#local-file-queue-lessons)
+- [Always-Visible Launcher Lessons](#always-visible-launcher-lessons)
 - [Queue Sharing and Save Lessons](#queue-sharing-and-save-lessons)
 - [Queue Mobile UI Lessons](#queue-mobile-ui-lessons)
 - [Backend Hardening Lessons](#backend-hardening-lessons)
@@ -36,7 +38,29 @@ This document contains project-specific learnings and regression-avoidance notes
 - **Destructive Actions:** Reserve saved-queue removal for the explicit `Clear` action. Do not auto-delete from storage on per-item removal.
 - **Accessibility:** Use a real full-bar hit target for opening the queue, with separate real action buttons, to ensure coherent accessibility and event handling.
 
-## Queue Sharing and Save Lessons
+## Local File Queue Lessons
+
+**Key Takeaways:** Defer heavy work until it's needed. Keep the probe-then-convert pattern sharp. Cache conversion results on the track object so replay is instant.
+
+- **Deferred Conversion:** Probe local files on queue add (`/probe-upload`), but defer full conversion to `/upload` until the track is actually played. This keeps drag-drop instant and avoids wasted conversion work for tracks that may never be played.
+- **Track Object Mutation:** After a deferred track is converted, set `localFile` to null and cache `playUrl`/`downloadUrl` on the track object. Subsequent plays use the cached URLs without re-uploading.
+- **File Object Lifecycle:** `File` objects from drag-drop or file input remain valid as long as the page is alive, but cannot survive serialization. Exclude local tracks from share/bookmark/save URLs.
+- **Three Playback Paths:** `playPlaylistTrack()` must handle three cases: (1) already-converted local track with cached URLs, (2) deferred local track with `localFile` still set, (3) URL-based track. Keep these paths explicit — collapsing them introduces subtle regressions.
+- **Probe vs Upload:** `/probe-upload` returns metadata without conversion artifacts. Do not reuse the probe response as if it were a conversion result.
+- **Accept Attribute Sync:** When dynamically loading supported extensions, update all file inputs (`fileInput` and `queueFileInput`) to keep the `accept` attribute consistent.
+- **Auto-Play on Queue Add:** Only auto-play when the queue was empty and nothing is playing. Never interrupt active playback just because a file was dropped onto the queue.
+
+## Always-Visible Launcher Lessons
+
+**Key Takeaways:** Separate player content visibility from the queue launcher. Use HTML `hidden` attribute for content gating, not CSS `display: none` on the section.
+
+- **Section vs Content:** The `#player-section` should always be visible (it contains the launcher bar). Player content (heading, audio controls) lives in a `#player-content` div with `hidden` attribute, toggled by `updatePlayerSectionVisibility()` when audio loads.
+- **CSS Cleanup:** When switching from JS-driven `style.display` to HTML `hidden`, remove the corresponding `display: none` CSS rule on `#player-section`. Leaving it causes the section to be invisible even though JS no longer touches its display property.
+- **Dead Code:** After removing visibility gating from `syncUiLockState()` and `renderPlaylistLauncherBar()`, grep for orphaned `playerSection.style.display` assignments in other functions (e.g., `playFile`).
+- **Hitbox Overlay Punch-Through:** Interactive elements inside a parent with `pointer-events: none` need explicit `pointer-events: auto` and `z-index` to receive clicks. The `+ Files` label uses `z-index: 2` to punch through the `.playlist-launcher-hitbox` overlay.
+- **HTML Restructuring Risk:** Moving elements between wrapper divs in a deeply nested HTML structure is error-prone with string-based editing. Verify closing `</div>` counts after restructuring and run HTMLHint before committing.
+- **Toggle Button State:** The queue Open/Hide toggle is disabled via `data-content-disabled` when the queue is empty. This means the empty-panel state is unreachable via the UI — Pa11y cannot exercise it.
+- **Accessibility Coverage:** The always-visible launcher bar and `+ Files` label are scanned by the `desktop-home` and `iphone15-home` Pa11y scenarios. No dedicated empty-queue accessibility scenario is needed because the panel toggle is disabled when empty.
 
 **Key Takeaways:** Use compact URL parameters for shareable queues. Prioritize queue URLs over single-track params at startup.
 
