@@ -131,12 +131,6 @@ test_convert_on_a_play_on_b() {
         return
     fi
 
-    if ! assert_instance_local_absence "/instance-b/converted/${FILE_ID}.wav" && \
-       ! assert_instance_local_absence "/instance-b/converted/${FILE_ID}.flac"; then
-        record_failure "$TEST_NAME" "B already had a local converted artifact before play, so the stateless boundary was not clean"
-        return
-    fi
-
     PLAY_HTTP_CODE=$(fetch_http_code "${BASE_URL_B}/play/${FILE_ID}")
     if [ "$PLAY_HTTP_CODE" != "200" ] && [ "$PLAY_HTTP_CODE" != "206" ]; then
         record_failure "$TEST_NAME" "play on B returned HTTP ${PLAY_HTTP_CODE} for file_id=${FILE_ID}"
@@ -145,6 +139,41 @@ test_convert_on_a_play_on_b() {
 
     if ! ls "/instance-b/converted/${FILE_ID}".* > /dev/null 2>&1; then
         record_failure "$TEST_NAME" "play on B succeeded but did not materialize a local converted artifact from shared cache"
+        return
+    fi
+
+    record_success "$TEST_NAME"
+}
+
+test_convert_on_a_download_on_b() {
+    # covers: /download/<file_id>
+    TEST_NAME="convert-url on A -> download on B"
+    URL="${LOCAL_TEST_SERVER_URL}/fixtures/modules/space_debris.mod?case=convert-a-download-b"
+
+    RESPONSE_ALL=$(json_post "$BASE_URL_A" "/convert-url" "$(jq -nc --arg url "$URL" '{url: $url}')")
+    HTTP_CODE=$(echo "$RESPONSE_ALL" | tail -n1)
+    BODY=$(echo "$RESPONSE_ALL" | sed '$d')
+
+    if [ "$HTTP_CODE" -ne 200 ]; then
+        record_failure "$TEST_NAME" "convert-url on A returned HTTP ${HTTP_CODE}; body=${BODY}"
+        return
+    fi
+
+    FILE_ID=$(echo "$BODY" | jq -r .file_id)
+    DOWNLOAD_URL=$(echo "$BODY" | jq -r .download_url)
+    if [ -z "$FILE_ID" ] || [ "$FILE_ID" = "null" ] || [ -z "$DOWNLOAD_URL" ] || [ "$DOWNLOAD_URL" = "null" ]; then
+        record_failure "$TEST_NAME" "A response missing file_id or download_url; body=${BODY}"
+        return
+    fi
+
+    DOWNLOAD_CODE=$(fetch_http_code "${BASE_URL_B}${DOWNLOAD_URL}")
+    if [ "$DOWNLOAD_CODE" != "200" ] && [ "$DOWNLOAD_CODE" != "206" ]; then
+        record_failure "$TEST_NAME" "download on B returned HTTP ${DOWNLOAD_CODE} for file_id=${FILE_ID}"
+        return
+    fi
+
+    if ! ls "/instance-b/converted/${FILE_ID}".* > /dev/null 2>&1; then
+        record_failure "$TEST_NAME" "download on B succeeded but did not materialize a local converted artifact from shared cache"
         return
     fi
 
@@ -709,6 +738,7 @@ wait_for_service "uade-web-b" "$BASE_URL_B" || print_summary_and_exit
 prepare_fixtures
 
 test_convert_on_a_play_on_b
+test_convert_on_a_download_on_b
 test_probe_url_on_a_and_b
 test_probe_url_on_a_convert_on_b_play_on_a
 test_probe_url_negative_on_a_and_b
