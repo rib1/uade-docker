@@ -25,6 +25,7 @@ ZAP_SPACE_DEBRIS_FIXTURE = "zap-placeholder-space-debris.mod"
 ZAP_MDAT_FIXTURE = "zap-placeholder-mdat.turrican_2_level_0-intro"
 ZAP_SMPL_FIXTURE = "zap-placeholder-smpl.turrican_2_level_0-intro"
 ZAP_TOO_LARGE_FIXTURE = "zap-placeholder-too-large.bin"
+ZAP_EMPTY_FIXTURE = "zap-placeholder-empty.bin"
 
 
 def allowlisted_urlopen(
@@ -60,6 +61,7 @@ def ensure_local_fixtures() -> None:
     (modules_dir / ZAP_SPACE_DEBRIS_FIXTURE).write_bytes(b"placeholder module bytes\n")
     (modules_dir / ZAP_MDAT_FIXTURE).write_bytes(b"placeholder mdat bytes\n")
     (modules_dir / ZAP_SMPL_FIXTURE).write_bytes(b"placeholder smpl bytes\n")
+    (invalid_dir / ZAP_EMPTY_FIXTURE).write_bytes(b"")
 
     too_large_file = invalid_dir / ZAP_TOO_LARGE_FIXTURE
     if not too_large_file.exists() or too_large_file.stat().st_size != TOO_LARGE_BYTES:
@@ -83,14 +85,14 @@ def request(
     path: str,
     *,
     method: str = "GET",
-    body: str | None = None,
+    body: str | bytes | None = None,
     content_type: str | None = None,
 ) -> tuple[int, str]:
     """Send an HTTP request and capture status and response body."""
     headers: dict[str, str] = {}
     data = None
     if body is not None:
-        data = body.encode("utf-8")
+        data = body.encode("utf-8") if isinstance(body, str) else body
     if content_type is not None:
         headers["Content-Type"] = content_type
 
@@ -109,6 +111,22 @@ def request(
 
 def json_body(payload: dict[str, object]) -> str:
     return json.dumps(payload, separators=(",", ":"))
+
+
+def multipart_form_data(
+    *, field_name: str, filename: str, file_bytes: bytes, content_type: str
+) -> tuple[bytes, str]:
+    """Build a tiny multipart/form-data body for file upload endpoints."""
+    boundary = f"----CodexBoundary{uuid.uuid4().hex}"
+    preamble = (
+        f"--{boundary}\r\n"
+        f'Content-Disposition: form-data; name="{field_name}"; filename="{filename}"\r\n'
+        f"Content-Type: {content_type}\r\n"
+        "\r\n"
+    ).encode()
+    epilogue = (f"\r\n--{boundary}--\r\n").encode()
+    body = preamble + file_bytes + epilogue
+    return body, f"multipart/form-data; boundary={boundary}"
 
 
 def seed_case(
@@ -133,8 +151,41 @@ def seed_case(
     print(f"{name}: HTTP {status}")
 
 
+def seed_probe_upload_case(
+    name: str,
+    *,
+    fixture_path: Path | None = None,
+    filename: str = "upload.bin",
+    expected_status: int,
+) -> None:
+    """Seed /probe-upload with either a multipart upload or a no-file POST."""
+    if fixture_path is None:
+        status, response_body = request("/probe-upload", method="POST")
+    else:
+        body, content_type = multipart_form_data(
+            field_name="file",
+            filename=filename,
+            file_bytes=fixture_path.read_bytes(),
+            content_type="application/octet-stream",
+        )
+        status, response_body = request(
+            "/probe-upload",
+            method="POST",
+            body=body,
+            content_type=content_type,
+        )
+
+    if status != expected_status:
+        raise RuntimeError(
+            f"{name} returned HTTP {status}, expected {expected_status}. Body: {response_body}"
+        )
+    print(f"{name}: HTTP {status}")
+
+
 def main() -> None:
     ensure_local_fixtures()
+    modules_dir = FIXTURE_ROOT / "modules"
+    invalid_dir = FIXTURE_ROOT / "invalid"
     wait_for_url(f"{BASE_URL}/health", timeout_seconds=WAIT_TIMEOUT_SECONDS)
     wait_for_url(
         f"{LOCAL_TEST_SERVER_URL}/fixtures/modules/{ZAP_GUTENBERG_FIXTURE}",
@@ -191,6 +242,48 @@ def main() -> None:
         body='{"url":',
         content_type="application/json",
         expected_status=400,
+    )
+    seed_probe_upload_case("probe-upload-no-file", expected_status=400)
+    seed_probe_upload_case(
+        "probe-upload-empty-file",
+        fixture_path=invalid_dir / ZAP_EMPTY_FIXTURE,
+        filename="empty.bin",
+        expected_status=400,
+    )
+    seed_probe_upload_case(
+        "probe-upload-unsupported-file",
+        fixture_path=modules_dir / ZAP_GUTENBERG_FIXTURE,
+        filename=ZAP_GUTENBERG_FIXTURE,
+        expected_status=500,
+    )
+    seed_case(
+        "convert-probed-invalid-body",
+        path="/convert-probed",
+        method="POST",
+        body='{"module_hash":',
+        content_type="application/json",
+        expected_status=400,
+    )
+    seed_case(
+        "convert-probed-invalid-hash",
+        path="/convert-probed",
+        method="POST",
+        body=json_body({"module_hash": "not-an-md5", "filename": "upload.mod"}),
+        content_type="application/json",
+        expected_status=400,
+    )
+    seed_case(
+        "convert-probed-missing-module",
+        path="/convert-probed",
+        method="POST",
+        body=json_body(
+            {
+                "module_hash": "0123456789abcdef0123456789abcdef",
+                "filename": "missing.mod",
+            }
+        ),
+        content_type="application/json",
+        expected_status=404,
     )
 
     shared_cases = [

@@ -16,6 +16,7 @@ let isPlaylistPanelOpen = false;
 let isUiLocked = false;
 const SAVED_QUEUE_STORAGE_KEY = "uade.savedQueue.v1";
 const QUEUE_URL_WARNING_LENGTH = 2000;
+const QUEUE_DROP_FILE_LIMIT = 20;
 const ADDED_TO_QUEUE_STATUS = (name) => `✓ Added ${name} to queue`;
 
 // DOM Elements
@@ -607,17 +608,12 @@ function setupQueueDropZone() {
       if (isUiLocked) {
         return;
       }
-      const files = e.dataTransfer.files;
-      for (const file of files) {
-        await handleQueueFileDrop(file);
-      }
+      await handleQueueFileBatch(e.dataTransfer.files);
     });
   });
 
   queueFileInput.addEventListener("change", async (e) => {
-    for (const file of e.target.files) {
-      await handleQueueFileDrop(file);
-    }
+    await handleQueueFileBatch(e.target.files);
     e.target.value = "";
   });
 
@@ -627,6 +623,25 @@ function setupQueueDropZone() {
       queueFileInput.click();
     }
   });
+}
+
+async function handleQueueFileBatch(fileList) {
+  const files = Array.from(fileList || []);
+  if (files.length === 0) {
+    return;
+  }
+
+  if (files.length > QUEUE_DROP_FILE_LIMIT) {
+    showStatus(
+      `✗ Queue accepts up to ${QUEUE_DROP_FILE_LIMIT} files at a time. Drop fewer files and try again.`,
+      "warning",
+    );
+    return;
+  }
+
+  for (const file of files) {
+    await handleQueueFileDrop(file);
+  }
 }
 
 async function handleQueueFileDrop(file) {
