@@ -826,7 +826,14 @@ audio::-webkit-media-controls-enclosure {
     align-items: stretch;
   }
 
+  .playlist-panel-header-actions {
+    align-self: flex-end;
+    justify-content: flex-end;
+  }
+
   .playlist-item-actions {
+    align-self: flex-end;
+    justify-content: flex-end;
     width: 100%;
   }
 
