@@ -1,0 +1,102 @@
+# To run the multi-instance stateless/cache tests:
+#    docker compose -f docker-compose.yml -f test/docker-compose.multiinstance.yml run --rm --build uade-test-multiinstance-runner
+services:
+  uade-web-a:
+    build:
+      context: .
+      dockerfile: Dockerfile.web
+      args:
+        - GIT_COMMIT=${GIT_COMMIT:-unknown}
+    environment:
+      - FLASK_ENV=production
+      - MAX_UPLOAD_SIZE=10485760
+      - CLEANUP_INTERVAL=3600
+      - RATE_LIMIT_DISABLED=1
+      - DISABLE_SSL_VERIFY=1
+      - UADE_TEST_MODE=1
+      - GIT_COMMIT=${GIT_COMMIT:-unknown}
+      - CACHE_URI=file:///tmp/cache
+      - CACHE_ACCESS_UPDATE_INTERVAL_SECONDS=0
+      - HEALTH_INCLUDE_CACHE_DEBUG=1
+    ports:
+      - "5001:5000"
+    volumes:
+      - ./web:/app:ro
+      - uade-modules-a:/tmp/modules
+      - uade-converted-a:/tmp/converted
+      - uade-cache-shared:/tmp/cache
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5000/health"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+      start_period: 10s
+    networks:
+      - uade-net
+
+  uade-web-b:
+    build:
+      context: .
+      dockerfile: Dockerfile.web
+      args:
+        - GIT_COMMIT=${GIT_COMMIT:-unknown}
+    environment:
+      - FLASK_ENV=production
+      - MAX_UPLOAD_SIZE=10485760
+      - CLEANUP_INTERVAL=3600
+      - RATE_LIMIT_DISABLED=1
+      - DISABLE_SSL_VERIFY=1
+      - UADE_TEST_MODE=1
+      - GIT_COMMIT=${GIT_COMMIT:-unknown}
+      - CACHE_URI=file:///tmp/cache
+      - CACHE_ACCESS_UPDATE_INTERVAL_SECONDS=0
+      - HEALTH_INCLUDE_CACHE_DEBUG=1
+    ports:
+      - "5002:5000"
+    volumes:
+      - ./web:/app:ro
+      - uade-modules-b:/tmp/modules
+      - uade-converted-b:/tmp/converted
+      - uade-cache-shared:/tmp/cache
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5000/health"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+      start_period: 10s
+    networks:
+      - uade-net
+
+  uade-test-multiinstance-runner:
+    build:
+      context: .
+      dockerfile: test/Dockerfile.test
+    depends_on:
+      uade-web-a:
+        condition: service_healthy
+      uade-web-b:
+        condition: service_healthy
+      test-http-server:
+        condition: service_started
+    command: ./test_multiinstance.sh
+    volumes:
+      - test-tmp:/home/tester/app/fixtures
+      - uade-cache-shared:/uade-cache-shared
+      - uade-modules-a:/instance-a/modules
+      - uade-converted-a:/instance-a/converted
+      - uade-modules-b:/instance-b/modules
+      - uade-converted-b:/instance-b/converted
+    networks:
+      - uade-net
+
+volumes:
+  uade-modules-a:
+    driver: local
+  uade-converted-a:
+    driver: local
+  uade-modules-b:
+    driver: local
+  uade-converted-b:
+    driver: local
+  uade-cache-shared:
+    driver: local

@@ -711,6 +711,91 @@ test_convert_probed_reconverts_after_cache_removal() {
     echo ""
 }
 
+# Test that when convert-probed misses because the probed source file is gone,
+# the same file can still be uploaded and converted successfully. This proves
+# the server supports the frontend's documented 404 -> /upload fallback path.
+# Arguments:
+# 1. File path to local module (string)
+test_convert_probed_404_then_upload_fallback() {
+    echo "--- Testing Convert-Probed 404 Then Upload Fallback ---"
+
+    PROBE_RESPONSE_ALL=$(curl -s -w "\n%{http_code}" -X POST -F "file=@$1" "$BASE_URL/probe-upload")
+    PROBE_HTTP_CODE=$(echo "$PROBE_RESPONSE_ALL" | tail -n1)
+    PROBE_BODY=$(echo "$PROBE_RESPONSE_ALL" | sed '$d')
+
+    if [ "$PROBE_HTTP_CODE" -ne 200 ]; then
+        echo "ERROR: Probe returned HTTP $PROBE_HTTP_CODE"
+        echo "Response body: $PROBE_BODY"
+        exit 1
+    fi
+
+    MODULE_HASH=$(echo "$PROBE_BODY" | jq -r .module_hash)
+    if [ -z "$MODULE_HASH" ] || [ "$MODULE_HASH" == "null" ]; then
+        echo "ERROR: Probe response missing module_hash"
+        echo "Response body: $PROBE_BODY"
+        exit 1
+    fi
+
+    REMOVE_PROBED_ALL=$(curl -s -w "\n%{http_code}" -X POST \
+        -H "Content-Type: application/json" \
+        -d "{\"module_hash\":\"$MODULE_HASH\"}" \
+        "$BASE_URL/test/remove-probed-module")
+    REMOVE_PROBED_HTTP_CODE=$(echo "$REMOVE_PROBED_ALL" | tail -n1)
+    REMOVE_PROBED_BODY=$(echo "$REMOVE_PROBED_ALL" | sed '$d')
+
+    if [ "$REMOVE_PROBED_HTTP_CODE" -ne 200 ]; then
+        echo "ERROR: Failed to remove probed module for hash $MODULE_HASH"
+        echo "Response body: $REMOVE_PROBED_BODY"
+        exit 1
+    fi
+
+    CONVERT_PROBED_ALL=$(curl -s -w "\n%{http_code}" -X POST \
+        -H "Content-Type: application/json" \
+        -d "{\"module_hash\":\"$MODULE_HASH\",\"filename\":\"$(basename "$1")\"}" \
+        "$BASE_URL/convert-probed")
+    CONVERT_PROBED_HTTP_CODE=$(echo "$CONVERT_PROBED_ALL" | tail -n1)
+    CONVERT_PROBED_BODY=$(echo "$CONVERT_PROBED_ALL" | sed '$d')
+
+    if [ "$CONVERT_PROBED_HTTP_CODE" -ne 404 ]; then
+        echo "ERROR: Expected convert-probed to return HTTP 404 after probed-module removal, got $CONVERT_PROBED_HTTP_CODE"
+        echo "Response body: $CONVERT_PROBED_BODY"
+        exit 1
+    fi
+
+    if ! echo "$CONVERT_PROBED_BODY" | grep -q "Module not found"; then
+        echo "ERROR: Unexpected convert-probed 404 body after probed-module removal"
+        echo "Response body: $CONVERT_PROBED_BODY"
+        exit 1
+    fi
+
+    UPLOAD_RESPONSE_ALL=$(curl -s -w "\n%{http_code}" -X POST -F "file=@$1" "$BASE_URL/upload")
+    UPLOAD_HTTP_CODE=$(echo "$UPLOAD_RESPONSE_ALL" | tail -n1)
+    UPLOAD_BODY=$(echo "$UPLOAD_RESPONSE_ALL" | sed '$d')
+
+    if [ "$UPLOAD_HTTP_CODE" -ne 200 ]; then
+        echo "ERROR: Upload fallback returned HTTP $UPLOAD_HTTP_CODE"
+        echo "Response body: $UPLOAD_BODY"
+        exit 1
+    fi
+
+    FALLBACK_FILE_ID=$(echo "$UPLOAD_BODY" | jq -r .file_id)
+    FALLBACK_PLAY_URL=$(echo "$UPLOAD_BODY" | jq -r .play_url)
+    if [ -z "$FALLBACK_FILE_ID" ] || [ "$FALLBACK_FILE_ID" == "null" ] || [ -z "$FALLBACK_PLAY_URL" ] || [ "$FALLBACK_PLAY_URL" == "null" ]; then
+        echo "ERROR: Upload fallback response missing file_id or play_url"
+        echo "Response body: $UPLOAD_BODY"
+        exit 1
+    fi
+
+    PLAY_HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" "$BASE_URL$FALLBACK_PLAY_URL")
+    if [ "$PLAY_HTTP_CODE" -ne 200 ] && [ "$PLAY_HTTP_CODE" -ne 206 ]; then
+        echo "ERROR: Upload fallback play URL returned HTTP $PLAY_HTTP_CODE"
+        exit 1
+    fi
+
+    echo "SUCCESS: convert-probed 404 was followed by successful upload fallback and playable audio."
+    echo ""
+}
+
 # Test convert-probed error: invalid hash format
 test_convert_probed_invalid_hash() {
     echo "--- Testing Convert-Probed Error: Invalid hash format ---"
@@ -2370,6 +2455,11 @@ EOF
     echo ""
 }
 
+print_endpoint_coverage_summary() {
+    python3 ./report_endpoint_coverage.py test_endpoints.sh
+    echo ""
+}
+
 # Wait for the service to be up
 echo "Waiting for uade-web-player to be available..."
 while ! curl -s "$BASE_URL/health" > /dev/null; do
@@ -2496,9 +2586,12 @@ test_probe_convert_play_flow "Protracker module" "fixtures/modules/space_debris.
 test_probe_upload_dedup "fixtures/modules/space_debris.mod"
 test_probe_upload_dedup_concurrent "fixtures/modules/space_debris.mod"
 test_convert_probed_reconverts_after_cache_removal "fixtures/modules/space_debris.mod"
+test_convert_probed_404_then_upload_fallback "fixtures/modules/space_debris.mod"
 test_convert_probed_invalid_hash
 test_convert_probed_not_found
 test_convert_probed_bad_request
 test_convert_probed_wrong_method
+
+print_endpoint_coverage_summary
 
 echo "--- All tests passed! ---"

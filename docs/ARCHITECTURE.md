@@ -103,7 +103,7 @@ architecture-beta
 2. The browser first checks its local cache for the converted audio file. If found, it's played instantly and the process stops here.
 3. If not in the browser cache, the Flask server receives the request.
 4. For URL requests, the source module file is downloaded. A local cache is checked first, based on the URL, to avoid re-downloading.
-5. For local queue tracks, the file is probed on drop via `/probe-upload` (returns metadata + `module_hash`). When playback is triggered, the client tries `/convert-probed` with the hash (no re-upload needed). If the probed file has expired on the server (404), it falls back to a full `/upload`.
+5. For local queue tracks, the file is probed on drop via `/probe-upload` (returns metadata + `module_hash`). When playback is triggered, the client tries `/convert-probed` with the hash as a best-effort optimization (no re-upload needed). In the primary single-container Docker Desktop setup this usually succeeds because probe and playback share the same local module storage. In multi-container deployments it must not be relied on across container hops unless probed source files are also on shared storage. If the probed file is unavailable on the serving instance (404), the client falls back to a full `/upload`.
 6. An MD5 hash of the source module file content is calculated.
 7. The system checks for a pre-converted WAV or FLAC file in the main **server-side cache** (local or remote) using this hash.
 8. **If a server-side cached audio file is found:**
@@ -116,6 +116,32 @@ architecture-beta
     d. The converted audio file (WAV or FLAC) is saved to the main **server-side cache**.
     e. The audio is streamed back to the browser, which will cache it for one month.
 10. Temporary files are cleaned up periodically.
+
+### Cache Matrix
+
+The backend read path for `/play/*` is:
+
+1. Check the serving container's local converted-file directory.
+2. If the file is not local, try the shared cache (`CACHE_URI`).
+3. If neither source has the file, return `404`.
+
+This means cache behavior in multi-instance setups is best understood with the following matrix:
+
+| Serving container local converted file | Shared cache artifact | Expected `/play/*` result | Notes |
+| --- | --- | --- | --- |
+| Present | Present | Serve audio (`200` or `206`) | Local disk wins; shared cache is not needed. |
+| Present | Missing | Serve audio (`200` or `206`) | A warmed instance can continue serving from its own local disk. |
+| Missing | Present | Serve audio (`200` or `206`) | Backend fetches from shared cache and can materialize a fresh local copy. |
+| Missing | Missing | `404` | No playable source remains. |
+
+For queue playback using local files:
+
+| Probed source on serving container | Shared converted audio already exists | Expected `/convert-probed` result | Expected fallback |
+| --- | --- | --- | --- |
+| Present | Either | Success (`200`) | No fallback needed. |
+| Missing | Present or missing | `404` | Client should fall back to `/upload` if the original local file is still available in the browser session. |
+
+This is why `/convert-probed` is documented as a best-effort optimization rather than a cross-instance durability guarantee. The shared cache is the important stateless guarantee for converted audio; the probed local source file is still container-local by default.
 
 ### Deployment Workflow
 

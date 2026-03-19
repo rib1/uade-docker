@@ -1687,7 +1687,8 @@ async function playDeferredLocalTrack(track, trackId, button) {
         syncUiLockState(false);
         return;
       }
-      // 404 — probed file was cleaned up, fall through to re-upload
+      // 404 means the probed source is no longer available on this server instance.
+      // Treat /convert-probed as an optimization only and fall back to /upload.
     } catch (_err) {
       // Network error — fall through to re-upload
     }
