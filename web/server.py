@@ -63,6 +63,9 @@ FLAC_BIN: Final = "/usr/bin/flac"
 LHA_BIN: Final = "/usr/bin/lha"
 SH_BIN: Final = "/bin/sh"
 
+# ---------- Regex for validating MD5 hex hashes ----------
+_MD5_HEX_RE = re.compile(r"^[a-f0-9]{32}$")
+
 
 # Get git commit hash for version tracking
 def get_git_commit():
@@ -1967,7 +1970,11 @@ def upload_file():
 @app.route("/probe-upload", methods=["POST"])
 @limiter.limit("10 per minute")
 def probe_upload():
-    """Validate an uploaded module file and return metadata without converting audio."""
+    """Validate an uploaded module file and return metadata without converting audio.
+
+    Saves the file using a content-based hash so identical content is stored only once.
+    Returns a module_hash that /convert-probed can use to convert without re-uploading.
+    """
     if "file" not in request.files:
         return json_response({"ok": False, "playable": False, "error": "No file provided"}, 400)
 
@@ -1984,11 +1991,30 @@ def probe_upload():
     try:
         file_id = str(uuid.uuid4())
         filename = secure_filename(file.filename)
-        module_path = MODULES_DIR / f"{filename}_{file_id}"
-        file.save(module_path)
-        return process_module_probe_response(
-            module_path, filename, url_cached=False, sample_files=None
+        temp_path = MODULES_DIR / f"{filename}_{file_id}"
+        file.save(temp_path)
+
+        # Content-addressed storage: rename to hash-based path for dedup
+        module_hash = get_file_hash(temp_path)
+        probed_path = MODULES_DIR / f"probed_{module_hash}"
+
+        if probed_path.exists() and probed_path.stat().st_size > 0:
+            temp_path.unlink(missing_ok=True)
+            touch_for_lru(probed_path)
+        else:
+            temp_path.replace(probed_path)
+
+        response = process_module_probe_response(
+            probed_path, filename, url_cached=False, sample_files=None
         )
+
+        # Inject module_hash into successful probe responses
+        if response.status_code < HTTP_CLIENT_ERROR_MIN:
+            data = response.get_json()
+            data["module_hash"] = module_hash
+            return json_response(data)
+
+        return response
     except Exception:
         logger.error("Probe upload error", exc_info=True)
         return json_response(
@@ -1999,6 +2025,43 @@ def probe_upload():
             },
             500,
         )
+
+
+@app.route("/convert-probed", methods=["POST"])
+@limiter.limit("10 per minute")
+def convert_probed():
+    """Convert a previously probed module file using its content hash.
+
+    Expects JSON body with:
+        module_hash (str): MD5 hex hash returned by /probe-upload.
+        filename (str): Original filename (for display/download naming).
+    Returns 404 if the probed file has been cleaned up, signalling the client to re-upload.
+    """
+    data = request.get_json(silent=True)
+    if not data:
+        return json_response({"error": "Invalid request body"}, 400)
+
+    module_hash = data.get("module_hash", "")
+    filename = secure_filename(data.get("filename", "")) or "module"
+
+    if not _MD5_HEX_RE.match(module_hash):
+        return json_response({"error": "Invalid module hash"}, 400)
+
+    probed_path = MODULES_DIR / f"probed_{module_hash}"
+
+    if not probed_path.exists() or probed_path.stat().st_size == 0:
+        return json_response({"error": "Module not found — please re-upload"}, 404)
+
+    touch_for_lru(probed_path)
+
+    user_agent = request.headers.get("User-Agent", "")
+    sanitized_user_agent = user_agent.replace("\r", "").replace("\n", "")
+    logger.info(f"Convert-probed User-Agent: {sanitized_user_agent}")
+    use_flac = supports_flac(user_agent)
+
+    return process_module_and_respond(
+        probed_path, filename, use_flac, url_cached=False, sample_files=None
+    )
 
 
 def process_module_and_respond(

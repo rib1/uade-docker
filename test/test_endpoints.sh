@@ -9,6 +9,7 @@ set -e
 BASE_URL="http://uade-web-player:5000"
 LOCAL_TEST_SERVER_PORT=8000
 LOCAL_TEST_SERVER_URL="http://uade-test-http-server:$LOCAL_TEST_SERVER_PORT"
+SKIP_MODARCHIVE_TESTS="${SKIP_MODARCHIVE_TESTS:-0}"
 
 # Create test fixtures on the fly
 mkdir -p fixtures/invalid
@@ -33,6 +34,15 @@ if [ ! -f "fixtures/modules/smpl.turrican_2_level_0-intro" ]; then
     echo "Downloading smpl.turrican_2_level_0-intro..."
     curl -s --insecure -o fixtures/modules/smpl.turrican_2_level_0-intro "https://modland.com/pub/modules/TFMX/Chris%20Huelsbeck/smpl.turrican%202%20level%200-intro"
 fi
+
+should_skip_modarchive_tests() {
+    [ "$SKIP_MODARCHIVE_TESTS" = "1" ]
+}
+
+skip_test() {
+    echo "SKIPPED: $1"
+    echo ""
+}
 
 
 # Helper function to perform a convert-url API call
@@ -450,6 +460,347 @@ test_probe_upload_path_traversal_filename() {
     fi
 
     echo "SUCCESS: Probe upload sanitized path traversal filename to '$FILENAME'."
+    echo ""
+}
+
+# ---------- Convert-probed tests ----------
+
+# Test the full probe → convert-probed → play workflow
+# Arguments:
+# 1. Test name (string)
+# 2. File path to local module (string)
+# 3. Expected module name (string)
+# 4. Expected player format (string)
+test_probe_convert_play_flow() {
+    TEST_NAME=$1
+    FILE_PATH=$2
+    EXPECTED_MODULE_NAME=$3
+    EXPECTED_PLAYER_FORMAT=$4
+
+    echo "--- Testing Probe→Convert-Probed→Play: $TEST_NAME ---"
+
+    # Step 1: Probe the file
+    PROBE_RESPONSE_ALL=$(curl -s -w "\n%{http_code}" -X POST -F "file=@$FILE_PATH" "$BASE_URL/probe-upload")
+    PROBE_HTTP_CODE=$(echo "$PROBE_RESPONSE_ALL" | tail -n1)
+    PROBE_BODY=$(echo "$PROBE_RESPONSE_ALL" | sed '$d')
+
+    if [ "$PROBE_HTTP_CODE" -ne 200 ]; then
+        echo "ERROR: Probe returned HTTP $PROBE_HTTP_CODE"
+        echo "Response body: $PROBE_BODY"
+        exit 1
+    fi
+
+    MODULE_HASH=$(echo "$PROBE_BODY" | jq -r .module_hash)
+    if [ -z "$MODULE_HASH" ] || [ "$MODULE_HASH" == "null" ]; then
+        echo "ERROR: Probe response missing module_hash"
+        echo "Response body: $PROBE_BODY"
+        exit 1
+    fi
+
+    PROBE_MODULE_NAME=$(echo "$PROBE_BODY" | jq -r .module_name)
+    if [ "$PROBE_MODULE_NAME" != "$EXPECTED_MODULE_NAME" ]; then
+        echo "ERROR: Probe module_name mismatch: expected '$EXPECTED_MODULE_NAME', got '$PROBE_MODULE_NAME'"
+        exit 1
+    fi
+
+    echo "  Step 1 OK: Probe returned module_hash=$MODULE_HASH"
+
+    # Step 2: Convert using the hash (no re-upload)
+    CONVERT_RESPONSE_ALL=$(curl -s -w "\n%{http_code}" -X POST \
+        -H "Content-Type: application/json" \
+        -d "{\"module_hash\":\"$MODULE_HASH\",\"filename\":\"$(basename "$FILE_PATH")\"}" \
+        "$BASE_URL/convert-probed")
+    CONVERT_HTTP_CODE=$(echo "$CONVERT_RESPONSE_ALL" | tail -n1)
+    CONVERT_BODY=$(echo "$CONVERT_RESPONSE_ALL" | sed '$d')
+
+    if [ "$CONVERT_HTTP_CODE" -ne 200 ]; then
+        echo "ERROR: Convert-probed returned HTTP $CONVERT_HTTP_CODE"
+        echo "Response body: $CONVERT_BODY"
+        exit 1
+    fi
+
+    PLAY_URL=$(echo "$CONVERT_BODY" | jq -r .play_url)
+    DOWNLOAD_URL=$(echo "$CONVERT_BODY" | jq -r .download_url)
+    CONVERT_MODULE_NAME=$(echo "$CONVERT_BODY" | jq -r .module_name)
+    CONVERT_PLAYER_FORMAT=$(echo "$CONVERT_BODY" | jq -r .player_format)
+
+    if [ -z "$PLAY_URL" ] || [ "$PLAY_URL" == "null" ]; then
+        echo "ERROR: Convert-probed response missing play_url"
+        echo "Response body: $CONVERT_BODY"
+        exit 1
+    fi
+
+    if [ "$CONVERT_MODULE_NAME" != "$EXPECTED_MODULE_NAME" ]; then
+        echo "ERROR: Convert-probed module_name mismatch: expected '$EXPECTED_MODULE_NAME', got '$CONVERT_MODULE_NAME'"
+        exit 1
+    fi
+
+    if [ "$CONVERT_PLAYER_FORMAT" != "$EXPECTED_PLAYER_FORMAT" ]; then
+        echo "ERROR: Convert-probed player_format mismatch: expected '$EXPECTED_PLAYER_FORMAT', got '$CONVERT_PLAYER_FORMAT'"
+        exit 1
+    fi
+
+    echo "  Step 2 OK: Convert-probed returned play_url=$PLAY_URL"
+
+    # Verify the filename in the response is the original name (not the hash-based disk name)
+    CONVERT_FILENAME=$(echo "$CONVERT_BODY" | jq -r .filename)
+    if echo "$CONVERT_FILENAME" | grep -q "probed_"; then
+        echo "ERROR: Convert-probed filename leaked hash-based disk name: '$CONVERT_FILENAME'"
+        echo "Response body: $CONVERT_BODY"
+        exit 1
+    fi
+
+    echo "  Step 2 extra: Filename correctly preserved as '$CONVERT_FILENAME'"
+
+    # Step 3: Verify play_url is accessible (may return 200 or 206 for range-capable responses)
+    PLAY_HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" "$BASE_URL$PLAY_URL")
+    if [ "$PLAY_HTTP_CODE" -ne 200 ] && [ "$PLAY_HTTP_CODE" -ne 206 ]; then
+        echo "ERROR: Play URL returned HTTP $PLAY_HTTP_CODE (expected 200 or 206)"
+        exit 1
+    fi
+
+    echo "  Step 3 OK: Play URL returned HTTP $PLAY_HTTP_CODE"
+
+    echo "SUCCESS: Full probe→convert-probed→play flow works for '$TEST_NAME'."
+    echo "Probe response: $PROBE_BODY"
+    echo "Convert response: $CONVERT_BODY"
+    echo ""
+}
+
+# Test that probing the same content twice returns the same module_hash (dedup)
+# Arguments:
+# 1. File path to local module (string)
+test_probe_upload_dedup() {
+    echo "--- Testing Probe Upload Dedup: Same content returns same hash ---"
+
+    RESPONSE1_ALL=$(curl -s -w "\n%{http_code}" -X POST -F "file=@$1" "$BASE_URL/probe-upload")
+    HASH1=$(echo "$RESPONSE1_ALL" | sed '$d' | jq -r .module_hash)
+
+    # Upload the same file with a different filename
+    RESPONSE2_ALL=$(curl -s -w "\n%{http_code}" -X POST -F "file=@$1;filename=renamed_module.mod" "$BASE_URL/probe-upload")
+    HASH2=$(echo "$RESPONSE2_ALL" | sed '$d' | jq -r .module_hash)
+
+    if [ "$HASH1" != "$HASH2" ]; then
+        echo "ERROR: Same file content produced different hashes: '$HASH1' vs '$HASH2'"
+        exit 1
+    fi
+
+    echo "SUCCESS: Same content returns identical module_hash ($HASH1) regardless of filename."
+    echo ""
+}
+
+# Test that concurrent probes of the same content all succeed and return the same hash
+# Arguments:
+# 1. File path to local module (string)
+test_probe_upload_dedup_concurrent() {
+    echo "--- Testing Probe Upload Dedup: Concurrent same-content probes ---"
+
+    TMP_RESP_DIR=$(mktemp -d)
+
+    for INDEX in 1 2 3 4; do
+        (
+            curl -s -w "\n%{http_code}" -X POST \
+                -F "file=@$1;filename=concurrent_$INDEX.mod" \
+                "$BASE_URL/probe-upload" > "$TMP_RESP_DIR/resp_$INDEX.txt"
+        ) &
+    done
+    wait
+
+    EXPECTED_HASH=""
+
+    for RESPONSE_FILE in "$TMP_RESP_DIR"/resp_*.txt; do
+        HTTP_CODE=$(tail -n1 "$RESPONSE_FILE")
+        BODY=$(sed '$d' "$RESPONSE_FILE")
+
+        if [ "$HTTP_CODE" -ne 200 ]; then
+            echo "ERROR: Concurrent probe returned HTTP $HTTP_CODE"
+            echo "Response body: $BODY"
+            rm -rf "$TMP_RESP_DIR"
+            exit 1
+        fi
+
+        HASH=$(echo "$BODY" | jq -r .module_hash)
+        if [ -z "$HASH" ] || [ "$HASH" == "null" ]; then
+            echo "ERROR: Concurrent probe response missing module_hash"
+            echo "Response body: $BODY"
+            rm -rf "$TMP_RESP_DIR"
+            exit 1
+        fi
+
+        if [ -z "$EXPECTED_HASH" ]; then
+            EXPECTED_HASH="$HASH"
+        elif [ "$HASH" != "$EXPECTED_HASH" ]; then
+            echo "ERROR: Concurrent probe returned mismatched hashes: '$EXPECTED_HASH' vs '$HASH'"
+            rm -rf "$TMP_RESP_DIR"
+            exit 1
+        fi
+    done
+
+    rm -rf "$TMP_RESP_DIR"
+    echo "SUCCESS: Concurrent same-content probes all succeeded with module_hash=$EXPECTED_HASH."
+    echo ""
+}
+
+# Test that convert-probed can reconvert after cached audio is removed
+# Arguments:
+# 1. File path to local module (string)
+test_convert_probed_reconverts_after_cache_removal() {
+    echo "--- Testing Convert-Probed Recovery After Cached Audio Removal ---"
+
+    PROBE_RESPONSE_ALL=$(curl -s -w "\n%{http_code}" -X POST -F "file=@$1" "$BASE_URL/probe-upload")
+    PROBE_HTTP_CODE=$(echo "$PROBE_RESPONSE_ALL" | tail -n1)
+    PROBE_BODY=$(echo "$PROBE_RESPONSE_ALL" | sed '$d')
+
+    if [ "$PROBE_HTTP_CODE" -ne 200 ]; then
+        echo "ERROR: Probe returned HTTP $PROBE_HTTP_CODE"
+        echo "Response body: $PROBE_BODY"
+        exit 1
+    fi
+
+    MODULE_HASH=$(echo "$PROBE_BODY" | jq -r .module_hash)
+    if [ -z "$MODULE_HASH" ] || [ "$MODULE_HASH" == "null" ]; then
+        echo "ERROR: Probe response missing module_hash"
+        echo "Response body: $PROBE_BODY"
+        exit 1
+    fi
+
+    FIRST_CONVERT_ALL=$(curl -s -w "\n%{http_code}" -X POST \
+        -H "Content-Type: application/json" \
+        -d "{\"module_hash\":\"$MODULE_HASH\",\"filename\":\"$(basename "$1")\"}" \
+        "$BASE_URL/convert-probed")
+    FIRST_CONVERT_HTTP_CODE=$(echo "$FIRST_CONVERT_ALL" | tail -n1)
+    FIRST_CONVERT_BODY=$(echo "$FIRST_CONVERT_ALL" | sed '$d')
+
+    if [ "$FIRST_CONVERT_HTTP_CODE" -ne 200 ]; then
+        echo "ERROR: First convert-probed returned HTTP $FIRST_CONVERT_HTTP_CODE"
+        echo "Response body: $FIRST_CONVERT_BODY"
+        exit 1
+    fi
+
+    FILE_ID=$(echo "$FIRST_CONVERT_BODY" | jq -r .file_id)
+    AUDIO_FORMAT=$(echo "$FIRST_CONVERT_BODY" | jq -r .audio_format)
+    if [ -z "$FILE_ID" ] || [ "$FILE_ID" == "null" ] || [ -z "$AUDIO_FORMAT" ] || [ "$AUDIO_FORMAT" == "null" ]; then
+        echo "ERROR: First convert-probed response missing file_id or audio_format"
+        echo "Response body: $FIRST_CONVERT_BODY"
+        exit 1
+    fi
+
+    _remove_cache_artifact "$FILE_ID" ".$AUDIO_FORMAT" > /dev/null
+
+    SECOND_CONVERT_ALL=$(curl -s -w "\n%{http_code}" -X POST \
+        -H "Content-Type: application/json" \
+        -d "{\"module_hash\":\"$MODULE_HASH\",\"filename\":\"$(basename "$1")\"}" \
+        "$BASE_URL/convert-probed")
+    SECOND_CONVERT_HTTP_CODE=$(echo "$SECOND_CONVERT_ALL" | tail -n1)
+    SECOND_CONVERT_BODY=$(echo "$SECOND_CONVERT_ALL" | sed '$d')
+
+    if [ "$SECOND_CONVERT_HTTP_CODE" -ne 200 ]; then
+        echo "ERROR: Second convert-probed returned HTTP $SECOND_CONVERT_HTTP_CODE after cache removal"
+        echo "Response body: $SECOND_CONVERT_BODY"
+        exit 1
+    fi
+
+    SECOND_PLAY_URL=$(echo "$SECOND_CONVERT_BODY" | jq -r .play_url)
+    if [ -z "$SECOND_PLAY_URL" ] || [ "$SECOND_PLAY_URL" == "null" ]; then
+        echo "ERROR: Second convert-probed response missing play_url"
+        echo "Response body: $SECOND_CONVERT_BODY"
+        exit 1
+    fi
+
+    echo "SUCCESS: convert-probed reconverted successfully after cached audio removal."
+    echo ""
+}
+
+# Test convert-probed error: invalid hash format
+test_convert_probed_invalid_hash() {
+    echo "--- Testing Convert-Probed Error: Invalid hash format ---"
+
+    RESPONSE_ALL=$(curl -s -w "\n%{http_code}" -X POST \
+        -H "Content-Type: application/json" \
+        -d '{"module_hash":"not-a-valid-hash","filename":"test.mod"}' \
+        "$BASE_URL/convert-probed")
+    HTTP_CODE=$(echo "$RESPONSE_ALL" | tail -n1)
+    BODY=$(echo "$RESPONSE_ALL" | sed '$d')
+
+    if [ "$HTTP_CODE" -ne 400 ]; then
+        echo "ERROR: Convert-probed with invalid hash returned HTTP $HTTP_CODE (expected 400)"
+        echo "Response body: $BODY"
+        exit 1
+    fi
+
+    if ! echo "$BODY" | grep -q "Invalid module hash"; then
+        echo "ERROR: Unexpected error message for invalid hash"
+        echo "Response body: $BODY"
+        exit 1
+    fi
+
+    echo "SUCCESS: Convert-probed correctly rejected invalid hash."
+    echo "Response body: $BODY"
+    echo ""
+}
+
+# Test convert-probed error: non-existent hash (404)
+test_convert_probed_not_found() {
+    echo "--- Testing Convert-Probed Error: Non-existent hash ---"
+
+    RESPONSE_ALL=$(curl -s -w "\n%{http_code}" -X POST \
+        -H "Content-Type: application/json" \
+        -d '{"module_hash":"00000000000000000000000000000000","filename":"test.mod"}' \
+        "$BASE_URL/convert-probed")
+    HTTP_CODE=$(echo "$RESPONSE_ALL" | tail -n1)
+    BODY=$(echo "$RESPONSE_ALL" | sed '$d')
+
+    if [ "$HTTP_CODE" -ne 404 ]; then
+        echo "ERROR: Convert-probed with unknown hash returned HTTP $HTTP_CODE (expected 404)"
+        echo "Response body: $BODY"
+        exit 1
+    fi
+
+    if ! echo "$BODY" | grep -q "Module not found"; then
+        echo "ERROR: Unexpected error message for unknown hash"
+        echo "Response body: $BODY"
+        exit 1
+    fi
+
+    echo "SUCCESS: Convert-probed correctly returned 404 for unknown hash."
+    echo "Response body: $BODY"
+    echo ""
+}
+
+# Test convert-probed error: missing/invalid request body
+test_convert_probed_bad_request() {
+    echo "--- Testing Convert-Probed Error: Missing request body ---"
+
+    RESPONSE_ALL=$(curl -s -w "\n%{http_code}" -X POST \
+        -H "Content-Type: application/json" \
+        "$BASE_URL/convert-probed")
+    HTTP_CODE=$(echo "$RESPONSE_ALL" | tail -n1)
+    BODY=$(echo "$RESPONSE_ALL" | sed '$d')
+
+    if [ "$HTTP_CODE" -ne 400 ]; then
+        echo "ERROR: Convert-probed with no body returned HTTP $HTTP_CODE (expected 400)"
+        echo "Response body: $BODY"
+        exit 1
+    fi
+
+    echo "SUCCESS: Convert-probed correctly rejected empty request body."
+    echo "Response body: $BODY"
+    echo ""
+}
+
+# Test convert-probed error: wrong HTTP method (GET)
+test_convert_probed_wrong_method() {
+    echo "--- Testing Convert-Probed Error: Wrong HTTP method (GET) ---"
+
+    RESPONSE_ALL=$(curl -s -w "\n%{http_code}" "$BASE_URL/convert-probed")
+    HTTP_CODE=$(echo "$RESPONSE_ALL" | tail -n1)
+
+    if [ "$HTTP_CODE" -ne 405 ]; then
+        echo "ERROR: GET /convert-probed returned HTTP $HTTP_CODE (expected 405)"
+        exit 1
+    fi
+
+    echo "SUCCESS: Convert-probed correctly rejected GET request with 405."
     echo ""
 }
 
@@ -1211,6 +1562,11 @@ test_filename_extraction() {
     TEST_NAME=$1
     URL=$2
     EXPECTED_FILENAME=$3
+
+    if should_skip_modarchive_tests && [[ "$URL" == *"modarchive.org"* ]]; then
+        skip_test "Filename Extraction: $TEST_NAME (SKIP_MODARCHIVE_TESTS=1)"
+        return
+    fi
 
     echo "--- Testing Filename Extraction: $TEST_NAME ---"
 
@@ -2134,5 +2490,15 @@ test_probe_upload_error "Probe upload oversized file" "fixtures/invalid/too-larg
 test_probe_upload_no_file
 test_probe_upload_wrong_method
 test_probe_upload_path_traversal_filename "fixtures/modules/space_debris.mod"
+
+# Convert-probed tests (probe → convert-probed → play workflow)
+test_probe_convert_play_flow "Protracker module" "fixtures/modules/space_debris.mod" "space debris" "Protracker and family"
+test_probe_upload_dedup "fixtures/modules/space_debris.mod"
+test_probe_upload_dedup_concurrent "fixtures/modules/space_debris.mod"
+test_convert_probed_reconverts_after_cache_removal "fixtures/modules/space_debris.mod"
+test_convert_probed_invalid_hash
+test_convert_probed_not_found
+test_convert_probed_bad_request
+test_convert_probed_wrong_method
 
 echo "--- All tests passed! ---"

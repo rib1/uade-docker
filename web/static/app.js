@@ -579,22 +579,22 @@ function setupQueueDropZone() {
       });
     });
 
-    target.addEventListener("drop", (e) => {
+    target.addEventListener("drop", async (e) => {
       if (isUiLocked) {
         return;
       }
       const files = e.dataTransfer.files;
-      if (files.length > 0) {
-        handleQueueFileDrop(files[0]);
+      for (const file of files) {
+        await handleQueueFileDrop(file);
       }
     });
   });
 
-  queueFileInput.addEventListener("change", (e) => {
-    if (e.target.files.length > 0) {
-      handleQueueFileDrop(e.target.files[0]);
-      e.target.value = "";
+  queueFileInput.addEventListener("change", async (e) => {
+    for (const file of e.target.files) {
+      await handleQueueFileDrop(file);
     }
+    e.target.value = "";
   });
 
   queueBrowseBtn.addEventListener("keydown", (e) => {
@@ -606,7 +606,7 @@ function setupQueueDropZone() {
 }
 
 async function handleQueueFileDrop(file) {
-  const duplicate = playlistTracks.find(
+  const existing = playlistTracks.find(
     (t) =>
       t.source === "local" &&
       t.localFile &&
@@ -614,31 +614,38 @@ async function handleQueueFileDrop(file) {
       t.localFile.size === file.size &&
       t.localFile.type === file.type,
   );
-  if (duplicate) {
-    showStatus(`"${duplicate.name}" is already in the queue`, "warning");
-    return;
-  }
 
-  const probeData = await performFileProbe(file, queueBrowseBtn);
-  if (!probeData) {
-    return;
+  let name, moduleFormat, playerFormat, moduleHash;
+  if (existing) {
+    name = existing.name;
+    moduleFormat = existing.moduleFormat;
+    playerFormat = existing.playerFormat;
+    moduleHash = existing.moduleHash || null;
+  } else {
+    const probeData = await performFileProbe(file, queueBrowseBtn);
+    if (!probeData) {
+      return;
+    }
+    name = probeData.module_name || probeData.filename || file.name;
+    moduleFormat = probeData.module_format;
+    playerFormat = probeData.player_format;
+    moduleHash = probeData.module_hash || null;
   }
-
-  const name = probeData.module_name || probeData.filename || file.name;
   const shouldAutoPlay = playlistTracks.length === 0 && !audioPlayer.getAttribute("src");
   const track = {
     id: createPlaylistTrackId(),
     name,
     url: null,
     sample_url: null,
-    format: probeData.module_format || probeData.player_format || "Module",
+    format: moduleFormat || playerFormat || "Module",
     source: "local",
     localFile: file,
     playUrl: null,
     downloadUrl: null,
     audioFormat: null,
-    moduleFormat: probeData.module_format,
-    playerFormat: probeData.player_format,
+    moduleFormat,
+    playerFormat,
+    moduleHash,
     subsongs: null,
     subsongDurations: [],
   };
@@ -663,9 +670,9 @@ function getSerializablePlaylistTracks() {
 
 function getSaveablePlaylistTracks() {
   return playlistTracks
-    .filter((track) => track.source !== "local" || Boolean(track.playUrl))
+    .filter((track) => track.source !== "local" || Boolean(track.playUrl) || Boolean(track.moduleHash))
     .map((track) => {
-      if (track.source === "local") {
+      if (track.source === "local" && track.playUrl) {
         return {
           n: track.name,
           f: track.format || "Module",
@@ -673,6 +680,19 @@ function getSaveablePlaylistTracks() {
           pu: track.playUrl,
           du: track.downloadUrl,
           af: track.audioFormat || "wav",
+          mh: track.moduleHash || null,
+          mf: track.moduleFormat || null,
+          pf: track.playerFormat || null,
+          ss: track.subsongs || null,
+          sd: track.subsongDurations || null,
+        };
+      }
+      if (track.source === "local" && track.moduleHash) {
+        return {
+          n: track.name,
+          f: track.format || "Module",
+          o: "local-deferred",
+          mh: track.moduleHash,
           mf: track.moduleFormat || null,
           pf: track.playerFormat || null,
           ss: track.subsongs || null,
@@ -714,6 +734,9 @@ function sanitizePlaylistTrack(track) {
   if (source === "local-cached") {
     return sanitizeLocalCachedTrack(track);
   }
+  if (source === "local-deferred") {
+    return sanitizeLocalDeferredTrack(track);
+  }
 
   const rawUrl = typeof track.u === "string" ? track.u : track.url;
   if (typeof rawUrl !== "string") {
@@ -743,6 +766,34 @@ function sanitizePlaylistTrack(track) {
   };
 }
 
+function sanitizeLocalDeferredTrack(track) {
+  const moduleHash = typeof track.mh === "string" ? track.mh.trim() : "";
+  if (!moduleHash) {
+    return null;
+  }
+
+  const rawName = typeof track.n === "string" ? track.n : track.name;
+  const rawFormat = typeof track.f === "string" ? track.f : track.format;
+
+  return {
+    id: createPlaylistTrackId(),
+    name: typeof rawName === "string" && rawName.trim() ? rawName.trim() : "Module",
+    url: null,
+    sample_url: null,
+    format: typeof rawFormat === "string" && rawFormat.trim() ? rawFormat.trim() : "Module",
+    source: "local",
+    playUrl: null,
+    downloadUrl: null,
+    audioFormat: null,
+    moduleFormat: typeof track.mf === "string" ? track.mf.trim() : null,
+    playerFormat: typeof track.pf === "string" ? track.pf.trim() : null,
+    subsongs: typeof track.ss === "number" ? track.ss : null,
+    subsongDurations: Array.isArray(track.sd) ? track.sd : null,
+    localFile: null,
+    moduleHash,
+  };
+}
+
 function sanitizeLocalCachedTrack(track) {
   const playUrl = typeof track.pu === "string" ? track.pu.trim() : "";
   if (!playUrl) {
@@ -767,6 +818,7 @@ function sanitizeLocalCachedTrack(track) {
     subsongs: typeof track.ss === "number" ? track.ss : null,
     subsongDurations: Array.isArray(track.sd) ? track.sd : null,
     localFile: null,
+    moduleHash: typeof track.mh === "string" && track.mh.trim() ? track.mh.trim() : null,
   };
 }
 
@@ -837,7 +889,7 @@ function clearStoredQueue(options = {}) {
 
 function hasSaveableTracks() {
   return playlistTracks.some(
-    (track) => track.source !== "local" || Boolean(track.playUrl),
+    (track) => track.source !== "local" || Boolean(track.playUrl) || Boolean(track.moduleHash),
   );
 }
 
@@ -888,7 +940,12 @@ function bookmarkPlaylist() {
   bookmarkUrl.search = "";
   bookmarkUrl.searchParams.set("queue", encodedQueue);
   window.history.replaceState({}, document.title, bookmarkUrl.toString());
-  showStatus("✓ Queue added to page URL for bookmarking", "success");
+  const hasLocalTracks = playlistTracks.some((t) => t.source === "local");
+  if (hasLocalTracks) {
+    showStatus("✓ Queue bookmarked — local files were excluded (not bookmarkable)", "success");
+  } else {
+    showStatus("✓ Queue added to page URL for bookmarking", "success");
+  }
 }
 
 async function sharePlaylist() {
@@ -908,6 +965,10 @@ async function sharePlaylist() {
 
   try {
     await navigator.clipboard.writeText(shareUrl);
+    const hasLocalTracks = playlistTracks.some((t) => t.source === "local");
+    if (hasLocalTracks) {
+      showStatus("Link copied \u2014 local files were excluded (not shareable)", "warning");
+    }
     const originalText = playlistShareBtn.textContent;
     playlistShareBtn.textContent = "✓ Copied!";
     setTimeout(() => {
@@ -1449,17 +1510,46 @@ function getPlaylistNextLabel() {
   return nextTrack ? `Next: ${nextTrack.name}` : "End of playlist";
 }
 
-async function playCachedLocalTrack(track, trackId) {
+async function playCachedLocalTrack(track, trackId, button) {
+  syncUiLockState(true);
+  const originalBtnText = showButtonLoadingAndGetOriginal(button);
+  showStatus(`Loading ${track.name}...`, "info");
+
+  const fallbackToProbedConversion = async () => {
+    if (!track.moduleHash) {
+      return false;
+    }
+
+    track.playUrl = null;
+    track.downloadUrl = null;
+    track.audioFormat = null;
+    button.textContent = originalBtnText;
+    syncUiLockState(false);
+    showStatus(`Cached audio for ${track.name} expired — reconverting from saved upload...`, "info");
+    await playDeferredLocalTrack(track, trackId, button);
+    return true;
+  };
+
   try {
     const headResponse = await fetch(track.playUrl, { method: "HEAD" });
     if (!headResponse.ok) {
+      if (await fallbackToProbedConversion()) {
+        return;
+      }
       removeTrackFromPlaylist(trackId);
-      showStatus(`"${track.name}" expired from server cache and was removed`, "warning");
+      showStatus(`✗ "${track.name}" has expired from server cache and was removed — drop the file again to re-add`, "error");
+      button.textContent = originalBtnText;
+      syncUiLockState(false);
       return;
     }
   } catch (_err) {
+    if (await fallbackToProbedConversion()) {
+      return;
+    }
     removeTrackFromPlaylist(trackId);
-    showStatus(`"${track.name}" is no longer available and was removed`, "warning");
+    showStatus(`✗ "${track.name}" is no longer available and was removed — drop the file again to re-add`, "error");
+    button.textContent = originalBtnText;
+    syncUiLockState(false);
     return;
   }
 
@@ -1477,6 +1567,7 @@ async function playCachedLocalTrack(track, trackId) {
     subsongDurations: track.subsongDurations,
   };
   updateShareButton(false);
+  showStatus(`✓ ${track.name} loaded from conversion cache and ready to play`, "success");
   playFile(
     null,
     track.name,
@@ -1491,9 +1582,86 @@ async function playCachedLocalTrack(track, trackId) {
   // Restore playlist track ID after playFile clears it
   currentPlaylistTrackId = trackId;
   renderPlaylist();
+  resetButtonAfterDelay(button, originalBtnText);
 }
 
 async function playDeferredLocalTrack(track, trackId, button) {
+  const onConversionSuccess = (data) => {
+    track.playUrl = data.play_url;
+    track.downloadUrl = data.download_url;
+    track.audioFormat = data.audio_format || "wav";
+    track.subsongs = data.subsongs;
+    track.subsongDurations = data.subsong_durations || [];
+    track.localFile = null;
+
+    currentPlaylistTrackId = trackId;
+    currentShareableUrl = null;
+    currentShareableSampleUrl = null;
+    currentLocalTrackData = {
+      name: track.name,
+      playUrl: track.playUrl,
+      downloadUrl: track.downloadUrl,
+      audioFormat: track.audioFormat,
+      moduleFormat: track.moduleFormat,
+      playerFormat: track.playerFormat,
+      subsongs: track.subsongs,
+      subsongDurations: track.subsongDurations,
+    };
+    updateShareButton(false);
+    renderPlaylist();
+  };
+
+  // Try converting by hash (module already on server from probe) before re-uploading
+  if (track.moduleHash) {
+    syncUiLockState(true);
+    const originalBtnText = showButtonLoadingAndGetOriginal(button);
+    showStatus(`Converting ${track.name}...`, "info");
+
+    try {
+      const response = await fetch("/convert-probed", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ module_hash: track.moduleHash, filename: track.name }),
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        const moduleName = track.name || data.module_name || data.filename;
+        const statusMessage = getCacheStatusMessage(
+          data, moduleName, `✓ ${moduleName} converted and ready to play`,
+        );
+        showStatus(statusMessage, "success");
+        playFile(
+          data.file_id, moduleName, data.play_url, data.download_url,
+          data.player_format || "Module", data.audio_format || "wav",
+          data.module_format, data.subsongs, data.subsong_durations || [],
+        );
+        onConversionSuccess(data);
+        resetButtonAfterDelay(button, originalBtnText);
+        return;
+      }
+
+      if (response.status !== 404) {
+        const errorData = await response.json().catch(() => ({}));
+        showStatus(`✗ Error: ${errorData.error || "Conversion failed"}`, "error");
+        button.textContent = originalBtnText;
+        syncUiLockState(false);
+        return;
+      }
+      // 404 — probed file was cleaned up, fall through to re-upload
+    } catch (_err) {
+      // Network error — fall through to re-upload
+    }
+    button.textContent = originalBtnText;
+    syncUiLockState(false);
+  }
+
+  if (!track.localFile) {
+    showStatus(`✗ "${track.name}" has expired from server — drop the file again to re-add`, "error");
+    removeTrackFromPlaylist(track.id);
+    return;
+  }
+
   const formData = new FormData();
   formData.append("file", track.localFile);
 
@@ -1504,30 +1672,7 @@ async function playDeferredLocalTrack(track, trackId, button) {
     `Converting ${track.name}...`,
     "✓ {moduleName} converted and ready to play",
     track.name,
-    (data) => {
-      track.playUrl = data.play_url;
-      track.downloadUrl = data.download_url;
-      track.audioFormat = data.audio_format || "wav";
-      track.subsongs = data.subsongs;
-      track.subsongDurations = data.subsong_durations || [];
-      track.localFile = null;
-
-      currentPlaylistTrackId = trackId;
-      currentShareableUrl = null;
-      currentShareableSampleUrl = null;
-      currentLocalTrackData = {
-        name: track.name,
-        playUrl: track.playUrl,
-        downloadUrl: track.downloadUrl,
-        audioFormat: track.audioFormat,
-        moduleFormat: track.moduleFormat,
-        playerFormat: track.playerFormat,
-        subsongs: track.subsongs,
-        subsongDurations: track.subsongDurations,
-      };
-      updateShareButton(false);
-      renderPlaylist();
-    },
+    onConversionSuccess,
   );
 }
 
@@ -1571,9 +1716,9 @@ async function playPlaylistTrack(trackId, button) {
   }
 
   if (track.source === "local" && track.playUrl) {
-    return playCachedLocalTrack(track, trackId);
+    return playCachedLocalTrack(track, trackId, button);
   }
-  if (track.source === "local" && track.localFile && !track.playUrl) {
+  if (track.source === "local" && (track.localFile || track.moduleHash) && !track.playUrl) {
     return playDeferredLocalTrack(track, trackId, button);
   }
   return playUrlTrack(track, trackId, button);

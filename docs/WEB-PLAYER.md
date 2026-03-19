@@ -322,13 +322,32 @@ Typical response:
 {
   "ok": true,
   "playable": true,
-  "module_name": "space debris.mod",
+  "module_name": "space debris",
   "module_format": "Protracker",
-  "player_format": "Protracker"
+  "player_format": "Protracker and family",
+  "module_hash": "cc7d1ae43d10dddfca6d411bc484a489"
 }
 ```
 
-Rate-limited to 10 requests/minute. Used by the queue UI to validate local files before adding them to the queue. Files dropped into the queue panel or selected via the "+ Files" button are probed with this endpoint; conversion is deferred until playback.
+Rate-limited to 10 requests/minute. Used by the queue UI to validate local files before adding them to the queue. Files dropped into the queue panel or selected via the "+ Files" button are probed with this endpoint; conversion is deferred until playback. The `module_hash` (content-addressed MD5) is stored on the track object for later use by `/convert-probed`.
+
+### Convert from Probed Module
+
+Convert a previously probed file by its content hash without re-uploading.
+
+```http
+POST /convert-probed
+Content-Type: application/json
+
+{
+  "module_hash": "cc7d1ae43d10dddfca6d411bc484a489",
+  "filename": "space_debris.mod"
+}
+```
+
+Returns the same response format as `/upload`. Returns 400 for invalid hash format, 404 if the probed module has been cleaned up from server storage. The client treats 404 as a fallback trigger to upload and convert with `/upload` instead.
+
+Rate-limited to 10 requests/minute.
 
 ### Play Example
 
@@ -571,6 +590,14 @@ To run the integration tests using Docker Compose:
     ```
 
     This reruns the same one-off test container without rebuilding it first.
+
+    If ModArchive is having an outage or returning unstable responses, you can skip the ModArchive-backed filename extraction test:
+
+    ```powershell
+    docker compose -f docker-compose.yml -f test/docker-compose.endpoints.yml run --rm -e SKIP_MODARCHIVE_TESTS=1 uade-test-runner
+    ```
+
+    Use this only for known upstream flakiness. The default test run still includes ModArchive coverage.
 
 3. **To run the accessibility test:**
 
