@@ -1923,6 +1923,38 @@ def test_remove_cache_artifact():
     )
 
 
+@app.route("/test/remove-probed-module", methods=["POST"])
+@limiter.exempt
+def test_remove_probed_module():
+    """Remove a probed module in test mode to exercise convert-probed fallback paths."""
+    if os.getenv("UADE_TEST_MODE") != "1":
+        return json_response({"error": "Not found"}, 404)
+
+    data = request.get_json(silent=True) or {}
+    module_hash = data.get("module_hash")
+
+    if not isinstance(module_hash, str) or not _MD5_HEX_RE.match(module_hash):
+        return json_response({"error": "Invalid module hash"}, 400)
+
+    probed_path = (MODULES_DIR / f"probed_{module_hash}").resolve()
+    modules_dir_base = MODULES_DIR.resolve()
+    try:
+        probed_path.relative_to(modules_dir_base)
+    except ValueError:
+        return json_response({"error": "Invalid target path"}, 400)
+
+    removed = False
+    if probed_path.exists():
+        probed_path.unlink(missing_ok=True)
+        removed = True
+
+    return json_response(
+        {
+            "removed": removed,
+        }
+    )
+
+
 @app.route("/examples")
 @limiter.exempt
 def get_examples():

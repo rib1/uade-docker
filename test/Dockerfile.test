@@ -1,6 +1,6 @@
 FROM alpine:latest
 
-RUN apk add --no-cache curl=8.17.0-r1 jq=1.8.1-r0 bash=5.3.3-r1
+RUN apk add --no-cache curl=8.17.0-r1 jq=1.8.1-r0 bash=5.3.3-r1 python3=3.12.12-r0
 
 # Create a non-root user and group
 RUN addgroup -S tester && adduser -S tester -G tester
@@ -14,6 +14,8 @@ RUN mkdir -p /home/tester/app/fixtures/invalid && chown -R tester:tester /home/t
 
 # Copy the scripts and give ownership to the non-root user
 COPY --chown=tester:tester test/*.sh .
+COPY --chown=tester:tester test/report_endpoint_coverage.py ./report_endpoint_coverage.py
+COPY --chown=tester:tester web/server.py ./web/server.py
 
 RUN chmod +x ./*.sh
 

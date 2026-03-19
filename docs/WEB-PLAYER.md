@@ -347,6 +347,8 @@ Content-Type: application/json
 
 Returns the same response format as `/upload`. Returns 400 for invalid hash format, 404 if the probed module has been cleaned up from server storage. The client treats 404 as a fallback trigger to upload and convert with `/upload` instead.
 
+`/convert-probed` is a best-effort optimization, not a durability guarantee. It works well in the primary single-container Docker Desktop setup, where the probe and later conversion usually hit the same container-local module storage. In multi-container environments, do not rely on `/convert-probed` succeeding after a hop to another container or pod unless you have explicitly provided shared storage for probed source files. The supported behavior is to fall back to `/upload` when `/convert-probed` returns 404.
+
 Rate-limited to 10 requests/minute.
 
 ### Play Example
@@ -406,6 +408,7 @@ The server maintains its own cache of converted audio files. This is primarily f
 
 - **Stateless & Shared:** All server instances can connect to a shared cache (e.g., AWS S3, GCS, or a shared disk), allowing them to share converted files.
 - **Deduplication:** If one user converts a module, it becomes available instantly to all other users without needing to be converted again.
+- **Queue Probe Caveat:** Shared cache applies to converted audio and metadata. Probed local-file state used by `/convert-probed` is still a container-local optimization by default, so cross-container queue handoff should expect `/upload` fallback.
 - **Backend Options:** The cache can be a local directory, an AWS S3 bucket, or a Google Cloud Storage bucket.
 - **LRU Access Tracking:** Remote cache entries store access time in a sidecar file
   `HASH.cache-access.json`. This avoids relying on object mtime updates that are not portable
