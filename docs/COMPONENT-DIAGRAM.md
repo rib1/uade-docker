@@ -142,9 +142,9 @@ The Web Player Container is built using multi-stage Docker build with `FROM uade
 
 - **Technology**: Flask Blueprint (REST API)
 - **Responsibilities**:
-  - Play control (`/api/play`, `/api/stop`)
-  - Playback status (`/api/status`)
-  - File management (`/api/list`)
+  - Conversion endpoints (`/upload`, `/probe-upload`, `/convert-probed`, `/convert-url`, `/probe-url`)
+  - Playback endpoints (`/play/{file_id}`, `/play-example/{id}`, `/download/{file_id}`)
+  - Metadata and health endpoints (`/health`, `/examples`, `/supported-extensions`)
   - JSON response formatting
 
 #### Player Service

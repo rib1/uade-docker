@@ -48,7 +48,7 @@ The Flask app is a **single 2200+ line file** with clear functional sections:
 2. **Configuration and utility section:** Constants (extensions, dual-file modules), filesystem, cache, and cleanup helpers
 3. **Archive and metadata section:** LHA/ZIP extraction, module detection, and metadata handling
 4. **Conversion section:** UADE subprocess execution, subsong parsing, and WAV/FLAC handling
-5. **Route section:** Flask routes such as `/upload`, `/probe-upload`, `/play`, `/download`, `/health`, and `/examples`
+5. **Route section:** Flask routes such as `/upload`, `/probe-upload`, `/convert-probed`, `/convert-url`, `/probe-url`, `/play`, `/download`, `/health`, `/supported-extensions`, and `/examples`
 
 **Key patterns:**
 - All file operations use `Path` objects from `pathlib`
@@ -76,7 +76,7 @@ The Flask app is a **single 2200+ line file** with clear functional sections:
 - `handleAddCurrentToPlaylist()` - Adds current track (URL or local) to queue; local tracks carry cached play/download URLs
 - `handleQueueFileDrop()` - Probes a local file via `/probe-upload`, adds deferred-conversion track to queue
 - `playFile()` - Plays audio, shows player UI, handles subsongs, updates Media Session
-- `playPlaylistTrack()` - Plays track from queue; handles three paths: already-converted local (instant), deferred local (upload+convert first, cache result), URL (convert-url)
+- `playPlaylistTrack()` - Plays track from queue; handles three paths: already-converted local (instant), deferred local (tries `/convert-probed` with moduleHash first, falls back to `/upload` if 404, caches result), URL (convert-url)
 - `renderPlaylist()` - Orchestrates queue panel via `renderPlaylistLauncherBar()`, `renderPlaylistPanelControls()`, `renderPlaylistTrackItem()`
 - `setupQueueDropZone()` - Attaches drag-drop events to both launcher bar and queue panel, wires "+ Files" picker
 - `updatePlayerSectionVisibility()` - Shows/hides `#player-content` based on whether audio is loaded; the launcher bar stays always visible
@@ -85,8 +85,8 @@ The Flask app is a **single 2200+ line file** with clear functional sections:
 - `setupDragAndDrop()` - Native HTML5 drag-drop events with visual feedback
 
 **Local Queue Track Model:**
-- Tracks with `source: "local"` carry extra fields: `playUrl`, `downloadUrl`, `audioFormat`, `moduleFormat`, `playerFormat`, `subsongs`, `subsongDurations`
-- Deferred-conversion tracks also carry `localFile` (File object); `playUrl` is null until first play triggers `/upload`
+- Tracks with `source: "local"` carry extra fields: `playUrl`, `downloadUrl`, `audioFormat`, `moduleFormat`, `playerFormat`, `subsongs`, `subsongDurations`, `moduleHash`
+- Deferred-conversion tracks also carry `localFile` (File object) and `moduleHash` (MD5 from probe); `playUrl` is null until first play triggers `/convert-probed` (falls back to `/upload` if hash not found on server)
 - After conversion, `localFile` is set to null and `playUrl`/`downloadUrl` are cached on the track object for instant replay
 - Local tracks are excluded from playlist serialization (share/bookmark/save URLs)
 - Queue UI shows a `📁 local` badge for local tracks
