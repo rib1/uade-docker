@@ -300,6 +300,31 @@ Typical response:
 
 This endpoint is used by the queue UI to confirm that a remote module is playable before adding it.
 
+### Probe Uploaded File Metadata
+
+Validate a local uploaded module and return lightweight metadata without converting audio.
+
+```http
+POST /probe-upload
+Content-Type: multipart/form-data
+
+file: <binary module file>
+```
+
+Typical response:
+
+```json
+{
+  "ok": true,
+  "playable": true,
+  "module_name": "space debris.mod",
+  "module_format": "Protracker",
+  "player_format": "Protracker"
+}
+```
+
+Rate-limited to 10 requests/minute. Used by the queue UI to validate local files before adding them to the queue.
+
 ### Play Example
 
 ```http

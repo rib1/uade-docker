@@ -48,7 +48,7 @@ The Flask app is a **single 2200+ line file** with clear functional sections:
 2. **Configuration and utility section:** Constants (extensions, dual-file modules), filesystem, cache, and cleanup helpers
 3. **Archive and metadata section:** LHA/ZIP extraction, module detection, and metadata handling
 4. **Conversion section:** UADE subprocess execution, subsong parsing, and WAV/FLAC handling
-5. **Route section:** Flask routes such as `/upload`, `/play`, `/download`, `/health`, and `/examples`
+5. **Route section:** Flask routes such as `/upload`, `/probe-upload`, `/play`, `/download`, `/health`, and `/examples`
 
 **Key patterns:**
 - All file operations use `Path` objects from `pathlib`
@@ -64,18 +64,27 @@ The Flask app is a **single 2200+ line file** with clear functional sections:
 - `style.css` - Responsive design with mobile-first approach
 
 **JavaScript Architecture:**
-- **Global state:** `currentDownloadUrl`, `currentSubsongIndex`, `currentSubsongDurations`
+- **Global state:** `currentDownloadUrl`, `currentSubsongIndex`, `currentSubsongDurations`, `currentLocalTrackData`
 - **UI Lock Pattern:** `syncUiLockState(true|false)` prevents concurrent conversions while preserving content-dependent disabled states
 - **Async workflows:** All conversions go through `performConversion()` which handles status updates, errors, and success callbacks
 - **Large file downloads:** `downloadWithRangeRequests()` uses 10MB chunks to avoid 32MB Cloud Run response limits
 - **Media Session API:** `updateMediaSession()` enables lock screen controls on mobile
 
 **Key Functions:**
-- `handleFileUpload()` - Drag-drop and file input handler
+- `handleFileUpload()` - Drag-drop and file input handler; stores `currentLocalTrackData` on successful conversion
 - `handleUrlConvert()` - URL form with optional dual-file support (TFMX mdat/smpl)
+- `handleAddCurrentToPlaylist()` - Adds current track (URL or local) to queue; local tracks carry cached play/download URLs
 - `playFile()` - Plays audio, shows player UI, handles subsongs, updates Media Session
+- `playPlaylistTrack()` - Plays track from queue; repopulates `currentLocalTrackData` for local tracks
+- `renderPlaylist()` - Orchestrates queue panel via `renderPlaylistLauncherBar()`, `renderPlaylistPanelControls()`, `renderPlaylistTrackItem()`
+- `hasSerializableTracks()` - Checks if queue has any non-local (shareable) tracks
 - `loadExamples()` - Fetches `/examples` endpoint and populates grid
 - `setupDragAndDrop()` - Native HTML5 drag-drop events with visual feedback
+
+**Local Queue Track Model:**
+- Tracks with `source: "local"` carry extra fields: `playUrl`, `downloadUrl`, `audioFormat`, `moduleFormat`, `playerFormat`, `subsongs`, `subsongDurations`
+- Local tracks are excluded from playlist serialization (share/bookmark/save URLs)
+- Queue UI shows a `📁 local` badge for local tracks
 
 **Client-Side Caching:**
 - Browser caches converted audio for 1 month via standard HTTP caching headers
