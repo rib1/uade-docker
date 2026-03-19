@@ -9,6 +9,7 @@ let currentShareableUrl = null; // For shareable URLs feature
 let currentShareableSampleUrl = null;
 let currentPlayableTrackName = null;
 let currentPlayableTrackFormat = null;
+let currentLocalTrackData = null;
 let playlistTracks = [];
 let currentPlaylistTrackId = null;
 let isPlaylistPanelOpen = false;
@@ -225,7 +226,7 @@ function syncUiLockState(uiLocked) {
   const primaryActionButtons = [
     [downloadBtn, Boolean(currentDownloadUrl)],
     [shareBtn, Boolean(currentShareableUrl)],
-    [addCurrentToPlaylistBtn, Boolean(currentShareableUrl)],
+    [addCurrentToPlaylistBtn, Boolean(currentShareableUrl || currentLocalTrackData)],
   ];
 
   lockableElements.forEach((el) => {
@@ -372,7 +373,21 @@ async function handleFileUpload(file) {
     { method: "POST", body: formData },
     uploadLabel, // The button/label element
     "Uploading and converting...",
-    "✓ {moduleName} uploaded and converted, ready to play"
+    "✓ {moduleName} uploaded and converted, ready to play",
+    null, // moduleNameOverride
+    (data) => {
+      currentLocalTrackData = {
+        name: data.module_name || data.filename || file.name,
+        playUrl: data.play_url,
+        downloadUrl: data.download_url,
+        audioFormat: data.audio_format || "wav",
+        moduleFormat: data.module_format,
+        playerFormat: data.player_format || "Module",
+        subsongs: data.subsongs,
+        subsongDurations: data.subsong_durations || [],
+      };
+      updatePrimaryPlayerActions();
+    },
   );
 }
 
@@ -402,7 +417,7 @@ async function performConversion(endpoint, options, button, initialStatusMessage
         data.subsong_durations || []
       );
       if (onSuccessCallback) {
-        onSuccessCallback();
+        onSuccessCallback(data);
       }
       resetButtonAfterDelay(button, originalBtnText);
       return; // on success, the function ends here.
@@ -497,13 +512,15 @@ function setupPlaylistControls() {
 }
 
 function getSerializablePlaylistTracks() {
-  return playlistTracks.map((track) => ({
-    n: track.name,
-    u: track.url,
-    s: track.sample_url || null,
-    f: track.format || "Module",
-    o: track.source || "queue",
-  }));
+  return playlistTracks
+    .filter((track) => track.source !== "local")
+    .map((track) => ({
+      n: track.name,
+      u: track.url,
+      s: track.sample_url || null,
+      f: track.format || "Module",
+      o: track.source || "queue",
+    }));
 }
 
 function buildQueuePayload() {
@@ -613,9 +630,17 @@ function clearStoredQueue(options = {}) {
   }
 }
 
+function hasSerializableTracks() {
+  return playlistTracks.some((track) => track.source !== "local");
+}
+
 function savePlaylistLocally() {
   if (playlistTracks.length === 0) {
     showStatus("Queue is empty", "warning");
+    return;
+  }
+  if (!hasSerializableTracks()) {
+    showStatus("Queue contains only local files — nothing to save", "warning");
     return;
   }
 
@@ -629,6 +654,10 @@ function savePlaylistLocally() {
 function bookmarkPlaylist() {
   if (playlistTracks.length === 0) {
     showStatus("Queue is empty", "warning");
+    return;
+  }
+  if (!hasSerializableTracks()) {
+    showStatus("Queue contains only local files — nothing to bookmark", "warning");
     return;
   }
 
@@ -654,6 +683,10 @@ function bookmarkPlaylist() {
 async function sharePlaylist() {
   if (playlistTracks.length === 0) {
     showStatus("Queue is empty", "warning");
+    return;
+  }
+  if (!hasSerializableTracks()) {
+    showStatus("Queue contains only local files — nothing to share", "warning");
     return;
   }
 
@@ -685,7 +718,7 @@ function loadPlaylistFromPayload(payload) {
     .filter((track) => track !== null);
 
   if (restoredTracks.length === 0) {
-    throw new Error("Queue payload does not contain any playable tracks");
+    return; // Empty or local-only queue — nothing to restore
   }
 
   playlistTracks = restoredTracks;
@@ -756,6 +789,7 @@ async function handleShare() {
 function updateShareButton(show) {
   if (show && currentShareableUrl) {
     shareBtn.style.display = "inline-block";
+    currentLocalTrackData = null;
   } else {
     shareBtn.style.display = "none";
     currentShareableUrl = null;
@@ -767,21 +801,40 @@ function updateShareButton(show) {
 }
 
 function handleAddCurrentToPlaylist() {
-  if (!currentShareableUrl) {
+  let track;
+
+  if (currentShareableUrl) {
+    track = {
+      id: createPlaylistTrackId(),
+      name: currentPlayableTrackName || currentTrack.textContent.trim() || "Module",
+      url: currentShareableUrl,
+      sample_url: currentShareableSampleUrl || null,
+      format: currentPlayableTrackFormat || "Module",
+      source: "current",
+    };
+  } else if (currentLocalTrackData) {
+    track = {
+      id: createPlaylistTrackId(),
+      name: currentPlayableTrackName || currentLocalTrackData.name || "Module",
+      url: null,
+      sample_url: null,
+      format: currentPlayableTrackFormat || currentLocalTrackData.playerFormat || "Module",
+      source: "local",
+      playUrl: currentLocalTrackData.playUrl,
+      downloadUrl: currentLocalTrackData.downloadUrl,
+      audioFormat: currentLocalTrackData.audioFormat,
+      moduleFormat: currentLocalTrackData.moduleFormat,
+      playerFormat: currentLocalTrackData.playerFormat,
+      subsongs: currentLocalTrackData.subsongs,
+      subsongDurations: currentLocalTrackData.subsongDurations,
+    };
+  } else {
     showStatus("Current track cannot be added to queue", "warning");
     return;
   }
 
-  const name = currentPlayableTrackName || currentTrack.textContent.trim() || "Module";
-  addTrackToPlaylist({
-    id: createPlaylistTrackId(),
-    name,
-    url: currentShareableUrl,
-    sample_url: currentShareableSampleUrl || null,
-    format: currentPlayableTrackFormat || "Module",
-    source: "current",
-  });
-  showStatus(ADDED_TO_QUEUE_STATUS(name), "success");
+  addTrackToPlaylist(track);
+  showStatus(ADDED_TO_QUEUE_STATUS(track.name), "success");
 }
 
 async function handleUrlConvert() {
@@ -1018,12 +1071,7 @@ function movePlaylistTrack(trackId, direction) {
   renderPlaylist();
 }
 
-function renderPlaylist() {
-  const hasPlaylist = playlistTracks.length > 0;
-  const currentIndex = playlistTracks.findIndex((track) => track.id === currentPlaylistTrackId);
-  const hasPreviousTrack = currentIndex > 0;
-  const hasNextTrack =
-    hasPlaylist && (currentIndex === -1 ? playlistTracks.length > 0 : currentIndex < playlistTracks.length - 1);
+function renderPlaylistLauncherBar(hasPlaylist) {
   playlistLauncher.hidden = !hasPlaylist;
   playlistLauncher.classList.toggle("expanded", isPlaylistPanelOpen && hasPlaylist);
   playlistLauncherHitbox.disabled = isUiLocked || !hasPlaylist;
@@ -1036,8 +1084,9 @@ function renderPlaylist() {
   playlistLauncherNext.textContent = getPlaylistNextLabel();
   playlistToggleBtn.textContent = isPlaylistPanelOpen ? "Hide" : "Open";
   playlistToggleBtn.setAttribute("aria-label", isPlaylistPanelOpen ? "Hide queue" : "Open queue");
+}
 
-  // Important: renderPlaylist() sets the complex content-disabled states based on queue state
+function renderPlaylistPanelControls(hasPlaylist, hasPreviousTrack, hasNextTrack) {
   playlistToggleBtn.dataset.contentDisabled = (!hasPlaylist).toString();
   playlistToggleBtn.disabled = isUiLocked || !hasPlaylist;
 
@@ -1047,91 +1096,115 @@ function renderPlaylist() {
   playlistNextBtn.dataset.contentDisabled = (!hasNextTrack).toString();
   playlistNextBtn.disabled = isUiLocked || !hasNextTrack;
 
-  playlistSaveBtn.dataset.contentDisabled = (!hasPlaylist).toString();
-  playlistSaveBtn.disabled = isUiLocked || !hasPlaylist;
+  const canSerialize = hasSerializableTracks();
 
-  playlistBookmarkBtn.dataset.contentDisabled = (!hasPlaylist).toString();
-  playlistBookmarkBtn.disabled = isUiLocked || !hasPlaylist;
+  playlistSaveBtn.dataset.contentDisabled = (!canSerialize).toString();
+  playlistSaveBtn.disabled = isUiLocked || !canSerialize;
 
-  playlistShareBtn.dataset.contentDisabled = (!hasPlaylist).toString();
-  playlistShareBtn.disabled = isUiLocked || !hasPlaylist;
+  playlistBookmarkBtn.dataset.contentDisabled = (!canSerialize).toString();
+  playlistBookmarkBtn.disabled = isUiLocked || !canSerialize;
+
+  playlistShareBtn.dataset.contentDisabled = (!canSerialize).toString();
+  playlistShareBtn.disabled = isUiLocked || !canSerialize;
 
   playlistClearBtn.dataset.contentDisabled = (!hasPlaylist).toString();
   playlistClearBtn.disabled = isUiLocked || !hasPlaylist;
+}
+
+function renderPlaylistTrackItem(track, index) {
+  const item = document.createElement("div");
+  item.className = "playlist-item";
+  item.setAttribute("role", "listitem");
+  item.setAttribute("aria-label", `Queue item ${index + 1}: ${track.name}`);
+  if (track.id === currentPlaylistTrackId) {
+    item.classList.add("active");
+  }
+
+  const main = document.createElement("div");
+  main.className = "playlist-item-main";
+
+  const title = document.createElement("div");
+  title.className = "playlist-item-title";
+  title.textContent = track.name;
+  main.appendChild(title);
+
+  const meta = document.createElement("div");
+  meta.className = "playlist-item-meta";
+  if (track.source === "local") {
+    const localBadge = document.createElement("span");
+    localBadge.className = "playlist-local-badge";
+    localBadge.textContent = "📁 local";
+    meta.appendChild(localBadge);
+    meta.appendChild(document.createTextNode(" " + (track.format || "Module")));
+  } else {
+    meta.textContent = track.format || "Module";
+  }
+  main.appendChild(meta);
+
+  const actions = document.createElement("div");
+  actions.className = "playlist-item-actions";
+
+  const playBtn = document.createElement("button");
+  playBtn.type = "button";
+  playBtn.className = "btn btn-secondary btn-small playlist-play-btn";
+  playBtn.textContent = "Play";
+  playBtn.setAttribute("aria-label", `Play ${track.name}`);
+  playBtn.disabled = isUiLocked;
+  playBtn.addEventListener("click", () => playPlaylistTrack(track.id, playBtn));
+  actions.appendChild(playBtn);
+
+  const removeBtn = document.createElement("button");
+  removeBtn.type = "button";
+  removeBtn.className = "btn btn-secondary btn-small playlist-remove-btn";
+  removeBtn.textContent = mobileQueueMediaQuery.matches ? "Del" : "Remove";
+  removeBtn.setAttribute("aria-label", `Remove ${track.name} from queue`);
+  removeBtn.disabled = isUiLocked;
+  removeBtn.addEventListener("click", () => removeTrackFromPlaylist(track.id));
+
+  const moveUpBtn = document.createElement("button");
+  moveUpBtn.type = "button";
+  moveUpBtn.className = "btn btn-secondary btn-small playlist-move-btn";
+  moveUpBtn.textContent = "↑";
+  moveUpBtn.setAttribute("aria-label", `Move ${track.name} up in queue`);
+  const moveUpContentDisabled = playlistTracks.length === 1 || index === 0;
+  moveUpBtn.dataset.contentDisabled = moveUpContentDisabled.toString();
+  moveUpBtn.disabled = isUiLocked || moveUpContentDisabled;
+  moveUpBtn.addEventListener("click", () => movePlaylistTrack(track.id, -1));
+  actions.appendChild(moveUpBtn);
+
+  const moveDownBtn = document.createElement("button");
+  moveDownBtn.type = "button";
+  moveDownBtn.className = "btn btn-secondary btn-small playlist-move-btn";
+  moveDownBtn.textContent = "↓";
+  moveDownBtn.setAttribute("aria-label", `Move ${track.name} down in queue`);
+  const moveDownContentDisabled =
+    playlistTracks.length === 1 || index === playlistTracks.length - 1;
+  moveDownBtn.dataset.contentDisabled = moveDownContentDisabled.toString();
+  moveDownBtn.disabled = isUiLocked || moveDownContentDisabled;
+  moveDownBtn.addEventListener("click", () => movePlaylistTrack(track.id, 1));
+  actions.appendChild(moveDownBtn);
+
+  actions.appendChild(removeBtn);
+
+  item.appendChild(main);
+  item.appendChild(actions);
+  return item;
+}
+
+function renderPlaylist() {
+  const hasPlaylist = playlistTracks.length > 0;
+  const currentIndex = playlistTracks.findIndex((track) => track.id === currentPlaylistTrackId);
+  const hasPreviousTrack = currentIndex > 0;
+  const hasNextTrack =
+    hasPlaylist && (currentIndex === -1 ? playlistTracks.length > 0 : currentIndex < playlistTracks.length - 1);
+
+  renderPlaylistLauncherBar(hasPlaylist);
+  renderPlaylistPanelControls(hasPlaylist, hasPreviousTrack, hasNextTrack);
 
   playlistList.replaceChildren();
   playlistEmptyState.hidden = playlistTracks.length > 0;
-
   playlistTracks.forEach((track, index) => {
-    const item = document.createElement("div");
-    item.className = "playlist-item";
-    item.setAttribute("role", "listitem");
-    item.setAttribute("aria-label", `Queue item ${index + 1}: ${track.name}`);
-    if (track.id === currentPlaylistTrackId) {
-      item.classList.add("active");
-    }
-
-    const main = document.createElement("div");
-    main.className = "playlist-item-main";
-
-    const title = document.createElement("div");
-    title.className = "playlist-item-title";
-    title.textContent = track.name;
-    main.appendChild(title);
-
-    const meta = document.createElement("div");
-    meta.className = "playlist-item-meta";
-    meta.textContent = track.format || "Module";
-    main.appendChild(meta);
-
-    const actions = document.createElement("div");
-    actions.className = "playlist-item-actions";
-
-    const playBtn = document.createElement("button");
-    playBtn.type = "button";
-    playBtn.className = "btn btn-secondary btn-small playlist-play-btn";
-    playBtn.textContent = "Play";
-    playBtn.setAttribute("aria-label", `Play ${track.name}`);
-    playBtn.disabled = isUiLocked;
-    playBtn.addEventListener("click", () => playPlaylistTrack(track.id, playBtn));
-    actions.appendChild(playBtn);
-
-    const removeBtn = document.createElement("button");
-    removeBtn.type = "button";
-    removeBtn.className = "btn btn-secondary btn-small playlist-remove-btn";
-    removeBtn.textContent = mobileQueueMediaQuery.matches ? "Del" : "Remove";
-    removeBtn.setAttribute("aria-label", `Remove ${track.name} from queue`);
-    removeBtn.disabled = isUiLocked;
-    removeBtn.addEventListener("click", () => removeTrackFromPlaylist(track.id));
-
-    const moveUpBtn = document.createElement("button");
-    moveUpBtn.type = "button";
-    moveUpBtn.className = "btn btn-secondary btn-small playlist-move-btn";
-    moveUpBtn.textContent = "↑";
-    moveUpBtn.setAttribute("aria-label", `Move ${track.name} up in queue`);
-    const moveUpContentDisabled = playlistTracks.length === 1 || index === 0;
-    moveUpBtn.dataset.contentDisabled = moveUpContentDisabled.toString();
-    moveUpBtn.disabled = isUiLocked || moveUpContentDisabled;
-    moveUpBtn.addEventListener("click", () => movePlaylistTrack(track.id, -1));
-    actions.appendChild(moveUpBtn);
-
-    const moveDownBtn = document.createElement("button");
-    moveDownBtn.type = "button";
-    moveDownBtn.className = "btn btn-secondary btn-small playlist-move-btn";
-    moveDownBtn.textContent = "↓";
-    moveDownBtn.setAttribute("aria-label", `Move ${track.name} down in queue`);
-    const moveDownContentDisabled =
-      playlistTracks.length === 1 || index === playlistTracks.length - 1;
-    moveDownBtn.dataset.contentDisabled = moveDownContentDisabled.toString();
-    moveDownBtn.disabled = isUiLocked || moveDownContentDisabled;
-    moveDownBtn.addEventListener("click", () => movePlaylistTrack(track.id, 1));
-    actions.appendChild(moveDownBtn);
-
-    actions.appendChild(removeBtn);
-
-    item.appendChild(main);
-    item.appendChild(actions);
-    playlistList.appendChild(item);
+    playlistList.appendChild(renderPlaylistTrackItem(track, index));
   });
 
   playlistPanel.hidden = !isPlaylistPanelOpen || playlistTracks.length === 0;
@@ -1168,6 +1241,44 @@ function getPlaylistNextLabel() {
 async function playPlaylistTrack(trackId, button) {
   const track = playlistTracks.find((candidate) => candidate.id === trackId);
   if (!track) {
+    return;
+  }
+
+  if (!button || !button.parentNode) {
+    const trackIndex = playlistTracks.indexOf(track);
+    const items = playlistList.querySelectorAll(".playlist-item");
+    button = items[trackIndex]?.querySelector(".playlist-play-btn") || playlistNextBtn;
+  }
+
+  if (track.source === "local" && track.playUrl) {
+    currentPlaylistTrackId = trackId;
+    currentShareableUrl = null;
+    currentShareableSampleUrl = null;
+    currentLocalTrackData = {
+      name: track.name,
+      playUrl: track.playUrl,
+      downloadUrl: track.downloadUrl,
+      audioFormat: track.audioFormat,
+      moduleFormat: track.moduleFormat,
+      playerFormat: track.playerFormat,
+      subsongs: track.subsongs,
+      subsongDurations: track.subsongDurations,
+    };
+    updateShareButton(false);
+    playFile(
+      null,
+      track.name,
+      track.playUrl,
+      track.downloadUrl,
+      track.playerFormat || "Module",
+      track.audioFormat || "wav",
+      track.moduleFormat,
+      track.subsongs,
+      track.subsongDurations || [],
+    );
+    // Restore playlist track ID after playFile clears it
+    currentPlaylistTrackId = trackId;
+    renderPlaylist();
     return;
   }
 
@@ -1208,9 +1319,7 @@ function playNextPlaylistTrack() {
     return;
   }
 
-  const tempButton = document.createElement("button");
-  tempButton.textContent = "Play";
-  void playPlaylistTrack(nextTrack.id, tempButton);
+  void playPlaylistTrack(nextTrack.id);
 }
 
 function playPreviousPlaylistTrack() {
@@ -1228,9 +1337,7 @@ function playPreviousPlaylistTrack() {
     return;
   }
 
-  const tempButton = document.createElement("button");
-  tempButton.textContent = "Play";
-  void playPlaylistTrack(previousTrack.id, tempButton);
+  void playPlaylistTrack(previousTrack.id);
 }
 
 function handlePlaylistEnded() {

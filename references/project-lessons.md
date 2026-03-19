@@ -107,6 +107,8 @@ This document contains project-specific learnings and regression-avoidance notes
 - **Toolchain:** Aggregate multi-file failures in PowerShell scripts to show all errors, not just the last one.
 - **Toolchain:** Keep quality-tool versions in Dependabot-managed manifests where possible. Docker-based tools such as Hadolint, Actionlint, and ShellCheck should be pinned in `test/docker-compose.tooling.yml`, while supporting `apk` packages in test Dockerfiles remain manual pins and should not be treated as Dependabot-managed.
 - **Validation Scope:** Explicitly include `docker-compose.dev.yml` in validation scripts and quality-check container mounts if it's part of the supported workflow.
+- **Layer Caching:** In `Dockerfile.quality`, COPY each dependency manifest (`docker-compose.tooling.yml`, `package.json`, `requirements-quality.txt`) immediately before its install step. Bundling all COPYs together means a change to any one manifest invalidates every install layer.
+- **COPY --chmod:** Use `COPY --chmod=755` instead of a separate `RUN chmod` to eliminate an extra layer.
 
 ## UI State Management Lessons
 
