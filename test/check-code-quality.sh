@@ -117,7 +117,7 @@ YAMLLINT_VERSION="$(read_pip_tool_version yamllint)"
 HADOLINT_IMAGE="$(read_tool_image hadolint)"
 ACTIONLINT_IMAGE="$(read_tool_image actionlint)"
 SHELLCHECK_IMAGE="$(read_tool_image shellcheck)"
-PYTHON_QUALITY_TARGETS=(web test/zap_seed_targets.py)
+PYTHON_QUALITY_TARGETS=(web test/report_endpoint_coverage.py test/zap_seed_targets.py)
 
 # Counters
 TOTAL_CHECKS=0
@@ -548,7 +548,7 @@ fi
 if [ "$RUN_BLACK" = true ]; then
     print_header "Black - Python Code Formatting"
 
-    echo "Running Black on /web and /test/zap_seed_targets.py..."
+    echo "Running Black on /web, /test/report_endpoint_coverage.py, and /test/zap_seed_targets.py..."
 
     FIX_MODE_ARG="--check"
     if [ "$FIX_MODE" = true ]; then
@@ -581,7 +581,7 @@ fi
 if [ "$RUN_RUFF" = true ]; then
     print_header "Ruff - Python Linting and Formatting"
 
-    echo "Running Ruff on /web and /test/zap_seed_targets.py..."
+    echo "Running Ruff on /web, /test/report_endpoint_coverage.py, and /test/zap_seed_targets.py..."
 
     RUFF_CHECK_ARGS=()
     RUFF_FORMAT_ARGS=(--check)

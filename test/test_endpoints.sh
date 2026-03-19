@@ -165,6 +165,7 @@ test_url() {
 # 1. Test name (string)
 # 2. Example ID (string)
 test_play_example() {
+    # covers: /examples
     TEST_NAME=$1
     EXAMPLE_ID=$2
 
@@ -1352,6 +1353,7 @@ test_range_request() {
 # 2. URL to convert (string)
 # 3. Optional sample URL (string)
 test_download_functionality() {
+    # covers: /download/<file_id>
     TEST_NAME=$1
     URL=$2
     SAMPLE_URL=$3
