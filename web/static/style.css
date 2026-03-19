@@ -820,23 +820,6 @@ audio::-webkit-media-controls-enclosure {
     flex-direction: column;
   }
 
-  .playlist-item,
-  .playlist-panel-header {
-    flex-direction: column;
-    align-items: stretch;
-  }
-
-  .playlist-panel-header-actions {
-    align-self: flex-end;
-    justify-content: flex-end;
-  }
-
-  .playlist-item-actions {
-    align-self: flex-end;
-    justify-content: flex-end;
-    width: 100%;
-  }
-
   #status-container {
     left: 10px;
     right: 10px;
@@ -974,6 +957,12 @@ audio::-webkit-media-controls-enclosure {
         padding-right: 2px;
     }
 
+    .playlist-item,
+    .playlist-panel-header {
+        flex-direction: column;
+        align-items: stretch;
+    }
+
     .playlist-panel-header-actions {
         display: grid;
         grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -992,6 +981,8 @@ audio::-webkit-media-controls-enclosure {
     }
 
     .playlist-item-actions {
+        align-self: flex-end;
+        justify-content: flex-end;
         display: grid;
         grid-template-columns: minmax(0, 1.4fr) repeat(3, minmax(0, 1fr));
         width: 100%;
