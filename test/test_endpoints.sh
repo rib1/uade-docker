@@ -282,6 +282,177 @@ test_probe_error() {
     echo ""
 }
 
+# Function to test a successful file probe-upload
+# Arguments:
+# 1. Test name (string)
+# 2. File path to local module (string)
+test_probe_upload() {
+    TEST_NAME=$1
+    FILE_PATH=$2
+
+    echo "--- Testing Probe Upload: $TEST_NAME ---"
+
+    RESPONSE_ALL=$(curl -s -w "\n%{http_code}" -X POST -F "file=@$FILE_PATH" "$BASE_URL/probe-upload")
+    HTTP_CODE=$(echo "$RESPONSE_ALL" | tail -n1)
+    BODY=$(echo "$RESPONSE_ALL" | sed '$d')
+
+    if [ "$HTTP_CODE" -ne 200 ]; then
+        echo "ERROR: Received HTTP $HTTP_CODE for probe-upload test '$TEST_NAME'"
+        echo "Response body: $BODY"
+        exit 1
+    fi
+
+    OK=$(echo "$BODY" | jq -r .ok)
+    PLAYABLE=$(echo "$BODY" | jq -r .playable)
+    MODULE_NAME=$(echo "$BODY" | jq -r .module_name)
+    PLAYER_FORMAT=$(echo "$BODY" | jq -r .player_format)
+
+    if [ "$OK" != "true" ] || [ "$PLAYABLE" != "true" ]; then
+        echo "ERROR: Probe upload did not report ok=true and playable=true for '$TEST_NAME'"
+        echo "Response body: $BODY"
+        exit 1
+    fi
+
+    if [ -z "$MODULE_NAME" ] || [ "$MODULE_NAME" == "null" ]; then
+        echo "ERROR: Probe upload response missing module_name for '$TEST_NAME'"
+        echo "Response body: $BODY"
+        exit 1
+    fi
+
+    if [ -z "$PLAYER_FORMAT" ] || [ "$PLAYER_FORMAT" == "null" ]; then
+        echo "ERROR: Probe upload response missing player_format for '$TEST_NAME'"
+        echo "Response body: $BODY"
+        exit 1
+    fi
+
+    # Verify no conversion fields are present (probe should not convert)
+    PLAY_URL=$(echo "$BODY" | jq -r .play_url)
+    DOWNLOAD_URL=$(echo "$BODY" | jq -r .download_url)
+    if [ "$PLAY_URL" != "null" ] || [ "$DOWNLOAD_URL" != "null" ]; then
+        echo "ERROR: Probe upload response contains conversion fields for '$TEST_NAME'"
+        echo "Response body: $BODY"
+        exit 1
+    fi
+
+    echo "SUCCESS: Probe upload returned playable metadata."
+    echo "Response body: $BODY"
+    echo ""
+}
+
+# Function to test probe-upload error cases
+# Arguments:
+# 1. Test name (string)
+# 2. File path to local file (string)
+# 3. Expected HTTP status (integer)
+# 4. Expected error substring (string, optional)
+test_probe_upload_error() {
+    TEST_NAME=$1
+    FILE_PATH=$2
+    EXPECTED_STATUS=$3
+    EXPECTED_ERROR_SUBSTRING=$4
+
+    echo "--- Testing Probe Upload Error: $TEST_NAME ---"
+
+    # Use a specific curl command for empty file test
+    if [[ "$TEST_NAME" == *"empty"* ]]; then
+        RESPONSE_ALL=$(curl -s -w "\n%{http_code}" -X POST -F "file=;filename=empty.bin" "$BASE_URL/probe-upload")
+    else
+        RESPONSE_ALL=$(curl -s -w "\n%{http_code}" -X POST -F "file=@$FILE_PATH" "$BASE_URL/probe-upload")
+    fi
+
+    HTTP_CODE=$(echo "$RESPONSE_ALL" | tail -n1)
+    BODY=$(echo "$RESPONSE_ALL" | sed '$d')
+
+    if [ "$HTTP_CODE" -ne "$EXPECTED_STATUS" ]; then
+        echo "ERROR: Probe upload returned HTTP $HTTP_CODE (expected $EXPECTED_STATUS) for '$TEST_NAME'"
+        echo "Response body: $BODY"
+        exit 1
+    fi
+
+    if [ -n "$EXPECTED_ERROR_SUBSTRING" ] && ! echo "$BODY" | grep -q "$EXPECTED_ERROR_SUBSTRING"; then
+        echo "ERROR: Probe upload error message mismatch for '$TEST_NAME'"
+        echo "Expected substring: '$EXPECTED_ERROR_SUBSTRING'"
+        echo "Response body: $BODY"
+        exit 1
+    fi
+
+    echo "SUCCESS: Probe upload returned expected error."
+    echo "Response body: $BODY"
+    echo ""
+}
+
+# Test probe-upload with no file field at all
+test_probe_upload_no_file() {
+    echo "--- Testing Probe Upload: No file field ---"
+
+    RESPONSE_ALL=$(curl -s -w "\n%{http_code}" -X POST "$BASE_URL/probe-upload")
+    HTTP_CODE=$(echo "$RESPONSE_ALL" | tail -n1)
+    BODY=$(echo "$RESPONSE_ALL" | sed '$d')
+
+    if [ "$HTTP_CODE" -ne 400 ]; then
+        echo "ERROR: Probe upload without file returned HTTP $HTTP_CODE (expected 400)"
+        echo "Response body: $BODY"
+        exit 1
+    fi
+
+    if ! echo "$BODY" | grep -q "No file provided"; then
+        echo "ERROR: Unexpected error message for no-file probe upload"
+        echo "Response body: $BODY"
+        exit 1
+    fi
+
+    echo "SUCCESS: Probe upload correctly rejected request with no file."
+    echo ""
+}
+
+# Test probe-upload with wrong HTTP method (GET instead of POST)
+test_probe_upload_wrong_method() {
+    echo "--- Testing Probe Upload: Wrong HTTP method (GET) ---"
+
+    RESPONSE_ALL=$(curl -s -w "\n%{http_code}" "$BASE_URL/probe-upload")
+    HTTP_CODE=$(echo "$RESPONSE_ALL" | tail -n1)
+
+    if [ "$HTTP_CODE" -ne 405 ]; then
+        echo "ERROR: GET /probe-upload returned HTTP $HTTP_CODE (expected 405)"
+        exit 1
+    fi
+
+    echo "SUCCESS: Probe upload correctly rejected GET request with 405."
+    echo ""
+}
+
+# Test probe-upload with path traversal in filename
+# Arguments:
+# 1. File path to a valid local module (string)
+test_probe_upload_path_traversal_filename() {
+    FILE_PATH=$1
+
+    echo "--- Testing Probe Upload: Path traversal filename ---"
+
+    RESPONSE_ALL=$(curl -s -w "\n%{http_code}" -X POST \
+        -F "file=@$FILE_PATH;filename=../../etc/passwd" \
+        "$BASE_URL/probe-upload")
+    HTTP_CODE=$(echo "$RESPONSE_ALL" | tail -n1)
+    BODY=$(echo "$RESPONSE_ALL" | sed '$d')
+
+    if [ "$HTTP_CODE" -ne 200 ]; then
+        echo "ERROR: Probe upload with traversal filename returned HTTP $HTTP_CODE (expected 200 with sanitized filename)"
+        echo "Response body: $BODY"
+        exit 1
+    fi
+
+    # Verify the filename was sanitized (Werkzeug secure_filename strips path traversal)
+    FILENAME=$(echo "$BODY" | jq -r .filename)
+    if echo "$FILENAME" | grep -q "\.\."; then
+        echo "ERROR: Probe upload filename contains path traversal: '$FILENAME'"
+        echo "Response body: $BODY"
+        exit 1
+    fi
+
+    echo "SUCCESS: Probe upload sanitized path traversal filename to '$FILENAME'."
+    echo ""
+}
+
 test_convert_url_error() {
     TEST_NAME=$1
     URL=$2
@@ -1954,5 +2125,14 @@ test_upload_filename_extraction "Protracker module upload" "fixtures/modules/spa
 test_upload_negative_case "Non-module file upload" "fixtures/modules/gutenberg.txt"
 test_upload_error "Reject empty file upload" "fixtures/invalid/empty.bin" 400
 test_upload_error "Reject oversized file upload" "fixtures/invalid/too-large.bin" 413
+
+# Probe-upload tests
+test_probe_upload "Probe upload Protracker module" "fixtures/modules/space_debris.mod"
+test_probe_upload_error "Probe upload non-module file" "fixtures/modules/gutenberg.txt" 500 "Could not detect module metadata"
+test_probe_upload_error "Probe upload empty file" "fixtures/invalid/empty.bin" 400 "Empty file provided"
+test_probe_upload_error "Probe upload oversized file" "fixtures/invalid/too-large.bin" 413
+test_probe_upload_no_file
+test_probe_upload_wrong_method
+test_probe_upload_path_traversal_filename "fixtures/modules/space_debris.mod"
 
 echo "--- All tests passed! ---"

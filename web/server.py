@@ -1964,6 +1964,43 @@ def upload_file():
         return json_response({"error": "Internal server error during upload"}, 500)
 
 
+@app.route("/probe-upload", methods=["POST"])
+@limiter.limit("10 per minute")
+def probe_upload():
+    """Validate an uploaded module file and return metadata without converting audio."""
+    if "file" not in request.files:
+        return json_response({"ok": False, "playable": False, "error": "No file provided"}, 400)
+
+    file = request.files["file"]
+    if file.filename == "":
+        return json_response({"ok": False, "playable": False, "error": "No file selected"}, 400)
+
+    file.seek(0, os.SEEK_END)
+    file_size = file.tell()
+    file.seek(0, os.SEEK_SET)
+    if file_size == 0:
+        return json_response({"ok": False, "playable": False, "error": "Empty file provided"}, 400)
+
+    try:
+        file_id = str(uuid.uuid4())
+        filename = secure_filename(file.filename)
+        module_path = MODULES_DIR / f"{filename}_{file_id}"
+        file.save(module_path)
+        return process_module_probe_response(
+            module_path, filename, url_cached=False, sample_files=None
+        )
+    except Exception:
+        logger.error("Probe upload error", exc_info=True)
+        return json_response(
+            {
+                "ok": False,
+                "playable": False,
+                "error": "Internal server error during upload probe",
+            },
+            500,
+        )
+
+
 def process_module_and_respond(
     module_path, filename, use_flac, *, url_cached=False, sample_files=None
 ):
