@@ -99,22 +99,23 @@ architecture-beta
 
 ### Web Player Workflow
 
-1. User uploads a module file or provides a URL.
+1. User uploads a module file, provides a URL, or plays a queued local file.
 2. The browser first checks its local cache for the converted audio file. If found, it's played instantly and the process stops here.
 3. If not in the browser cache, the Flask server receives the request.
 4. For URL requests, the source module file is downloaded. A local cache is checked first, based on the URL, to avoid re-downloading.
-5. An MD5 hash of the source module file content is calculated.
-6. The system checks for a pre-converted WAV or FLAC file in the main **server-side cache** (local or remote) using this hash.
-7. **If a server-side cached audio file is found:**
+5. For local queue tracks, the file is probed on drop via `/probe-upload` (returns metadata + `module_hash`). When playback is triggered, the client tries `/convert-probed` with the hash (no re-upload needed). If the probed file has expired on the server (404), it falls back to a full `/upload`.
+6. An MD5 hash of the source module file content is calculated.
+7. The system checks for a pre-converted WAV or FLAC file in the main **server-side cache** (local or remote) using this hash.
+8. **If a server-side cached audio file is found:**
   a.  The cached audio is served directly to the user, who is notified that the song was served from the **server-side cache**.
   b.  The user's browser will now cache this file for one month.
-8. **If no cached audio file is found:**
+9. **If no cached audio file is found:**
     a. If the source file is an LHA or ZIP archive, it is extracted to find the music file.
     b. The UADE player converts the module to WAV.
     c. If FLAC is preferred by the client, the WAV file is then converted to FLAC.
     d. The converted audio file (WAV or FLAC) is saved to the main **server-side cache**.
     e. The audio is streamed back to the browser, which will cache it for one month.
-9. Temporary files are cleaned up periodically.
+10. Temporary files are cleaned up periodically.
 
 ### Deployment Workflow
 
