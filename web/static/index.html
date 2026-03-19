@@ -31,11 +31,17 @@
         <h2>📁 Upload Your Module</h2>
         <div id="drop-zone" class="drop-zone">
           <div class="drop-zone-content">
-            <p>Drag &amp; drop your mod., ahx., cust., .lha, .zip, or other module file here</p>
+            <p>Drag &amp; drop an Amiga module file here</p>
             <p class="or">or</p>
-            <label for="module-file-input" id="upload-btn" class="btn btn-primary" tabindex="0">Browse Files</label>
+            <label
+              for="module-file-input"
+              id="upload-btn"
+              class="btn btn-primary"
+              tabindex="0"
+              title="Examples: mod.*, song.*, mdat.*, .ahx, .cust, .lha, .zip"
+            >Browse Files</label>
             <input type="file" id="module-file-input" hidden>
-            <p class="file-info">Max size: 10MB • LHA and ZIP archives auto-extracted</p>
+            <p class="file-info">Examples: mod.*, song.*, mdat.*, .ahx, .cust, .lha, .zip • Max size: 10MB • LHA and ZIP archives auto-extracted</p>
           </div>
         </div>
       </section>
@@ -138,7 +144,7 @@
                 ></button>
                 <div class="playlist-launcher-info">
                   <span id="playlist-launcher-label"><strong>Queue</strong> (0)</span>
-                  <label for="queue-file-input" id="queue-browse-btn" class="playlist-launcher-drop-hint" tabindex="0" aria-label="Browse or drop local files to add to queue">+ Files</label>
+                  <label for="queue-file-input" id="queue-browse-btn" class="playlist-launcher-drop-hint" tabindex="0" aria-label="Browse or drop local files to add to queue" title="Examples: mod.*, song.*, mdat.*, .ahx, .cust, .lha, .zip">+ Files</label>
                   <span id="playlist-launcher-next" class="playlist-launcher-next"></span>
                 </div>
                 <div class="playlist-launcher-actions">

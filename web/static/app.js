@@ -54,6 +54,7 @@ const playlistPanelSummary = document.getElementById("playlist-panel-summary");
 const queueFileInput = document.getElementById("queue-file-input");
 const queueBrowseBtn = document.getElementById("queue-browse-btn");
 const mobileQueueMediaQuery = window.matchMedia("(max-width: 600px)");
+const DRAG_UPLOAD_ICON = "⤴";
 
 const elementsToDisable = [
   fileInput,
@@ -138,7 +139,7 @@ document.addEventListener("DOMContentLoaded", () => {
   setupDownloadButton();
   loadExamples();
   loadVersionInfo();
-  loadSupportedExtensions();
+  initializeFileInputAccept();
   createAutoplayOverlay();
 
   // Hide overlay whenever playback starts for any reason (e.g., user clicks native play)
@@ -262,18 +263,22 @@ function syncUiLockState(uiLocked) {
   updatePlayerSectionVisibility();
 }
 
-async function loadSupportedExtensions() {
-  try {
-    const response = await fetch("/supported-extensions");
-    const extensions = await response.json();
-    if (extensions && extensions.length > 0) {
-      const accept = extensions.join(",");
-      fileInput.accept = accept;
-      queueFileInput.accept = accept;
-    }
-  } catch (error) {
-    console.error("Failed to load supported extensions:", error);
+function initializeFileInputAccept() {
+  fileInput.removeAttribute("accept");
+  queueFileInput.removeAttribute("accept");
+}
+
+function setDropCueActive(label, isActive) {
+  if (!label || label.disabled || label.getAttribute("aria-busy") === "true") {
+    return;
   }
+
+  if (!label.dataset.defaultText) {
+    label.dataset.defaultText = label.textContent;
+  }
+
+  label.textContent = isActive ? DRAG_UPLOAD_ICON : label.dataset.defaultText;
+  label.dataset.dragCueActive = isActive ? "true" : "false";
 }
 
 /**
@@ -304,6 +309,8 @@ function showButtonLoadingAndGetOriginal(button, loadingText = "Converting...") 
 
 // Drag and Drop
 function setupDragAndDrop() {
+  let dragDepth = 0;
+
   ["dragenter", "dragover", "dragleave", "drop"].forEach((eventName) => {
     dropZone.addEventListener(eventName, preventDefaults, false);
   });
@@ -313,17 +320,23 @@ function setupDragAndDrop() {
     e.stopPropagation();
   }
 
-  ["dragenter", "dragover"].forEach((eventName) => {
-    dropZone.addEventListener(eventName, () => {
-      dropZone.classList.add("drag-over");
-    });
+  dropZone.addEventListener("dragenter", () => {
+    dragDepth += 1;
+    dropZone.classList.add("drag-over");
+    setDropCueActive(uploadLabel, true);
+  });
+
+  dropZone.addEventListener("dragover", () => {
+    dropZone.classList.add("drag-over");
+    setDropCueActive(uploadLabel, true);
   });
 
   ["dragleave", "drop"].forEach((eventName) => {
-    dropZone.removeEventListener(eventName, () => {
-      dropZone.classList.remove("drag-over");
-    });
     dropZone.addEventListener(eventName, () => {
+      dragDepth = eventName === "drop" ? 0 : Math.max(0, dragDepth - 1);
+      if (dragDepth === 0) {
+        setDropCueActive(uploadLabel, false);
+      }
       dropZone.classList.remove("drag-over");
     });
   });
@@ -555,6 +568,8 @@ function setupPlaylistControls() {
 }
 
 function setupQueueDropZone() {
+  let queueDragDepth = 0;
+
   function preventDefaults(e) {
     e.preventDefault();
     e.stopPropagation();
@@ -567,14 +582,23 @@ function setupQueueDropZone() {
       target.addEventListener(eventName, preventDefaults, false);
     });
 
-    ["dragenter", "dragover"].forEach((eventName) => {
-      target.addEventListener(eventName, () => {
-        target.classList.add("queue-drag-over");
-      });
+    target.addEventListener("dragenter", () => {
+      queueDragDepth += 1;
+      target.classList.add("queue-drag-over");
+      setDropCueActive(queueBrowseBtn, true);
+    });
+
+    target.addEventListener("dragover", () => {
+      target.classList.add("queue-drag-over");
+      setDropCueActive(queueBrowseBtn, true);
     });
 
     ["dragleave", "drop"].forEach((eventName) => {
       target.addEventListener(eventName, () => {
+        queueDragDepth = eventName === "drop" ? 0 : Math.max(0, queueDragDepth - 1);
+        if (queueDragDepth === 0) {
+          setDropCueActive(queueBrowseBtn, false);
+        }
         target.classList.remove("queue-drag-over");
       });
     });

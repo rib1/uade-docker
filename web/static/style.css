@@ -242,6 +242,14 @@ footer a:hover {
   display: inline-block;
 }
 
+#upload-btn[data-drag-cue-active="true"] {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 8.5rem;
+  text-align: center;
+}
+
 /* Visually disabled label for file input */
 #upload-btn.disabled {
   background-color: var(--secondary);
@@ -622,6 +630,9 @@ audio::-webkit-media-controls-enclosure {
 .playlist-launcher-drop-hint {
   position: relative;
   z-index: 2;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   pointer-events: auto;
   color: var(--text-dim);
   font-size: 0.75rem;
@@ -631,6 +642,11 @@ audio::-webkit-media-controls-enclosure {
   border-radius: 4px;
   white-space: nowrap;
   transition: border-color 0.2s, color 0.2s;
+}
+
+.playlist-launcher-drop-hint[data-drag-cue-active="true"] {
+  min-width: 3.5rem;
+  text-align: center;
 }
 
 .playlist-launcher-drop-hint:hover {
