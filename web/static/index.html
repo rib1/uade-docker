@@ -34,7 +34,7 @@
             <p>Drag &amp; drop your mod., ahx., cust., .lha, .zip, or other module file here</p>
             <p class="or">or</p>
             <label for="module-file-input" id="upload-btn" class="btn btn-primary" tabindex="0">Browse Files</label>
-            <input type="file" id="module-file-input" accept=".mod,.ahx,.tfmx,.mdat,.smpl,.cust,.lha,.zip" hidden>
+            <input type="file" id="module-file-input" hidden>
             <p class="file-info">Max size: 10MB • LHA and ZIP archives auto-extracted</p>
           </div>
         </div>
@@ -174,7 +174,7 @@
                 <div id="playlist-empty-state" class="playlist-empty-state">
                   Add tracks from Examples, Download from URL, or drop files here.
                 </div>
-                <input type="file" id="queue-file-input" accept=".mod,.ahx,.tfmx,.mdat,.smpl,.cust,.lha,.zip" aria-label="Add local module file to queue" hidden>
+                <input type="file" id="queue-file-input" aria-label="Add local module files to queue" multiple hidden>
                 <div id="playlist-list" class="playlist-list" role="list" aria-label="Queue tracks"></div>
               </div>
           </div>

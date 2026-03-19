@@ -42,12 +42,13 @@ This document contains project-specific learnings and regression-avoidance notes
 
 **Key Takeaways:** Defer heavy work until it's needed. Keep the probe-then-convert pattern sharp. Cache conversion results on the track object so replay is instant.
 
-- **Deferred Conversion:** Probe local files on queue add (`/probe-upload`), but defer full conversion to `/upload` until the track is actually played. This keeps drag-drop instant and avoids wasted conversion work for tracks that may never be played.
-- **Track Object Mutation:** After a deferred track is converted, set `localFile` to null and cache `playUrl`/`downloadUrl` on the track object. Subsequent plays use the cached URLs without re-uploading.
-- **File Object Lifecycle:** `File` objects from drag-drop or file input remain valid as long as the page is alive, but cannot survive serialization. Exclude local tracks from share/bookmark/save URLs.
-- **Three Playback Paths:** `playPlaylistTrack()` must handle three cases: (1) already-converted local track with cached URLs, (2) deferred local track with `localFile` still set, (3) URL-based track. Keep these paths explicit — collapsing them introduces subtle regressions.
+- **Deferred Conversion:** Probe local files on queue add (`/probe-upload`), which returns a `module_hash` (content-addressed MD5). When playback is triggered, the client tries `/convert-probed` with the hash (avoiding re-upload); if 404, falls back to `/upload` with the full file. This keeps drag-drop instant and avoids wasted conversion work.
+- **Track Object Mutation:** After a deferred track is converted, set `localFile` to null, keep `moduleHash` on the track, and cache `playUrl`/`downloadUrl` on the track object. Subsequent plays use the cached URLs without re-uploading.
+- **File Object Lifecycle:** `File` objects from drag-drop or file input remain valid as long as the page is alive, but cannot survive serialization. Exclude local tracks from share/bookmark URLs, but browser-local saved queues may serialize local tracks via `moduleHash` or cached conversion URLs.
+- **Three Playback Paths:** `playPlaylistTrack()` must handle three cases: (1) already-converted local track with cached URLs, (2) deferred local track with `localFile` + `moduleHash` (tries `/convert-probed` first, falls back to `/upload`), (3) URL-based track (uses `/convert-url`). Keep these paths explicit — collapsing them introduces subtle regressions.
+- **Saved Queue Durability:** When serializing a converted local track for browser-local restore, preserve `moduleHash` alongside cached `playUrl`/`downloadUrl`. If the converted audio expires later, replay should fall back to `/convert-probed` before removing the queue item.
 - **Probe vs Upload:** `/probe-upload` returns metadata without conversion artifacts. Do not reuse the probe response as if it were a conversion result.
-- **Accept Attribute Sync:** When dynamically loading supported extensions, update all file inputs (`fileInput` and `queueFileInput`) to keep the `accept` attribute consistent.
+- **Accept Attribute Sync:** `loadSupportedExtensions()` fetches formats from `/supported-extensions` and dynamically sets `accept` on all file inputs (`fileInput` and `queueFileInput`). No hardcoded `accept` attributes in HTML.
 - **Auto-Play on Queue Add:** Only auto-play when the queue was empty and nothing is playing. Never interrupt active playback just because a file was dropped onto the queue.
 
 ## Always-Visible Launcher Lessons
@@ -61,6 +62,8 @@ This document contains project-specific learnings and regression-avoidance notes
 - **HTML Restructuring Risk:** Moving elements between wrapper divs in a deeply nested HTML structure is error-prone with string-based editing. Verify closing `</div>` counts after restructuring and run HTMLHint before committing.
 - **Toggle Button State:** The queue Open/Hide toggle is disabled via `data-content-disabled` when the queue is empty. This means the empty-panel state is unreachable via the UI — Pa11y cannot exercise it.
 - **Accessibility Coverage:** The always-visible launcher bar and `+ Files` label are scanned by the `desktop-home` and `iphone15-home` Pa11y scenarios. No dedicated empty-queue accessibility scenario is needed because the panel toggle is disabled when empty.
+
+## Queue Sharing and Save Lessons
 
 **Key Takeaways:** Use compact URL parameters for shareable queues. Prioritize queue URLs over single-track params at startup.
 
@@ -92,6 +95,7 @@ This document contains project-specific learnings and regression-avoidance notes
 - **Error Exposure:** Do not return raw exception text, stack traces, or subprocess stderr in JSON error payloads. Log detailed failure context on the server, but send stable generic error messages to clients.
 - **Endpoint Responsibility:** Keep `/probe-url` for metadata only; it should never return conversion artifacts.
 - **Concurrency:** The sample-file lock must be based on the actual cached sample path, not the module namespace, to serialize access correctly.
+- **Concurrency:** Content-addressed `/probe-upload` dedup must tolerate concurrent uploads of the same bytes. Use an atomic replace/move into the hash-based path so one request winning the race does not cause the others to return 500.
 - **Security:** Sanitize download filenames aggressively on the server and parse `Content-Disposition` safely on the client.
 
 ## Test Lessons
@@ -106,6 +110,7 @@ This document contains project-specific learnings and regression-avoidance notes
 - **Compose Exit Behavior:** Prefer `docker compose ... run --rm --build uade-test-runner` for the one-off endpoint test job. Using `up` for `uade-web`, `uade-test-runner`, and `test-http-server` stays attached because the helper services are long-lived.
 - **Fixture Downloads:** Treat `test/test_endpoints.sh` fixture downloads as a flake risk. It currently uses `curl -s --insecure -o ...` without checking HTTP status or content, which can silently save an error page or truncated file as a module fixture.
 - **Upload Debugging:** When `/convert-url` tests pass but `/upload` fails with `Unknown format`, inspect the uploaded fixture bytes first. That pattern points more strongly to a bad fixture payload than to a regression in upload handling.
+- **Regression Coverage:** When local queue behavior depends on server-resident probed files, add endpoint regressions for both `/convert-probed` recovery after cached-audio deletion and concurrent same-content `/probe-upload` requests.
 - **CI/CD:** A long-running attached `docker compose up` can hit agent timeouts. Check `docker compose ps` or rerun in detached mode before assuming failure.
 - **Accessibility:** Run accessibility checks within an integration test environment that has a real browser and running application.
 - **Accessibility:** Use `test/accessibility-preflight.js` to verify the player reaches the intended interactive states before running `pa11y-ci`.
