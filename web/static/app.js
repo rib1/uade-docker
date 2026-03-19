@@ -51,6 +51,8 @@ const playlistClearBtn = document.getElementById("playlist-clear-btn");
 const playlistList = document.getElementById("playlist-list");
 const playlistEmptyState = document.getElementById("playlist-empty-state");
 const playlistPanelSummary = document.getElementById("playlist-panel-summary");
+const queueFileInput = document.getElementById("queue-file-input");
+const queueBrowseBtn = document.getElementById("queue-browse-btn");
 const mobileQueueMediaQuery = window.matchMedia("(max-width: 600px)");
 
 const elementsToDisable = [
@@ -196,9 +198,9 @@ function clearUrlParameters() {
 }
 
 function updatePlayerSectionVisibility() {
-  const hasPlaylist = playlistTracks.length > 0;
+  const playerContent = document.getElementById("player-content");
   const hasPlayableTrack = Boolean(audioPlayer.getAttribute("src"));
-  playerSection.style.display = hasPlaylist || hasPlayableTrack ? "block" : "none";
+  playerContent.hidden = !hasPlayableTrack;
 }
 
 function updatePlayerMetaVisibility() {
@@ -239,9 +241,6 @@ function syncUiLockState(uiLocked) {
   });
 
   // Handle specific elements not caught by the broad selector or requiring extra logic
-  if (playlistLauncher) {
-    playlistLauncher.hidden = !hasPlaylist;
-  }
   if (playlistLauncherHitbox) {
     playlistLauncherHitbox.disabled = uiLocked || !hasPlaylist;
   }
@@ -268,7 +267,9 @@ async function loadSupportedExtensions() {
     const response = await fetch("/supported-extensions");
     const extensions = await response.json();
     if (extensions && extensions.length > 0) {
-      fileInput.accept = extensions.join(",");
+      const accept = extensions.join(",");
+      fileInput.accept = accept;
+      queueFileInput.accept = accept;
     }
   } catch (error) {
     console.error("Failed to load supported extensions:", error);
@@ -477,6 +478,47 @@ async function performProbe(url, sampleUrl, button) {
   }
 }
 
+async function performFileProbe(file, button) {
+  syncUiLockState(true);
+  const originalBtnText = showButtonLoadingAndGetOriginal(button, "Checking...");
+  showStatus("Checking module metadata...", "info");
+
+  try {
+    const formData = new FormData();
+    formData.append("file", file);
+
+    const response = await fetch("/probe-upload", {
+      method: "POST",
+      body: formData,
+    });
+    const contentType = response.headers.get("content-type") || "";
+    const isJsonResponse = contentType.includes("application/json");
+
+    if (!isJsonResponse) {
+      throw new Error("Probe returned a non-JSON response");
+    }
+
+    const data = await response.json();
+
+    if (!response.ok) {
+      showStatus(`✗ Error: ${data.error || "Probe failed"}`, "error");
+      return null;
+    }
+
+    if (!data.ok || !data.playable || !(data.module_name || data.filename)) {
+      throw new Error("Probe returned incomplete module metadata");
+    }
+
+    return data;
+  } catch (error) {
+    showStatus(`✗ Probe failed: ${error.message}`, "error");
+    return null;
+  } finally {
+    button.textContent = originalBtnText;
+    syncUiLockState(false);
+  }
+}
+
 // URL Form
 function setupUrlForm() {
   urlSubmit.addEventListener("click", handleUrlConvert);
@@ -509,6 +551,102 @@ function setupPlaylistControls() {
     playNextPlaylistTrack();
   });
   addCurrentToPlaylistBtn.addEventListener("click", handleAddCurrentToPlaylist);
+  setupQueueDropZone();
+}
+
+function setupQueueDropZone() {
+  function preventDefaults(e) {
+    e.preventDefault();
+    e.stopPropagation();
+  }
+
+  const dropTargets = [playlistLauncherBar, playlistPanel];
+
+  dropTargets.forEach((target) => {
+    ["dragenter", "dragover", "dragleave", "drop"].forEach((eventName) => {
+      target.addEventListener(eventName, preventDefaults, false);
+    });
+
+    ["dragenter", "dragover"].forEach((eventName) => {
+      target.addEventListener(eventName, () => {
+        target.classList.add("queue-drag-over");
+      });
+    });
+
+    ["dragleave", "drop"].forEach((eventName) => {
+      target.addEventListener(eventName, () => {
+        target.classList.remove("queue-drag-over");
+      });
+    });
+
+    target.addEventListener("drop", (e) => {
+      if (isUiLocked) {
+        return;
+      }
+      const files = e.dataTransfer.files;
+      if (files.length > 0) {
+        handleQueueFileDrop(files[0]);
+      }
+    });
+  });
+
+  queueFileInput.addEventListener("change", (e) => {
+    if (e.target.files.length > 0) {
+      handleQueueFileDrop(e.target.files[0]);
+      e.target.value = "";
+    }
+  });
+
+  queueBrowseBtn.addEventListener("keydown", (e) => {
+    if (e.key === "Enter" || e.key === " ") {
+      e.preventDefault();
+      queueFileInput.click();
+    }
+  });
+}
+
+async function handleQueueFileDrop(file) {
+  const duplicate = playlistTracks.find(
+    (t) =>
+      t.source === "local" &&
+      t.localFile &&
+      t.localFile.name === file.name &&
+      t.localFile.size === file.size &&
+      t.localFile.type === file.type,
+  );
+  if (duplicate) {
+    showStatus(`"${duplicate.name}" is already in the queue`, "warning");
+    return;
+  }
+
+  const probeData = await performFileProbe(file, queueBrowseBtn);
+  if (!probeData) {
+    return;
+  }
+
+  const name = probeData.module_name || probeData.filename || file.name;
+  const shouldAutoPlay = playlistTracks.length === 0 && !audioPlayer.getAttribute("src");
+  const track = {
+    id: createPlaylistTrackId(),
+    name,
+    url: null,
+    sample_url: null,
+    format: probeData.module_format || probeData.player_format || "Module",
+    source: "local",
+    localFile: file,
+    playUrl: null,
+    downloadUrl: null,
+    audioFormat: null,
+    moduleFormat: probeData.module_format,
+    playerFormat: probeData.player_format,
+    subsongs: null,
+    subsongDurations: [],
+  };
+  addTrackToPlaylist(track);
+  showStatus(ADDED_TO_QUEUE_STATUS(name), "success");
+  if (shouldAutoPlay) {
+    void playPlaylistTrack(track.id, queueBrowseBtn);
+  }
 }
 
 function getSerializablePlaylistTracks() {
@@ -523,6 +661,34 @@ function getSerializablePlaylistTracks() {
     }));
 }
 
+function getSaveablePlaylistTracks() {
+  return playlistTracks
+    .filter((track) => track.source !== "local" || Boolean(track.playUrl))
+    .map((track) => {
+      if (track.source === "local") {
+        return {
+          n: track.name,
+          f: track.format || "Module",
+          o: "local-cached",
+          pu: track.playUrl,
+          du: track.downloadUrl,
+          af: track.audioFormat || "wav",
+          mf: track.moduleFormat || null,
+          pf: track.playerFormat || null,
+          ss: track.subsongs || null,
+          sd: track.subsongDurations || null,
+        };
+      }
+      return {
+        n: track.name,
+        u: track.url,
+        s: track.sample_url || null,
+        f: track.format || "Module",
+        o: track.source || "queue",
+      };
+    });
+}
+
 function buildQueuePayload() {
   return {
     v: 1,
@@ -530,9 +696,23 @@ function buildQueuePayload() {
   };
 }
 
+function buildSaveableQueuePayload() {
+  return {
+    v: 1,
+    t: getSaveablePlaylistTracks(),
+  };
+}
+
 function sanitizePlaylistTrack(track) {
   if (!track || typeof track !== "object") {
     return null;
+  }
+
+  const rawSource = typeof track.o === "string" ? track.o : track.source;
+  const source = typeof rawSource === "string" && rawSource.trim() ? rawSource.trim() : "queue";
+
+  if (source === "local-cached") {
+    return sanitizeLocalCachedTrack(track);
   }
 
   const rawUrl = typeof track.u === "string" ? track.u : track.url;
@@ -548,12 +728,10 @@ function sanitizePlaylistTrack(track) {
   const rawSampleUrl = typeof track.s === "string" ? track.s : track.sample_url;
   const rawName = typeof track.n === "string" ? track.n : track.name;
   const rawFormat = typeof track.f === "string" ? track.f : track.format;
-  const rawSource = typeof track.o === "string" ? track.o : track.source;
 
   const sampleUrl = typeof rawSampleUrl === "string" ? rawSampleUrl.trim() : "";
   const name = typeof rawName === "string" && rawName.trim() ? rawName.trim() : "Module";
   const format = typeof rawFormat === "string" && rawFormat.trim() ? rawFormat.trim() : "Module";
-  const source = typeof rawSource === "string" && rawSource.trim() ? rawSource.trim() : "queue";
 
   return {
     id: createPlaylistTrackId(),
@@ -562,6 +740,33 @@ function sanitizePlaylistTrack(track) {
     sample_url: sampleUrl || null,
     format,
     source,
+  };
+}
+
+function sanitizeLocalCachedTrack(track) {
+  const playUrl = typeof track.pu === "string" ? track.pu.trim() : "";
+  if (!playUrl) {
+    return null;
+  }
+
+  const rawName = typeof track.n === "string" ? track.n : track.name;
+  const rawFormat = typeof track.f === "string" ? track.f : track.format;
+
+  return {
+    id: createPlaylistTrackId(),
+    name: typeof rawName === "string" && rawName.trim() ? rawName.trim() : "Module",
+    url: null,
+    sample_url: null,
+    format: typeof rawFormat === "string" && rawFormat.trim() ? rawFormat.trim() : "Module",
+    source: "local",
+    playUrl,
+    downloadUrl: typeof track.du === "string" ? track.du.trim() : playUrl,
+    audioFormat: typeof track.af === "string" ? track.af.trim() : "wav",
+    moduleFormat: typeof track.mf === "string" ? track.mf.trim() : null,
+    playerFormat: typeof track.pf === "string" ? track.pf.trim() : null,
+    subsongs: typeof track.ss === "number" ? track.ss : null,
+    subsongDurations: Array.isArray(track.sd) ? track.sd : null,
+    localFile: null,
   };
 }
 
@@ -630,6 +835,12 @@ function clearStoredQueue(options = {}) {
   }
 }
 
+function hasSaveableTracks() {
+  return playlistTracks.some(
+    (track) => track.source !== "local" || Boolean(track.playUrl),
+  );
+}
+
 function hasSerializableTracks() {
   return playlistTracks.some((track) => track.source !== "local");
 }
@@ -639,12 +850,12 @@ function savePlaylistLocally() {
     showStatus("Queue is empty", "warning");
     return;
   }
-  if (!hasSerializableTracks()) {
-    showStatus("Queue contains only local files — nothing to save", "warning");
+  if (!hasSaveableTracks()) {
+    showStatus("Queue contains only unconverted local files — play them first to save", "warning");
     return;
   }
 
-  const payload = buildQueuePayload();
+  const payload = buildSaveableQueuePayload();
   if (!setStoredQueue(JSON.stringify(payload))) {
     return;
   }
@@ -1072,7 +1283,6 @@ function movePlaylistTrack(trackId, direction) {
 }
 
 function renderPlaylistLauncherBar(hasPlaylist) {
-  playlistLauncher.hidden = !hasPlaylist;
   playlistLauncher.classList.toggle("expanded", isPlaylistPanelOpen && hasPlaylist);
   playlistLauncherHitbox.disabled = isUiLocked || !hasPlaylist;
   playlistLauncherHitbox.setAttribute("aria-label", isPlaylistPanelOpen ? "Hide queue" : "Open queue");
@@ -1096,10 +1306,11 @@ function renderPlaylistPanelControls(hasPlaylist, hasPreviousTrack, hasNextTrack
   playlistNextBtn.dataset.contentDisabled = (!hasNextTrack).toString();
   playlistNextBtn.disabled = isUiLocked || !hasNextTrack;
 
+  const canSave = hasSaveableTracks();
   const canSerialize = hasSerializableTracks();
 
-  playlistSaveBtn.dataset.contentDisabled = (!canSerialize).toString();
-  playlistSaveBtn.disabled = isUiLocked || !canSerialize;
+  playlistSaveBtn.dataset.contentDisabled = (!canSave).toString();
+  playlistSaveBtn.disabled = isUiLocked || !canSave;
 
   playlistBookmarkBtn.dataset.contentDisabled = (!canSerialize).toString();
   playlistBookmarkBtn.disabled = isUiLocked || !canSerialize;
@@ -1238,50 +1449,89 @@ function getPlaylistNextLabel() {
   return nextTrack ? `Next: ${nextTrack.name}` : "End of playlist";
 }
 
-async function playPlaylistTrack(trackId, button) {
-  const track = playlistTracks.find((candidate) => candidate.id === trackId);
-  if (!track) {
+async function playCachedLocalTrack(track, trackId) {
+  try {
+    const headResponse = await fetch(track.playUrl, { method: "HEAD" });
+    if (!headResponse.ok) {
+      removeTrackFromPlaylist(trackId);
+      showStatus(`"${track.name}" expired from server cache and was removed`, "warning");
+      return;
+    }
+  } catch (_err) {
+    removeTrackFromPlaylist(trackId);
+    showStatus(`"${track.name}" is no longer available and was removed`, "warning");
     return;
   }
 
-  if (!button || !button.parentNode) {
-    const trackIndex = playlistTracks.indexOf(track);
-    const items = playlistList.querySelectorAll(".playlist-item");
-    button = items[trackIndex]?.querySelector(".playlist-play-btn") || playlistNextBtn;
-  }
+  currentPlaylistTrackId = trackId;
+  currentShareableUrl = null;
+  currentShareableSampleUrl = null;
+  currentLocalTrackData = {
+    name: track.name,
+    playUrl: track.playUrl,
+    downloadUrl: track.downloadUrl,
+    audioFormat: track.audioFormat,
+    moduleFormat: track.moduleFormat,
+    playerFormat: track.playerFormat,
+    subsongs: track.subsongs,
+    subsongDurations: track.subsongDurations,
+  };
+  updateShareButton(false);
+  playFile(
+    null,
+    track.name,
+    track.playUrl,
+    track.downloadUrl,
+    track.playerFormat || "Module",
+    track.audioFormat || "wav",
+    track.moduleFormat,
+    track.subsongs,
+    track.subsongDurations || [],
+  );
+  // Restore playlist track ID after playFile clears it
+  currentPlaylistTrackId = trackId;
+  renderPlaylist();
+}
 
-  if (track.source === "local" && track.playUrl) {
-    currentPlaylistTrackId = trackId;
-    currentShareableUrl = null;
-    currentShareableSampleUrl = null;
-    currentLocalTrackData = {
-      name: track.name,
-      playUrl: track.playUrl,
-      downloadUrl: track.downloadUrl,
-      audioFormat: track.audioFormat,
-      moduleFormat: track.moduleFormat,
-      playerFormat: track.playerFormat,
-      subsongs: track.subsongs,
-      subsongDurations: track.subsongDurations,
-    };
-    updateShareButton(false);
-    playFile(
-      null,
-      track.name,
-      track.playUrl,
-      track.downloadUrl,
-      track.playerFormat || "Module",
-      track.audioFormat || "wav",
-      track.moduleFormat,
-      track.subsongs,
-      track.subsongDurations || [],
-    );
-    // Restore playlist track ID after playFile clears it
-    currentPlaylistTrackId = trackId;
-    renderPlaylist();
-    return;
-  }
+async function playDeferredLocalTrack(track, trackId, button) {
+  const formData = new FormData();
+  formData.append("file", track.localFile);
 
+  await performConversion(
+    "/upload",
+    { method: "POST", body: formData },
+    button,
+    `Converting ${track.name}...`,
+    "✓ {moduleName} converted and ready to play",
+    track.name,
+    (data) => {
+      track.playUrl = data.play_url;
+      track.downloadUrl = data.download_url;
+      track.audioFormat = data.audio_format || "wav";
+      track.subsongs = data.subsongs;
+      track.subsongDurations = data.subsong_durations || [];
+      track.localFile = null;
+
+      currentPlaylistTrackId = trackId;
+      currentShareableUrl = null;
+      currentShareableSampleUrl = null;
+      currentLocalTrackData = {
+        name: track.name,
+        playUrl: track.playUrl,
+        downloadUrl: track.downloadUrl,
+        audioFormat: track.audioFormat,
+        moduleFormat: track.moduleFormat,
+        playerFormat: track.playerFormat,
+        subsongs: track.subsongs,
+        subsongDurations: track.subsongDurations,
+      };
+      updateShareButton(false);
+      renderPlaylist();
+    },
+  );
+}
+
+async function playUrlTrack(track, trackId, button) {
   const body = { url: track.url };
   if (track.sample_url) {
     body.sample_url = track.sample_url;
@@ -1306,6 +1556,27 @@ async function playPlaylistTrack(trackId, button) {
       renderPlaylist();
     },
   );
+}
+
+async function playPlaylistTrack(trackId, button) {
+  const track = playlistTracks.find((candidate) => candidate.id === trackId);
+  if (!track) {
+    return;
+  }
+
+  if (!button || !button.parentNode) {
+    const trackIndex = playlistTracks.indexOf(track);
+    const items = playlistList.querySelectorAll(".playlist-item");
+    button = items[trackIndex]?.querySelector(".playlist-play-btn") || playlistNextBtn;
+  }
+
+  if (track.source === "local" && track.playUrl) {
+    return playCachedLocalTrack(track, trackId);
+  }
+  if (track.source === "local" && track.localFile && !track.playUrl) {
+    return playDeferredLocalTrack(track, trackId, button);
+  }
+  return playUrlTrack(track, trackId, button);
 }
 
 function playNextPlaylistTrack() {
@@ -1413,7 +1684,6 @@ function playFile(
   downloadBtn.textContent =
     audioFormat === "flac" ? "⬇ Download FLAC" : "⬇ Download WAV";
 
-  playerSection.style.display = "block";
   updatePlayerSectionVisibility();
   updatePrimaryPlayerActions();
   playerSection.scrollIntoView({ behavior: "smooth", block: "nearest" });

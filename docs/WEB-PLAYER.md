@@ -7,7 +7,8 @@ Play Amiga music modules directly in your web browser! No desktop software requi
 - 🎵 **Play in Browser** - Upload or download modules, hear them instantly
 - 🕹️ **Example Modules** - Try famous Amiga classics with one click
 - 🌐 **URL Support** - Download directly from Modland, ModArchive, etc.
-- 📋 **Queue Support** - Build a temporary queue from examples, URLs, and the currently playing track
+- 📋 **Queue Support** - Build a temporary queue from examples, URLs, uploaded files, or drag-drop local files directly into the queue
+- 📁 **Local File Queue** - Drop files into the queue panel or use the file picker; files are probed instantly, converted on-demand when played
 - 🔗 **Shareable URLs** - Share direct links to modules that auto-play for recipients
 - 📦 **LHA & ZIP Archive Support** - Automatically extracts classic Amiga LHA archives (and ZIP)
 - 🗂️ **Dual-File Module Support** - Handles dual-file modules (e.g., TFMX, RJP) automatically
@@ -204,11 +205,13 @@ https://your-uade-instance.com/?url=https://modland.com/.../mdat.turrican&sample
 
 ## Queue
 
-The web player includes a lightweight queue for URL-based and example tracks.
+The web player includes a lightweight queue. The queue launcher bar is always visible at the bottom of the player section, giving quick access to queue controls and the file drop target.
 
 - Add tracks from **Try These Classics**
 - Add tracks from **Download from URL**
 - Add the currently playing URL/example track back into the queue
+- **Drop local files** onto the launcher bar or open queue panel, or use the **+ Files** picker
+- Dropped/picked local files are probed instantly; conversion is deferred until playback
 - Play queue items directly
 - Auto-advance to the next queued item
 - Reorder items with `↑` and `↓`
@@ -219,17 +222,19 @@ The web player includes a lightweight queue for URL-based and example tracks.
 
 Current queue limitations:
 
-- No uploaded-file queue items yet
 - Only one queue exists at a time
 - Saved queues are browser-local only (no account/server sync)
-- Shared queue links include URL/example/current-source tracks only
+- Shared queue links include URL/example/current-source tracks only (local files are excluded from serialization)
 
 Behavior notes:
 
-- The queue starts collapsed by default
+- The queue launcher bar is always visible; the panel starts collapsed
+- Player content (heading, audio controls) is hidden until a track loads
 - The first queued track auto-plays only when the queue was empty and no track is currently loaded/playing
 - Adding a URL to the queue clears the URL and sample URL fields on success
 - A shared `?queue=...` link is loaded before any single-track `?url=...` link
+- Local tracks show a `📁 local` badge in the queue UI
+- After a deferred local track is played, its converted audio is cached on the track object for instant replay
 
 ## API Reference
 
@@ -323,7 +328,7 @@ Typical response:
 }
 ```
 
-Rate-limited to 10 requests/minute. Used by the queue UI to validate local files before adding them to the queue.
+Rate-limited to 10 requests/minute. Used by the queue UI to validate local files before adding them to the queue. Files dropped into the queue panel or selected via the "+ Files" button are probed with this endpoint; conversion is deferred until playback.
 
 ### Play Example
 
