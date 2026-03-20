@@ -2049,8 +2049,8 @@ test_queue_drop_autoplay_does_not_reuse_queue_button_loading_state() {
         exit 1
     fi
 
-    if [[ "$APP_JS" != *"performFileProbe(file, null)"* ]]; then
-        echo "ERROR: app.js is missing the expected queue probe call without queueBrowseBtn"
+    if [[ "$APP_JS" == *"showButtonLoadingAndGetOriginal(queueBrowseBtn, \"Checking...\")"* ]]; then
+        echo "ERROR: queue-drop probing still reuses queueBrowseBtn as a loading indicator"
         exit 1
     fi
 
