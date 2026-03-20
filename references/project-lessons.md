@@ -50,6 +50,7 @@ This document contains project-specific learnings and regression-avoidance notes
 - **Multi-Container Expectation:** Shared converted-audio cache is the important cross-instance guarantee. Probed local-file state is container-local by default, so queue playback must remain correct when `/convert-probed` fails and `/upload` is required instead.
 - **Probe vs Upload:** `/probe-upload` returns metadata without conversion artifacts. Do not reuse the probe response as if it were a conversion result.
 - **Batch Guardrails:** Queue add probes local files one-by-one, so `/probe-upload` may need a higher rate limit than normal conversion endpoints. Pair that with a client-side batch cap so one drop or file-picker action cannot enqueue an unbounded number of probes.
+- **Dev Mode Guardrails:** When rate limiting is disabled for local/dev use, disable the browser-side queue batch cap too. Otherwise the UI still enforces a production guardrail even though the backend limiter is off.
 - **Accept Attribute Sync:** `loadSupportedExtensions()` fetches formats from `/supported-extensions` and dynamically sets `accept` on all file inputs (`fileInput` and `queueFileInput`). No hardcoded `accept` attributes in HTML.
 - **Auto-Play on Queue Add:** Only auto-play when the queue was empty and nothing is playing. Never interrupt active playback just because a file was dropped onto the queue.
 
@@ -111,10 +112,12 @@ This document contains project-specific learnings and regression-avoidance notes
 - **Test Environment:** Prefer the repo's Docker Compose flow for endpoint coverage over ad hoc local execution.
 - **Compose Exit Behavior:** Prefer `docker compose ... run --rm --build uade-test-runner` for the one-off endpoint test job. Using `up` for `uade-web`, `uade-test-runner`, and `test-http-server` stays attached because the helper services are long-lived.
 - **Compose Variant Switching:** When moving between Compose test variants that override the same `uade-web` service, bring the stack down first. Reusing a stale container can preserve the wrong env vars and make suites fail for configuration reasons instead of code regressions.
+- **Runtime Config Contract:** If a static client limit is derived from backend config, expose it from the server and test the server-to-client contract directly. A tiny runtime config endpoint is easier to keep in sync than duplicated constants in backend code, frontend code, and docs.
 - **Fixture Downloads:** Treat `test/test_endpoints.sh` fixture downloads as a flake risk. It currently uses `curl -s --insecure -o ...` without checking HTTP status or content, which can silently save an error page or truncated file as a module fixture.
 - **Upload Debugging:** When `/convert-url` tests pass but `/upload` fails with `Unknown format`, inspect the uploaded fixture bytes first. That pattern points more strongly to a bad fixture payload than to a regression in upload handling.
 - **Regression Coverage:** When local queue behavior depends on server-resident probed files, add endpoint regressions for both `/convert-probed` recovery after cached-audio deletion and concurrent same-content `/probe-upload` requests.
 - **CI/CD:** A long-running attached `docker compose up` can hit agent timeouts. Check `docker compose ps` or rerun in detached mode before assuming failure.
+- **Docker Flakes:** A transient missing-network error right after Compose teardown can be infrastructure noise rather than a code regression. Retry once from a clean stack before debugging the app.
 - **Accessibility:** Run accessibility checks within an integration test environment that has a real browser and running application.
 - **Accessibility:** Use `test/accessibility-preflight.js` to verify the player reaches the intended interactive states before running `pa11y-ci`.
 - **Accessibility:** Generate the Pa11y config on the fly from `test/accessibility-scenarios.js` rather than maintaining a static config file.

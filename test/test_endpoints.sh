@@ -1968,6 +1968,54 @@ test_health_endpoint() {
     echo ""
 }
 
+test_client_config_consistency() {
+    echo "--- Testing Client Config Consistency ---"
+    HEALTH_RESPONSE=$(curl -s "$BASE_URL/health")
+    CONFIG_JS=$(curl -s "$BASE_URL/client-config.js")
+
+    HEALTH_QUEUE_LIMIT=$(echo "$HEALTH_RESPONSE" | jq -r .config.queue_drop_file_limit)
+    HEALTH_PROBE_LIMIT=$(echo "$HEALTH_RESPONSE" | jq -r .config.probe_upload_rate_limit_per_minute)
+    HEALTH_RATE_LIMITING_ENABLED=$(echo "$HEALTH_RESPONSE" | jq -r .config.rate_limiting_enabled)
+
+    if [[ ! "$HEALTH_QUEUE_LIMIT" =~ ^[0-9]+$ ]]; then
+        echo "ERROR: queue_drop_file_limit is not numeric: $HEALTH_QUEUE_LIMIT"
+        echo "Health response: $HEALTH_RESPONSE"
+        exit 1
+    fi
+
+    if [[ ! "$HEALTH_PROBE_LIMIT" =~ ^[0-9]+$ ]]; then
+        echo "ERROR: probe_upload_rate_limit_per_minute is not numeric: $HEALTH_PROBE_LIMIT"
+        echo "Health response: $HEALTH_RESPONSE"
+        exit 1
+    fi
+
+    if [ "$HEALTH_RATE_LIMITING_ENABLED" = "true" ]; then
+        if [[ "$CONFIG_JS" != *"queueDropFileLimit\":$HEALTH_QUEUE_LIMIT"* ]]; then
+            echo "ERROR: client-config.js does not match health queue_drop_file_limit when rate limiting is enabled"
+            echo "client-config.js: $CONFIG_JS"
+            echo "Health response: $HEALTH_RESPONSE"
+            exit 1
+        fi
+    else
+        if [[ "$CONFIG_JS" != *"queueDropFileLimit\":null"* ]]; then
+            echo "ERROR: client-config.js should disable the queue drop cap when rate limiting is disabled"
+            echo "client-config.js: $CONFIG_JS"
+            echo "Health response: $HEALTH_RESPONSE"
+            exit 1
+        fi
+    fi
+
+    if [[ "$CONFIG_JS" != *"rateLimitingEnabled\":$HEALTH_RATE_LIMITING_ENABLED"* ]]; then
+        echo "ERROR: client-config.js does not match health rate_limiting_enabled"
+        echo "client-config.js: $CONFIG_JS"
+        echo "Health response: $HEALTH_RESPONSE"
+        exit 1
+    fi
+
+    echo "SUCCESS: client-config.js matches health config (rate limiting: $HEALTH_RATE_LIMITING_ENABLED, configured queue limit: $HEALTH_QUEUE_LIMIT, probe-upload limit: $HEALTH_PROBE_LIMIT/min)."
+    echo ""
+}
+
 test_remote_cache_access_record_refresh() {
     TEST_NAME=$1
     URL=$2
@@ -2470,6 +2518,7 @@ done
 echo "Service is up!"
 
 test_health_endpoint
+test_client_config_consistency
 
 # Cache behavior tests run early to reduce interference from warmed cache state.
 # Individual tests may still use unique URLs or explicit cache-reset helpers when

@@ -319,7 +319,7 @@ This is why `/convert-probed` is documented as a best-effort optimization rather
 UADE Web Player enforces rate limits to prevent abuse and ensure fair usage:
 
 - Conversion endpoints: 10 requests/min per IP
-- Queue probe endpoint (`/probe-upload`): 30 requests/min per IP
+- Queue probe endpoint (`/probe-upload`): 40 requests/min per IP
 - Play endpoints: 50 requests/min per IP
 - Download endpoint: 3 requests/min per IP
 - Global limit: 200 requests/hour per IP (all endpoints combined)

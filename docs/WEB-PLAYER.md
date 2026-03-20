@@ -329,7 +329,7 @@ Typical response:
 }
 ```
 
-Rate-limited to 30 requests/minute. Used by the queue UI to validate local files before adding them to the queue. Files dropped into the queue panel or selected via the "+ Files" button are probed with this endpoint; conversion is deferred until playback. Queue adds are capped at 20 files per drop or picker selection, and the `module_hash` (content-addressed MD5) is stored on the track object for later use by `/convert-probed`.
+Rate-limited to 40 requests/minute. Used by the queue UI to validate local files before adding them to the queue. Files dropped into the queue panel or selected via the "+ Files" button are probed with this endpoint; conversion is deferred until playback. Queue adds are capped at 20 files per drop or picker selection, and the `module_hash` (content-addressed MD5) is stored on the track object for later use by `/convert-probed`.
 
 ### Convert from Probed Module
 
@@ -387,7 +387,8 @@ CACHE_ACCESS_UPDATE_INTERVAL_SECONDS: 300 # Minimum seconds between cache access
 RATE_LIMIT: 200 # Max Requests/hour per IP (all endpoints combined)
 RATE_LIMIT_DISABLED: 0 # Set to 1 to disable rate limiting for local development/testing
 CONVERSION_RATE_LIMIT_PER_MINUTE: 10 # Standard conversion/probe rate for most POST endpoints
-PROBE_UPLOAD_RATE_LIMIT_PER_MINUTE: 30 # Higher queue probe rate for local multi-file adds
+PROBE_UPLOAD_RATE_LIMIT_PER_MINUTE: 40 # Higher queue probe rate for local multi-file adds
+QUEUE_DROP_FILE_LIMIT: 20 # Max files accepted per queue drop or picker batch when rate limiting is enabled
 DISABLE_SSL_VERIFY: 0 # Set to 1 to disable SSL verification for corporate proxies (Zscaler)
 GIT_COMMIT: unknown # Git commit hash (set automatically at build time)
 UADE_TEST_MODE: 0 # Set to 1 to enable test mode (allows internal test server access)
@@ -491,10 +492,14 @@ Older or unsupported browsers automatically receive WAV files as fallback. No co
 UADE Web Player uses per-endpoint and global rate limits to prevent abuse and ensure fair usage:
 
 - **Conversion endpoints** (`/upload`, `/convert-probed`, `/convert-url`, `/probe-url`): 10 requests per minute per IP
-- **Queue probe endpoint** (`/probe-upload`): 30 requests per minute per IP
+- **Queue probe endpoint** (`/probe-upload`): 40 requests per minute per IP
 - **Play endpoints** (`/play`, `/play-example`): 50 requests per minute per IP
 - **Download endpoint** (`/download`): 3 requests per minute per IP
 - **Global limit**: 200 requests per hour per IP (all endpoints combined)
+
+At startup, when rate limiting is enabled, the server logs a warning if `PROBE_UPLOAD_RATE_LIMIT_PER_MINUTE` is less than double `QUEUE_DROP_FILE_LIMIT`, because repeated queue drops can otherwise hit the probe rate limiter within a minute.
+
+When `RATE_LIMIT_DISABLED=1`, the browser-side queue drop cap is disabled too, so local/dev setups are not constrained by the production safety limit.
 
 > **Note:**
 > Rate limits are enforced per instance/pod. In multi-instance/cloud deployments, limits are not global unless a distributed backend (e.g., Redis) is configured for Flask-Limiter.
