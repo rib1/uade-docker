@@ -16,7 +16,8 @@ let isPlaylistPanelOpen = false;
 let isUiLocked = false;
 const SAVED_QUEUE_STORAGE_KEY = "uade.savedQueue.v1";
 const QUEUE_URL_WARNING_LENGTH = 2000;
-const QUEUE_DROP_FILE_LIMIT = 20;
+const QUEUE_DROP_FILE_LIMIT = window.__UADE_CONFIG__?.queueDropFileLimit ?? 20;
+const QUEUE_DROP_LIMIT_ENABLED = Number.isFinite(QUEUE_DROP_FILE_LIMIT) && QUEUE_DROP_FILE_LIMIT > 0;
 const ADDED_TO_QUEUE_STATUS = (name) => `✓ Added ${name} to queue`;
 
 // DOM Elements
@@ -631,7 +632,7 @@ async function handleQueueFileBatch(fileList) {
     return;
   }
 
-  if (files.length > QUEUE_DROP_FILE_LIMIT) {
+  if (QUEUE_DROP_LIMIT_ENABLED && files.length > QUEUE_DROP_FILE_LIMIT) {
     showStatus(
       `✗ Queue accepts up to ${QUEUE_DROP_FILE_LIMIT} files at a time. Drop fewer files and try again.`,
       "warning",

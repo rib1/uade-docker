@@ -221,8 +221,9 @@ RATE_LIMIT: Final = int(os.getenv("RATE_LIMIT", "200"))  # requests per hour
 DOWNLOAD_RATE_LIMIT: Final = int(os.getenv("DOWNLOAD_RATE_LIMIT", "6"))  # downloads per minute
 CONVERSION_RATE_LIMIT_PER_MINUTE: Final = int(os.getenv("CONVERSION_RATE_LIMIT_PER_MINUTE", "10"))
 PROBE_UPLOAD_RATE_LIMIT_PER_MINUTE: Final = int(
-    os.getenv("PROBE_UPLOAD_RATE_LIMIT_PER_MINUTE", "30")
+    os.getenv("PROBE_UPLOAD_RATE_LIMIT_PER_MINUTE", "40")
 )
+QUEUE_DROP_FILE_LIMIT: Final = int(os.getenv("QUEUE_DROP_FILE_LIMIT", "20"))
 PORT: Final = int(os.getenv("PORT", "5000"))
 DISABLE_SSL_VERIFY: Final = os.getenv("DISABLE_SSL_VERIFY", "0") == "1"  # For corporate proxies
 HTTP_CLIENT_ERROR_MIN: Final = 400
@@ -615,6 +616,7 @@ def should_skip_request_cleanup(path):
     """Return True for request paths that should stay on the fast path."""
     return path in {
         "/",
+        "/client-config.js",
         "/examples",
         "/health",
         "/robots.txt",
@@ -1730,6 +1732,24 @@ def get_supported_extensions():
     return json_response([f".{ext}" for ext in extensions])
 
 
+@app.route("/client-config.js")
+@limiter.exempt
+def client_config_js():
+    """Expose small runtime config values for the static client."""
+    client_queue_drop_limit = QUEUE_DROP_FILE_LIMIT if rate_limit_enabled else None
+    config_payload = json.dumps(
+        {
+            "queueDropFileLimit": client_queue_drop_limit,
+            "rateLimitingEnabled": rate_limit_enabled,
+        },
+        separators=(",", ":"),
+    )
+    return Response(
+        f"window.__UADE_CONFIG__ = Object.freeze({config_payload});\n",
+        mimetype="application/javascript",
+    )
+
+
 @app.route("/health")
 @limiter.exempt
 def health():
@@ -1787,6 +1807,8 @@ def health():
                 "max_download_size_mb": MAX_DOWNLOAD_SIZE / (1024 * 1024),
                 "rate_limiting_enabled": rate_limit_enabled,
                 "cleanup_interval_seconds": CLEANUP_INTERVAL,
+                "queue_drop_file_limit": QUEUE_DROP_FILE_LIMIT,
+                "probe_upload_rate_limit_per_minute": PROBE_UPLOAD_RATE_LIMIT_PER_MINUTE,
             },
         }
     )
@@ -3149,6 +3171,38 @@ def parse_range_header(range_header, file_size):
     return start, end, length
 
 
+def log_queue_probe_capacity_warning():
+    """Warn when the queue UI can generate probes faster than the probe rate limit supports."""
+    if not rate_limit_enabled:
+        logger.info(
+            "Skipping queue probe capacity check because rate limiting is disabled "
+            "(QUEUE_DROP_FILE_LIMIT=%s, PROBE_UPLOAD_RATE_LIMIT_PER_MINUTE=%s)",
+            QUEUE_DROP_FILE_LIMIT,
+            PROBE_UPLOAD_RATE_LIMIT_PER_MINUTE,
+        )
+        return
+
+    minimum_recommended_probe_limit = QUEUE_DROP_FILE_LIMIT * 2
+    if minimum_recommended_probe_limit > PROBE_UPLOAD_RATE_LIMIT_PER_MINUTE:
+        logger.warning(
+            "Queue drop limit and /probe-upload rate limit are misaligned: "
+            "QUEUE_DROP_FILE_LIMIT=%s, PROBE_UPLOAD_RATE_LIMIT_PER_MINUTE=%s, "
+            "recommended minimum=%s. Users may hit probe rate limits when "
+            "dropping files repeatedly within one minute.",
+            QUEUE_DROP_FILE_LIMIT,
+            PROBE_UPLOAD_RATE_LIMIT_PER_MINUTE,
+            minimum_recommended_probe_limit,
+        )
+        return
+
+    logger.info(
+        "Queue drop limit and /probe-upload rate limit are aligned: "
+        "QUEUE_DROP_FILE_LIMIT=%s, PROBE_UPLOAD_RATE_LIMIT_PER_MINUTE=%s",
+        QUEUE_DROP_FILE_LIMIT,
+        PROBE_UPLOAD_RATE_LIMIT_PER_MINUTE,
+    )
+
+
 logger.info(
     "Starting UADE Web Player "
     f"(commit: {GIT_COMMIT}, build_time: {IMAGE_BUILD_TIME}) on port {PORT}"
@@ -3156,9 +3210,12 @@ logger.info(
 logger.info(f"Max upload size: {MAX_UPLOAD_SIZE / 1024 / 1024}MB")
 logger.info(f"Max download size: {MAX_DOWNLOAD_SIZE / 1024 / 1024}MB")
 logger.info(f"Rate limit: {RATE_LIMIT}/hour (enabled: {rate_limit_enabled})")
+logger.info(f"Queue drop file limit: {QUEUE_DROP_FILE_LIMIT}")
+logger.info(f"Probe upload rate limit: {PROBE_UPLOAD_RATE_LIMIT_PER_MINUTE}/minute")
 logger.info(f"Cache URI: {CACHE_URI}")
 logger.info(f"Cleanup interval: {CLEANUP_INTERVAL}s")
 logger.info(f"Cache cleanup interval: {CACHE_CLEANUP_INTERVAL}s")
+log_queue_probe_capacity_warning()
 
 # Clean up cache files once at startup (runs in all environments)
 cleanup_cache_files()

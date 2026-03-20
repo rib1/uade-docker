@@ -60,14 +60,14 @@ for i in {1..11}; do
   fi
 done
 
-echo "--- Sending probe requests 12-30 to reach the higher /probe-upload limit ---"
-for i in {12..30}; do
+echo "--- Sending probe requests 12-40 to reach the higher /probe-upload limit ---"
+for i in {12..40}; do
   echo -n "Probe request $i: "
   curl -s -o /dev/null -w "%{http_code}" -X POST -F "file=@fixtures/invalid/empty.bin" "$BASE_URL/probe-upload"
   echo ""
 done
 
-echo -n "Probe request 31 (expecting 429): "
+echo -n "Probe request 41 (expecting 429): "
 probe_status=$(curl -s -o /dev/null -w "%{http_code}" -X POST -F "file=@fixtures/invalid/empty.bin" "$BASE_URL/probe-upload")
 echo "$probe_status"
 
@@ -76,5 +76,5 @@ if [ "$probe_status" -eq 429 ]; then
   exit 0
 fi
 
-echo "--- Rate limit test FAILED! Expected /probe-upload request 31 to return 429, got $probe_status ---"
+echo "--- Rate limit test FAILED! Expected /probe-upload request 41 to return 429, got $probe_status ---"
 exit 1
