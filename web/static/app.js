@@ -16,7 +16,9 @@ let isPlaylistPanelOpen = false;
 let isUiLocked = false;
 const SAVED_QUEUE_STORAGE_KEY = "uade.savedQueue.v1";
 const QUEUE_URL_WARNING_LENGTH = 2000;
-const QUEUE_DROP_FILE_LIMIT = window.__UADE_CONFIG__?.queueDropFileLimit ?? 20;
+const QUEUE_DROP_FILE_LIMIT = window.__UADE_CONFIG__
+  ? window.__UADE_CONFIG__.queueDropFileLimit
+  : 20;
 const QUEUE_DROP_LIMIT_ENABLED = Number.isFinite(QUEUE_DROP_FILE_LIMIT) && QUEUE_DROP_FILE_LIMIT > 0;
 const ADDED_TO_QUEUE_STATUS = (name) => `✓ Added ${name} to queue`;
 
@@ -283,6 +285,14 @@ function setDropCueActive(label, isActive) {
   label.dataset.dragCueActive = isActive ? "true" : "false";
 }
 
+function getButtonRestoreText(button, originalText) {
+  if (button === queueBrowseBtn && queueBrowseBtn?.dataset.defaultText) {
+    return queueBrowseBtn.dataset.defaultText;
+  }
+
+  return originalText;
+}
+
 /**
  * Shows '✓ Playing' on the button, then resets its HTML after a delay and unlocks the UI.
  */
@@ -451,7 +461,7 @@ async function performConversion(endpoint, options, button, initialStatusMessage
 
 async function performProbe(url, sampleUrl, button) {
   syncUiLockState(true);
-  const originalBtnText = showButtonLoadingAndGetOriginal(button, "Checking...");
+  const originalBtnText = button ? showButtonLoadingAndGetOriginal(button, "Checking...") : null;
   showStatus("Checking module metadata...", "info");
 
   try {
@@ -488,14 +498,16 @@ async function performProbe(url, sampleUrl, button) {
     showStatus(`✗ Probe failed: ${error.message}`, "error");
     return null;
   } finally {
-    button.textContent = originalBtnText;
+    if (button && originalBtnText !== null) {
+      button.textContent = getButtonRestoreText(button, originalBtnText);
+    }
     syncUiLockState(false);
   }
 }
 
 async function performFileProbe(file, button) {
   syncUiLockState(true);
-  const originalBtnText = showButtonLoadingAndGetOriginal(button, "Checking...");
+  const originalBtnText = button ? showButtonLoadingAndGetOriginal(button, "Checking...") : null;
   showStatus("Checking module metadata...", "info");
 
   try {
@@ -529,7 +541,9 @@ async function performFileProbe(file, button) {
     showStatus(`✗ Probe failed: ${error.message}`, "error");
     return null;
   } finally {
-    button.textContent = originalBtnText;
+    if (button && originalBtnText !== null) {
+      button.textContent = getButtonRestoreText(button, originalBtnText);
+    }
     syncUiLockState(false);
   }
 }
@@ -571,6 +585,10 @@ function setupPlaylistControls() {
 
 function setupQueueDropZone() {
   let queueDragDepth = 0;
+
+  if (queueBrowseBtn && !queueBrowseBtn.dataset.defaultText) {
+    queueBrowseBtn.dataset.defaultText = queueBrowseBtn.textContent.trim();
+  }
 
   function preventDefaults(e) {
     e.preventDefault();
@@ -640,7 +658,8 @@ async function handleQueueFileBatch(fileList) {
     return;
   }
 
-  for (const file of files) {
+  for (const [index, file] of files.entries()) {
+    showStatus(`Checking queue file ${index + 1} of ${files.length}: ${file.name}`, "info");
     await handleQueueFileDrop(file);
   }
 }
@@ -662,7 +681,7 @@ async function handleQueueFileDrop(file) {
     playerFormat = existing.playerFormat;
     moduleHash = existing.moduleHash || null;
   } else {
-    const probeData = await performFileProbe(file, queueBrowseBtn);
+    const probeData = await performFileProbe(file, null);
     if (!probeData) {
       return;
     }
@@ -692,7 +711,7 @@ async function handleQueueFileDrop(file) {
   addTrackToPlaylist(track);
   showStatus(ADDED_TO_QUEUE_STATUS(name), "success");
   if (shouldAutoPlay) {
-    void playPlaylistTrack(track.id, queueBrowseBtn);
+    void playPlaylistTrack(track.id);
   }
 }
 
@@ -1895,6 +1914,7 @@ function playFile(
     // Gracefully handle autoplay rejection on mobile
     if (err.name === "NotAllowedError") {
       showStatus("Autoplay blocked. Tap the play icon to start.", "info");
+      syncUiLockState(false);
       if (autoplayOverlay) {
         autoplayOverlay.style.display = "flex";
         autoplayOverlay.style.pointerEvents = "auto";
@@ -1903,6 +1923,7 @@ function playFile(
     } else {
       console.error("Playback error:", err);
       showStatus("An error occurred during playback. Check console for details.", "error");
+      syncUiLockState(false);
     }
   });
 
@@ -2193,10 +2214,16 @@ function createAutoplayOverlay() {
 
   overlay.addEventListener("click", () => {
     const audioPlayer = document.getElementById("audio-player");
-    audioPlayer.play(); // This is now a direct user interaction
+    audioPlayer.play().then(() => {
+      syncUiLockState(false);
+      audioPlayer.focus(); // Set focus after user-initiated play
+    }).catch(err => {
+      console.error("Playback error:", err);
+      showStatus("An error occurred during playback. Check console for details.", "error");
+      syncUiLockState(false);
+    });
     overlay.style.display = "none";
     overlay.style.pointerEvents = "none"; // Disable interaction after click
-    audioPlayer.focus(); // Set focus after user-initiated play
   });
 }
 

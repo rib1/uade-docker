@@ -2016,6 +2016,72 @@ test_client_config_consistency() {
     echo ""
 }
 
+test_client_config_disables_queue_cap_in_app_js() {
+    echo "--- Testing Client Config Null Disables Queue Cap In App JS ---"
+
+    HEALTH_RESPONSE=$(curl -s "$BASE_URL/health")
+    HEALTH_RATE_LIMITING_ENABLED=$(echo "$HEALTH_RESPONSE" | jq -r .config.rate_limiting_enabled)
+    APP_JS=$(curl -s "$BASE_URL/static/app.js")
+
+    if [ "$HEALTH_RATE_LIMITING_ENABLED" = "false" ]; then
+        if [[ "$APP_JS" == *"queueDropFileLimit ?? 20"* ]]; then
+            echo "ERROR: app.js still uses a nullish fallback for queueDropFileLimit, which re-enables the cap when client-config.js sets null"
+            exit 1
+        fi
+
+        if [[ "$APP_JS" != *"window.__UADE_CONFIG__"* ]] || [[ "$APP_JS" != *"QUEUE_DROP_LIMIT_ENABLED"* ]]; then
+            echo "ERROR: app.js is missing the expected runtime-config queue-cap logic"
+            exit 1
+        fi
+    fi
+
+    echo "SUCCESS: app.js preserves client-config null for queueDropFileLimit when rate limiting is disabled."
+    echo ""
+}
+
+test_queue_drop_autoplay_does_not_reuse_queue_button_loading_state() {
+    echo "--- Testing Queue Drop Avoids Queue Button Loading State ---"
+
+    APP_JS=$(curl -s "$BASE_URL/static/app.js")
+
+    if [[ "$APP_JS" == *"playPlaylistTrack(track.id, queueBrowseBtn)"* ]]; then
+        echo "ERROR: queue-drop autoplay still reuses queueBrowseBtn, which can leave the queue UI stuck on Checking..."
+        exit 1
+    fi
+
+    if [[ "$APP_JS" != *"performFileProbe(file, null)"* ]]; then
+        echo "ERROR: app.js is missing the expected queue probe call without queueBrowseBtn"
+        exit 1
+    fi
+
+    if [[ "$APP_JS" != *"playPlaylistTrack(track.id)"* ]]; then
+        echo "ERROR: app.js is missing the expected queue autoplay call without queueBrowseBtn"
+        exit 1
+    fi
+
+    echo "SUCCESS: queue probing and autoplay no longer share queueBrowseBtn loading state."
+    echo ""
+}
+
+test_queue_probe_uses_status_instead_of_queue_button_label() {
+    echo "--- Testing Queue Probe Uses Status Instead Of Queue Button Label ---"
+
+    APP_JS=$(curl -s "$BASE_URL/static/app.js")
+
+    if [[ "$APP_JS" != *"Checking queue file \${index + 1} of \${files.length}: \${file.name}"* ]]; then
+        echo "ERROR: app.js is missing the expected queue batch progress status"
+        exit 1
+    fi
+
+    if [[ "$APP_JS" == *"showButtonLoadingAndGetOriginal(queueBrowseBtn, \"Checking...\")"* ]]; then
+        echo "ERROR: app.js still uses queueBrowseBtn as a probe loading indicator"
+        exit 1
+    fi
+
+    echo "SUCCESS: queue probes report progress in status text without mutating queueBrowseBtn."
+    echo ""
+}
+
 test_remote_cache_access_record_refresh() {
     TEST_NAME=$1
     URL=$2
@@ -2519,6 +2585,9 @@ echo "Service is up!"
 
 test_health_endpoint
 test_client_config_consistency
+test_client_config_disables_queue_cap_in_app_js
+test_queue_drop_autoplay_does_not_reuse_queue_button_loading_state
+test_queue_probe_uses_status_instead_of_queue_button_label
 
 # Cache behavior tests run early to reduce interference from warmed cache state.
 # Individual tests may still use unique URLs or explicit cache-reset helpers when

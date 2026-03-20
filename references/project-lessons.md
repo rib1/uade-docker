@@ -51,8 +51,10 @@ This document contains project-specific learnings and regression-avoidance notes
 - **Probe vs Upload:** `/probe-upload` returns metadata without conversion artifacts. Do not reuse the probe response as if it were a conversion result.
 - **Batch Guardrails:** Queue add probes local files one-by-one, so `/probe-upload` may need a higher rate limit than normal conversion endpoints. Pair that with a client-side batch cap so one drop or file-picker action cannot enqueue an unbounded number of probes.
 - **Dev Mode Guardrails:** When rate limiting is disabled for local/dev use, disable the browser-side queue batch cap too. Otherwise the UI still enforces a production guardrail even though the backend limiter is off.
+- **Stable Queue Affordance:** Do not reuse the visible `+ Files` queue browse label as a per-file probe progress indicator. In Firefox multi-file drops, repeatedly mutating that label to `Checking...` proved brittle; batch progress belongs in status text, while the queue affordance should stay stable.
 - **Accept Attribute Sync:** `loadSupportedExtensions()` fetches formats from `/supported-extensions` and dynamically sets `accept` on all file inputs (`fileInput` and `queueFileInput`). No hardcoded `accept` attributes in HTML.
 - **Auto-Play on Queue Add:** Only auto-play when the queue was empty and nothing is playing. Never interrupt active playback just because a file was dropped onto the queue.
+- **Autoplay Recovery:** Queue autoplay can hit browser-policy or playback-start failures during local batch adds, especially in Firefox. Any `audioPlayer.play()` failure path must release the global UI lock, not just the explicit `NotAllowedError` branch.
 
 ## Always-Visible Launcher Lessons
 
@@ -109,6 +111,7 @@ This document contains project-specific learnings and regression-avoidance notes
 - **Service Isolation:** If a scan or test flow needs app-side policy changes such as `UADE_TEST_MODE=1`, model it as a dedicated Compose service rather than relying on caller-managed environment setup.
 - **Shell Scripts:** Avoid `sed` when shell parameter expansion is sufficient, as flagged by ShellCheck.
 - **Expected Noise:** Expect some negative-path noise in Docker test logs, especially UADE metadata errors for intentionally unsupported files and test HTTP server `ConnectionResetError` when oversized downloads are aborted early.
+- **Expected Browser Noise:** During mixed local queue drops, Firefox may log autoplay-block messages and `/probe-upload` `500` responses for unsupported files. Treat those as expected noise unless the UI remains locked or the queue stops advancing.
 - **Test Environment:** Prefer the repo's Docker Compose flow for endpoint coverage over ad hoc local execution.
 - **Compose Exit Behavior:** Prefer `docker compose ... run --rm --build uade-test-runner` for the one-off endpoint test job. Using `up` for `uade-web`, `uade-test-runner`, and `test-http-server` stays attached because the helper services are long-lived.
 - **Compose Variant Switching:** When moving between Compose test variants that override the same `uade-web` service, bring the stack down first. Reusing a stale container can preserve the wrong env vars and make suites fail for configuration reasons instead of code regressions.
