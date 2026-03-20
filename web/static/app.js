@@ -21,6 +21,7 @@ const QUEUE_DROP_FILE_LIMIT = window.__UADE_CONFIG__
   : 20;
 const QUEUE_DROP_LIMIT_ENABLED = Number.isFinite(QUEUE_DROP_FILE_LIMIT) && QUEUE_DROP_FILE_LIMIT > 0;
 const ADDED_TO_QUEUE_STATUS = (name) => `✓ Added ${name} to queue`;
+const FILE_READ_TIMEOUT_MS = 5000;
 
 // DOM Elements
 const dropZone = document.getElementById("drop-zone");
@@ -218,6 +219,33 @@ function updatePrimaryPlayerActions() {
   syncUiLockState(isUiLocked);
 }
 
+async function readFileBufferWithTimeout(file, timeoutMs = FILE_READ_TIMEOUT_MS) {
+  const timeoutPromise = new Promise((_, reject) => {
+    window.setTimeout(() => {
+      reject(new Error(`File read timed out after ${timeoutMs}ms`));
+    }, timeoutMs);
+  });
+
+  return Promise.race([file.arrayBuffer(), timeoutPromise]);
+}
+
+async function materializeUploadFile(file) {
+  const buffer = await readFileBufferWithTimeout(file);
+  const normalizedType = file.type || "application/octet-stream";
+
+  try {
+    return new File([buffer], file.name, {
+      type: normalizedType,
+      lastModified: file.lastModified || Date.now(),
+    });
+  } catch (_err) {
+    const blob = new Blob([buffer], { type: normalizedType });
+    blob.name = file.name;
+    blob.lastModified = file.lastModified || Date.now();
+    return blob;
+  }
+}
+
 /**
  * Synchronizes the disabled/busy state of lockable UI elements.
  */
@@ -263,7 +291,16 @@ function syncUiLockState(uiLocked) {
     uploadLabel.classList.toggle("disabled", uiLocked);
     uploadLabel.setAttribute("aria-busy", ariaBusy);
   }
-
+  if (queueFileInput) {
+    queueFileInput.disabled = uiLocked;
+    queueFileInput.setAttribute("aria-busy", ariaBusy);
+  }
+  if (queueBrowseBtn) {
+    queueBrowseBtn.classList.toggle("disabled", uiLocked);
+    queueBrowseBtn.setAttribute("aria-busy", ariaBusy);
+    queueBrowseBtn.setAttribute("aria-disabled", uiLocked ? "true" : "false");
+    queueBrowseBtn.tabIndex = uiLocked ? -1 : 0;
+  }
   updatePlayerSectionVisibility();
 }
 
@@ -418,7 +455,15 @@ async function handleFileUpload(file) {
 }
 
 // Perform a conversion (upload, URL, or example)
-async function performConversion(endpoint, options, button, initialStatusMessage, successMessageTemplate, moduleNameOverride, onSuccessCallback = () => {}) {
+async function performConversion(
+  endpoint,
+  options,
+  button,
+  initialStatusMessage,
+  successMessageTemplate,
+  moduleNameOverride,
+  onSuccessCallback = () => {},
+) {
   syncUiLockState(true);
   const originalBtnText = showButtonLoadingAndGetOriginal(button);
   showStatus(initialStatusMessage, "info");
@@ -505,10 +550,17 @@ async function performProbe(url, sampleUrl, button) {
   }
 }
 
-async function performFileProbe(file, button) {
+async function performFileProbe(
+  file,
+  button,
+  { showInitialStatus = true, showErrorStatus = true } = {},
+) {
   syncUiLockState(true);
   const originalBtnText = button ? showButtonLoadingAndGetOriginal(button, "Checking...") : null;
-  showStatus("Checking module metadata...", "info");
+  const shouldShowInitialStatus = showInitialStatus && Boolean(button);
+  if (shouldShowInitialStatus) {
+    showStatus("Checking module metadata...", "info");
+  }
 
   try {
     const formData = new FormData();
@@ -528,7 +580,9 @@ async function performFileProbe(file, button) {
     const data = await response.json();
 
     if (!response.ok) {
-      showStatus(`✗ Error: ${data.error || "Probe failed"}`, "error");
+      if (showErrorStatus) {
+        showStatus(`✗ Error: ${data.error || "Probe failed"}`, "error");
+      }
       return null;
     }
 
@@ -538,7 +592,9 @@ async function performFileProbe(file, button) {
 
     return data;
   } catch (error) {
-    showStatus(`✗ Probe failed: ${error.message}`, "error");
+    if (showErrorStatus) {
+      showStatus(`✗ Probe failed: ${error.message}`, "error");
+    }
     return null;
   } finally {
     if (button && originalBtnText !== null) {
@@ -658,20 +714,73 @@ async function handleQueueFileBatch(fileList) {
     return;
   }
 
+  const batchStatus = showStatus(`Checking queue file 1 of ${files.length}: ${files[0].name}`, "info");
+  let addedCount = 0;
+  let skippedCount = 0;
+  let lastAddedName = "";
+
   for (const [index, file] of files.entries()) {
-    showStatus(`Checking queue file ${index + 1} of ${files.length}: ${file.name}`, "info");
-    await handleQueueFileDrop(file);
+    updateStatusMessage(
+      batchStatus,
+      `Checking queue file ${index + 1} of ${files.length}: ${file.name}`,
+      "info",
+    );
+    const result = await handleQueueFileDrop(file, { showStatusMessages: false });
+    if (result.added) {
+      addedCount += 1;
+      lastAddedName = result.name || lastAddedName;
+    } else {
+      skippedCount += 1;
+    }
+  }
+
+  if (files.length === 1) {
+    if (addedCount === 1) {
+      updateStatusMessage(batchStatus, ADDED_TO_QUEUE_STATUS(lastAddedName), "success");
+    } else {
+      updateStatusMessage(batchStatus, `✗ Skipped ${files[0].name}`, "warning");
+    }
+    return;
+  }
+
+  if (addedCount > 0 && skippedCount === 0) {
+    updateStatusMessage(batchStatus, `✓ Added ${addedCount} file(s) to queue`, "success");
+  } else if (addedCount > 0) {
+    updateStatusMessage(
+      batchStatus,
+      `✓ Added ${addedCount} file(s) to queue, skipped ${skippedCount}`,
+      "warning",
+    );
+  } else {
+    updateStatusMessage(batchStatus, `✗ Skipped all ${skippedCount} file(s)`, "warning");
   }
 }
 
-async function handleQueueFileDrop(file) {
+async function handleQueueFileDrop(file, { showStatusMessages = true } = {}) {
+  if (file.size === 0) {
+    if (showStatusMessages) {
+      showStatus(`✗ Skipped empty file: ${file.name}`, "warning");
+    }
+    return { added: false, name: file.name };
+  }
+
+  let queueFile = file;
+  try {
+    queueFile = await materializeUploadFile(file);
+  } catch (error) {
+    if (showStatusMessages) {
+      showStatus(`✗ Skipped unreadable dropped file: ${file.name}`, "warning");
+    }
+    return { added: false, name: file.name };
+  }
+
   const existing = playlistTracks.find(
     (t) =>
       t.source === "local" &&
       t.localFile &&
-      t.localFile.name === file.name &&
-      t.localFile.size === file.size &&
-      t.localFile.type === file.type,
+      t.localFile.name === queueFile.name &&
+      t.localFile.size === queueFile.size &&
+      t.localFile.type === queueFile.type,
   );
 
   let name, moduleFormat, playerFormat, moduleHash;
@@ -681,9 +790,12 @@ async function handleQueueFileDrop(file) {
     playerFormat = existing.playerFormat;
     moduleHash = existing.moduleHash || null;
   } else {
-    const probeData = await performFileProbe(file, null);
+    const probeData = await performFileProbe(queueFile, null, {
+      showInitialStatus: false,
+      showErrorStatus: showStatusMessages,
+    });
     if (!probeData) {
-      return;
+      return { added: false, name: file.name };
     }
     name = probeData.module_name || probeData.filename || file.name;
     moduleFormat = probeData.module_format;
@@ -698,7 +810,7 @@ async function handleQueueFileDrop(file) {
     sample_url: null,
     format: moduleFormat || playerFormat || "Module",
     source: "local",
-    localFile: file,
+    localFile: queueFile,
     playUrl: null,
     downloadUrl: null,
     audioFormat: null,
@@ -709,10 +821,13 @@ async function handleQueueFileDrop(file) {
     subsongDurations: [],
   };
   addTrackToPlaylist(track);
-  showStatus(ADDED_TO_QUEUE_STATUS(name), "success");
+  if (showStatusMessages) {
+    showStatus(ADDED_TO_QUEUE_STATUS(name), "success");
+  }
   if (shouldAutoPlay) {
     void playPlaylistTrack(track.id);
   }
+  return { added: true, name };
 }
 
 function getSerializablePlaylistTracks() {
@@ -2181,18 +2296,45 @@ function getCacheStatusMessage(data, moduleName, nonCacheMessage) {
 }
 
 // Status Messages
+function clearStatusMessageTimers(status) {
+  if (status._removeTimer) {
+    clearTimeout(status._removeTimer);
+    status._removeTimer = null;
+  }
+  if (status._fadeTimer) {
+    clearTimeout(status._fadeTimer);
+    status._fadeTimer = null;
+  }
+}
+
+function scheduleStatusRemoval(status) {
+  clearStatusMessageTimers(status);
+  status._removeTimer = setTimeout(() => {
+    status.style.opacity = "0";
+    status._fadeTimer = setTimeout(() => status.remove(), 300);
+  }, 5000);
+}
+
+function updateStatusMessage(status, message, type = "info") {
+  if (!status) {
+    return showStatus(message, type);
+  }
+
+  status.className = `status-message status-${type}`;
+  status.textContent = message;
+  status.style.opacity = "1";
+  scheduleStatusRemoval(status);
+  return status;
+}
+
 function showStatus(message, type = "info") {
   const status = document.createElement("div");
   status.className = `status-message status-${type}`;
   status.textContent = message;
 
   statusContainer.appendChild(status);
-
-  // Auto-remove after 5 seconds
-  setTimeout(() => {
-    status.style.opacity = "0";
-    setTimeout(() => status.remove(), 300);
-  }, 5000);
+  scheduleStatusRemoval(status);
+  return status;
 }
 
 // Create and setup the overlay for blocked autoplay
