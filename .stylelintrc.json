@@ -1,4 +1,7 @@
 {
+  "reportDescriptionlessDisables": true,
+  "reportInvalidScopeDisables": true,
+  "reportNeedlessDisables": true,
   "rules": {
     "at-rule-no-unknown": true,
     "block-no-empty": true,
@@ -6,6 +9,7 @@
     "color-no-invalid-hex": true,
     "color-hex-length": "short",
     "custom-property-no-missing-var-function": true,
+    "custom-property-pattern": "^[a-z][a-z0-9-]*$",
     "declaration-block-no-shorthand-property-overrides": true,
     "declaration-block-no-duplicate-properties": true,
     "declaration-property-value-no-unknown": true,

@@ -622,7 +622,7 @@ audio::-webkit-media-controls-enclosure {
 .playlist-launcher-drop-hint[aria-disabled="true"],
 .playlist-launcher-drop-hint[aria-busy="true"] {
   pointer-events: none;
-  color: var(--text-muted);
+  color: var(--text-dim);
   border-color: var(--border);
   cursor: not-allowed;
   opacity: 0.6;
