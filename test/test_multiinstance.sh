@@ -1,6 +1,7 @@
 #!/bin/bash
 
 set -u
+set -o pipefail
 
 BASE_URL_A="http://uade-web-a:5000"
 BASE_URL_B="http://uade-web-b:5000"

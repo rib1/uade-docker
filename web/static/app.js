@@ -871,9 +871,9 @@ function getSerializablePlaylistTracks() {
 
 function getSaveablePlaylistTracks() {
   return playlistTracks
-    .filter((track) => track.source !== "local" || Boolean(track.playUrl) || Boolean(track.moduleHash))
+    .filter((track) => track.source !== "local" || Boolean(track.moduleHash))
     .map((track) => {
-      if (track.source === "local" && track.playUrl) {
+      if (track.source === "local" && track.playUrl && track.moduleHash) {
         return {
           n: track.name,
           f: track.format || "Module",
@@ -881,7 +881,7 @@ function getSaveablePlaylistTracks() {
           pu: track.playUrl,
           du: track.downloadUrl,
           af: track.audioFormat || "wav",
-          mh: track.moduleHash || null,
+          mh: track.moduleHash,
           mf: track.moduleFormat || null,
           pf: track.playerFormat || null,
           ss: track.subsongs || null,
@@ -1090,7 +1090,7 @@ function clearStoredQueue(options = {}) {
 
 function hasSaveableTracks() {
   return playlistTracks.some(
-    (track) => track.source !== "local" || Boolean(track.playUrl) || Boolean(track.moduleHash),
+    (track) => track.source !== "local" || Boolean(track.moduleHash),
   );
 }
 
