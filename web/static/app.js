@@ -486,9 +486,15 @@ async function performConversion(
   successMessageTemplate,
   moduleNameOverride,
   onSuccessCallback = () => {},
+  { uiAlreadyLocked = false, originalBtnText: providedOriginalBtnText = null } = {},
 ) {
-  syncUiLockState(true);
-  const originalBtnText = showButtonLoadingAndGetOriginal(button);
+  let originalBtnText = providedOriginalBtnText;
+  if (!uiAlreadyLocked || originalBtnText === null) {
+    syncUiLockState(true);
+    originalBtnText = showButtonLoadingAndGetOriginal(button);
+  } else {
+    setButtonLoadingState(button, "Converting...");
+  }
   showStatus(initialStatusMessage, "info");
 
   try {
@@ -523,7 +529,7 @@ async function performConversion(
   }
   // This part is only reached if the conversion failed
   // (i.e., if `response.ok` was false or an error was thrown).
-  button.textContent = originalBtnText;
+  button.textContent = getButtonRestoreText(button, originalBtnText);
   syncUiLockState(false);
 }
 
@@ -1721,41 +1727,53 @@ async function playCachedLocalTrack(track, trackId, button) {
   const originalBtnText = showButtonLoadingAndGetOriginal(button);
   showStatus(`Loading ${track.name}...`, "info");
 
-  const fallbackToProbedConversion = async () => {
-    if (!track.moduleHash) {
+  const abortPlayback = (message, { remove = false } = {}) => {
+    if (remove) {
+      removeTrackFromPlaylist(trackId);
+    }
+    showStatus(message, "error");
+    button.textContent = originalBtnText;
+    syncUiLockState(false);
+  };
+
+  const fallbackToLocalRecovery = async () => {
+    if (!track.moduleHash && !track.localFile) {
       return false;
     }
 
     track.playUrl = null;
     track.downloadUrl = null;
     track.audioFormat = null;
-    button.textContent = originalBtnText;
-    syncUiLockState(false);
-    showStatus(`Cached audio for ${track.name} expired — reconverting from saved upload...`, "info");
-    await playDeferredLocalTrack(track, trackId, button);
+    const recoveryMessage = track.moduleHash
+      ? `Cached audio for ${track.name} expired — reconverting from saved upload...`
+      : `Cached audio for ${track.name} expired — re-uploading saved local file...`;
+    showStatus(recoveryMessage, "info");
+    await playDeferredLocalTrack(track, trackId, button, {
+      uiAlreadyLocked: true,
+      originalBtnText,
+    });
     return true;
   };
 
   try {
     const headResponse = await fetch(track.playUrl, { method: "HEAD" });
     if (!headResponse.ok) {
-      if (await fallbackToProbedConversion()) {
+      if (headResponse.status === 404 || headResponse.status === 410) {
+        if (await fallbackToLocalRecovery()) {
+          return;
+        }
+
+        abortPlayback(`✗ "${track.name}" has expired from server cache and was removed — drop the file again to re-add`, {
+          remove: true,
+        });
         return;
       }
-      removeTrackFromPlaylist(trackId);
-      showStatus(`✗ "${track.name}" has expired from server cache and was removed — drop the file again to re-add`, "error");
-      button.textContent = originalBtnText;
-      syncUiLockState(false);
+
+      abortPlayback(`✗ Couldn't verify cached audio for ${track.name}. Please try again.`);
       return;
     }
   } catch (_err) {
-    if (await fallbackToProbedConversion()) {
-      return;
-    }
-    removeTrackFromPlaylist(trackId);
-    showStatus(`✗ "${track.name}" is no longer available and was removed — drop the file again to re-add`, "error");
-    button.textContent = originalBtnText;
-    syncUiLockState(false);
+    abortPlayback(`✗ Couldn't verify cached audio for ${track.name}. Please try again.`);
     return;
   }
 
@@ -1796,7 +1814,32 @@ async function playCachedLocalTrack(track, trackId, button) {
   resetButtonAfterDelay(button, originalBtnText);
 }
 
-async function playDeferredLocalTrack(track, trackId, button) {
+async function playDeferredLocalTrack(
+  track,
+  trackId,
+  button,
+  { uiAlreadyLocked = false, originalBtnText: providedOriginalBtnText = null } = {},
+) {
+  let originalBtnText = providedOriginalBtnText;
+
+  const ensureLoadingState = (loadingText = "Converting...") => {
+    if (!uiAlreadyLocked || originalBtnText === null) {
+      syncUiLockState(true);
+      originalBtnText = showButtonLoadingAndGetOriginal(button, loadingText);
+      uiAlreadyLocked = true;
+      return;
+    }
+
+    setButtonLoadingState(button, loadingText);
+  };
+
+  const restoreUiState = () => {
+    if (originalBtnText !== null) {
+      button.textContent = getButtonRestoreText(button, originalBtnText);
+    }
+    syncUiLockState(false);
+  };
+
   const onConversionSuccess = (data) => {
     track.playUrl = data.play_url;
     track.downloadUrl = data.download_url;
@@ -1828,8 +1871,7 @@ async function playDeferredLocalTrack(track, trackId, button) {
 
   // Try converting by hash (module already on server from probe) before re-uploading
   if (track.moduleHash) {
-    syncUiLockState(true);
-    const originalBtnText = showButtonLoadingAndGetOriginal(button);
+    ensureLoadingState("Converting...");
     showStatus(`Converting ${track.name}...`, "info");
 
     try {
@@ -1859,8 +1901,7 @@ async function playDeferredLocalTrack(track, trackId, button) {
       if (response.status !== 404) {
         const errorData = await response.json().catch(() => ({}));
         showStatus(`✗ Error: ${errorData.error || "Conversion failed"}`, "error");
-        button.textContent = originalBtnText;
-        syncUiLockState(false);
+        restoreUiState();
         return;
       }
       // 404 means the probed source is no longer available on this server instance.
@@ -1868,11 +1909,10 @@ async function playDeferredLocalTrack(track, trackId, button) {
     } catch (_err) {
       // Network error — fall through to re-upload
     }
-    button.textContent = originalBtnText;
-    syncUiLockState(false);
   }
 
   if (!track.localFile) {
+    restoreUiState();
     showStatus(`✗ "${track.name}" has expired from server — drop the file again to re-add`, "error");
     removeTrackFromPlaylist(track.id);
     return;
@@ -1889,6 +1929,7 @@ async function playDeferredLocalTrack(track, trackId, button) {
     "✓ {moduleName} converted and ready to play",
     track.name,
     onConversionSuccess,
+    { uiAlreadyLocked, originalBtnText },
   );
 }
 
