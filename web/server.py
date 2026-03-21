@@ -750,12 +750,15 @@ def touch_for_lru(file_path):
 
 
 def find_existing_probed_module_path(module_hash: str) -> Path | None:
-    """Return a cached probed module path by exact filename match within MODULES_DIR."""
-    expected_name = f"probed_{module_hash}"
+    """Return a cached probed module path by exact suffix match within MODULES_DIR."""
 
     try:
-        for entry in MODULES_DIR.iterdir():
-            if entry.name == expected_name and entry.is_file():
+        for entry in MODULES_DIR.glob("probed_*"):
+            if (
+                entry.is_file()
+                and entry.name.startswith("probed_")
+                and entry.name.removeprefix("probed_") == module_hash
+            ):
                 return entry.resolve()
     except OSError:
         return None
