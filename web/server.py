@@ -749,6 +749,24 @@ def touch_for_lru(file_path):
         logger.warning(f"Could not touch file for LRU update {file_path}", exc_info=True)
 
 
+def find_probed_module_by_hash(module_hash: str) -> Path | None:
+    """Find a cached probed module by validated hash without constructing a hash-based path."""
+    try:
+        for entry in MODULES_DIR.iterdir():
+            entry_name = entry.name
+            if (
+                entry.is_file()
+                and entry_name.startswith("probed_")
+                and len(entry_name) == len("probed_") + 32
+                and entry_name[len("probed_") :] == module_hash
+            ):
+                return entry
+    except OSError:
+        return None
+
+    return None
+
+
 def is_cache_access_record(remote_path):
     """Return True when the remote cache path points to a sidecar access record."""
     return str(remote_path).endswith(CACHE_ACCESS_RECORD_SUFFIX)
@@ -1958,19 +1976,9 @@ def test_remove_probed_module():
     if not isinstance(module_hash, str) or not _MD5_HEX_RE.match(module_hash):
         return json_response({"error": "Invalid module hash"}, 400)
 
-    safe_module_hash = secure_filename(module_hash)
-    if safe_module_hash != module_hash:
-        return json_response({"error": "Invalid module hash"}, 400)
-
     removed = False
-    probed_path = (MODULES_DIR / f"probed_{safe_module_hash}").resolve()
-    modules_dir_base = MODULES_DIR.resolve()
-    try:
-        probed_path.relative_to(modules_dir_base)
-    except ValueError:
-        return json_response({"error": "Invalid target path"}, 400)
-
-    if probed_path.exists():
+    probed_path = find_probed_module_by_hash(module_hash)
+    if probed_path and probed_path.exists():
         probed_path.unlink(missing_ok=True)
         removed = True
 
@@ -2060,9 +2068,10 @@ def probe_upload():
         module_hash = get_file_hash(temp_path)
         probed_path = MODULES_DIR / f"probed_{module_hash}"
 
-        if probed_path.exists() and probed_path.stat().st_size > 0:
+        if probed_path.exists():
             temp_path.unlink(missing_ok=True)
-            touch_for_lru(probed_path)
+            if probed_path.stat().st_size > 0:
+                touch_for_lru(probed_path)
         else:
             temp_path.replace(probed_path)
 
@@ -2109,18 +2118,9 @@ def convert_probed():
     if not _MD5_HEX_RE.match(module_hash):
         return json_response({"error": "Invalid module hash"}, 400)
 
-    safe_module_hash = secure_filename(module_hash)
-    if safe_module_hash != module_hash:
-        return json_response({"error": "Invalid module hash"}, 400)
+    probed_path = find_probed_module_by_hash(module_hash)
 
-    probed_path = (MODULES_DIR / f"probed_{safe_module_hash}").resolve()
-    modules_dir_base = MODULES_DIR.resolve()
-    try:
-        probed_path.relative_to(modules_dir_base)
-    except ValueError:
-        return json_response({"error": "Invalid module hash"}, 400)
-
-    if not probed_path.exists() or probed_path.stat().st_size == 0:
+    if probed_path is None or not probed_path.exists() or probed_path.stat().st_size == 0:
         return json_response({"error": "Module not found — please re-upload"}, 404)
 
     touch_for_lru(probed_path)

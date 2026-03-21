@@ -99,6 +99,26 @@ function filenameFromUrl(url) {
   }
 }
 
+function getLocalTrackSourceIdentity(file) {
+  return {
+    originalLocalName: file?.name || null,
+    originalLocalSize: Number.isFinite(file?.size) ? file.size : null,
+    originalLocalType: file?.type || "",
+  };
+}
+
+function matchesLocalTrackSource(track, file) {
+  if (!track || track.source !== "local" || !file) {
+    return false;
+  }
+
+  const trackName = track.localFile?.name || track.originalLocalName || null;
+  const trackSize = Number.isFinite(track.localFile?.size) ? track.localFile.size : track.originalLocalSize;
+  const trackType = track.localFile?.type || track.originalLocalType || "";
+
+  return trackName === file.name && trackSize === file.size && trackType === file.type;
+}
+
 // Helper function to download large files using range requests
 async function downloadWithRangeRequests(url, filename, fileSize) {
   const chunkSize = 10 * 1024 * 1024; // 10MB chunks (well under 32MB limit)
@@ -448,6 +468,9 @@ async function handleFileUpload(file) {
         playerFormat: data.player_format || "Module",
         subsongs: data.subsongs,
         subsongDurations: data.subsong_durations || [],
+        localFile: file,
+        moduleHash: data.module_hash || null,
+        ...getLocalTrackSourceIdentity(file),
       };
       updatePrimaryPlayerActions();
     },
@@ -715,9 +738,11 @@ async function handleQueueFileBatch(fileList) {
   }
 
   const batchStatus = showStatus(`Checking queue file 1 of ${files.length}: ${files[0].name}`, "info");
+  const shouldAutoPlayAfterBatch = playlistTracks.length === 0 && !audioPlayer.getAttribute("src");
   let addedCount = 0;
   let skippedCount = 0;
   let lastAddedName = "";
+  let firstAddedTrackId = null;
 
   for (const [index, file] of files.entries()) {
     updateStatusMessage(
@@ -725,13 +750,21 @@ async function handleQueueFileBatch(fileList) {
       `Checking queue file ${index + 1} of ${files.length}: ${file.name}`,
       "info",
     );
-    const result = await handleQueueFileDrop(file, { showStatusMessages: false });
+    const result = await handleQueueFileDrop(file, {
+      showStatusMessages: false,
+      autoPlayWhenAdded: false,
+    });
     if (result.added) {
       addedCount += 1;
       lastAddedName = result.name || lastAddedName;
+      firstAddedTrackId = firstAddedTrackId || result.trackId || null;
     } else {
       skippedCount += 1;
     }
+  }
+
+  if (shouldAutoPlayAfterBatch && addedCount > 0 && firstAddedTrackId) {
+    void playPlaylistTrack(firstAddedTrackId);
   }
 
   if (files.length === 1) {
@@ -756,7 +789,7 @@ async function handleQueueFileBatch(fileList) {
   }
 }
 
-async function handleQueueFileDrop(file, { showStatusMessages = true } = {}) {
+async function handleQueueFileDrop(file, { showStatusMessages = true, autoPlayWhenAdded = true } = {}) {
   if (file.size === 0) {
     if (showStatusMessages) {
       showStatus(`✗ Skipped empty file: ${file.name}`, "warning");
@@ -775,34 +808,27 @@ async function handleQueueFileDrop(file, { showStatusMessages = true } = {}) {
   }
 
   const existing = playlistTracks.find(
-    (t) =>
-      t.source === "local" &&
-      t.localFile &&
-      t.localFile.name === queueFile.name &&
-      t.localFile.size === queueFile.size &&
-      t.localFile.type === queueFile.type,
+    (t) => matchesLocalTrackSource(t, queueFile),
   );
 
-  let name, moduleFormat, playerFormat, moduleHash;
   if (existing) {
-    name = existing.name;
-    moduleFormat = existing.moduleFormat;
-    playerFormat = existing.playerFormat;
-    moduleHash = existing.moduleHash || null;
-  } else {
-    const probeData = await performFileProbe(queueFile, null, {
-      showInitialStatus: false,
-      showErrorStatus: showStatusMessages,
-    });
-    if (!probeData) {
-      return { added: false, name: file.name };
-    }
-    name = probeData.module_name || probeData.filename || file.name;
-    moduleFormat = probeData.module_format;
-    playerFormat = probeData.player_format;
-    moduleHash = probeData.module_hash || null;
+    return { added: false, name: existing.name, trackId: existing.id || null };
   }
-  const shouldAutoPlay = playlistTracks.length === 0 && !audioPlayer.getAttribute("src");
+
+  let name, moduleFormat, playerFormat, moduleHash;
+  const probeData = await performFileProbe(queueFile, null, {
+    showInitialStatus: false,
+    showErrorStatus: showStatusMessages,
+  });
+  if (!probeData) {
+    return { added: false, name: file.name };
+  }
+  name = probeData.module_name || probeData.filename || file.name;
+  moduleFormat = probeData.module_format;
+  playerFormat = probeData.player_format;
+  moduleHash = probeData.module_hash || null;
+  const shouldAutoPlay = autoPlayWhenAdded && playlistTracks.length === 0 && !audioPlayer.getAttribute("src");
+  const sourceIdentity = getLocalTrackSourceIdentity(queueFile);
   const track = {
     id: createPlaylistTrackId(),
     name,
@@ -819,6 +845,7 @@ async function handleQueueFileDrop(file, { showStatusMessages = true } = {}) {
     moduleHash,
     subsongs: null,
     subsongDurations: [],
+    ...sourceIdentity,
   };
   addTrackToPlaylist(track);
   if (showStatusMessages) {
@@ -827,7 +854,7 @@ async function handleQueueFileDrop(file, { showStatusMessages = true } = {}) {
   if (shouldAutoPlay) {
     void playPlaylistTrack(track.id);
   }
-  return { added: true, name };
+  return { added: true, name, trackId: track.id };
 }
 
 function getSerializablePlaylistTracks() {
@@ -1273,6 +1300,11 @@ function handleAddCurrentToPlaylist() {
       playerFormat: currentLocalTrackData.playerFormat,
       subsongs: currentLocalTrackData.subsongs,
       subsongDurations: currentLocalTrackData.subsongDurations,
+      localFile: currentLocalTrackData.localFile,
+      moduleHash: currentLocalTrackData.moduleHash,
+      originalLocalName: currentLocalTrackData.originalLocalName || null,
+      originalLocalSize: currentLocalTrackData.originalLocalSize ?? null,
+      originalLocalType: currentLocalTrackData.originalLocalType || "",
     };
   } else {
     showStatus("Current track cannot be added to queue", "warning");
@@ -1393,7 +1425,7 @@ async function loadExamples() {
       actions.className = "example-actions";
 
       const playBtn = document.createElement("button");
-      playBtn.className = "play-btn";
+      playBtn.className = "btn btn-primary play-btn";
       playBtn.setAttribute("type", "button");
       playBtn.setAttribute("data-example-id", example.id);
       playBtn.textContent = "▶ Play Now";
@@ -1403,7 +1435,7 @@ async function loadExamples() {
       actions.appendChild(playBtn);
 
       const addBtn = document.createElement("button");
-      addBtn.className = "play-btn add-playlist-btn";
+      addBtn.className = "btn btn-secondary add-playlist-btn";
       addBtn.setAttribute("type", "button");
       addBtn.textContent = "+ Add To Queue";
       addBtn.addEventListener("click", () => handleExampleAddToPlaylist(example, addBtn));
@@ -1739,6 +1771,11 @@ async function playCachedLocalTrack(track, trackId, button) {
     playerFormat: track.playerFormat,
     subsongs: track.subsongs,
     subsongDurations: track.subsongDurations,
+    localFile: track.localFile,
+    moduleHash: track.moduleHash,
+    originalLocalName: track.originalLocalName || null,
+    originalLocalSize: track.originalLocalSize ?? null,
+    originalLocalType: track.originalLocalType || "",
   };
   updateShareButton(false);
   showStatus(`✓ ${track.name} loaded from conversion cache and ready to play`, "success");
@@ -1766,7 +1803,6 @@ async function playDeferredLocalTrack(track, trackId, button) {
     track.audioFormat = data.audio_format || "wav";
     track.subsongs = data.subsongs;
     track.subsongDurations = data.subsong_durations || [];
-    track.localFile = null;
 
     currentPlaylistTrackId = trackId;
     currentShareableUrl = null;
@@ -1780,6 +1816,11 @@ async function playDeferredLocalTrack(track, trackId, button) {
       playerFormat: track.playerFormat,
       subsongs: track.subsongs,
       subsongDurations: track.subsongDurations,
+      localFile: track.localFile,
+      moduleHash: track.moduleHash,
+      originalLocalName: track.originalLocalName || null,
+      originalLocalSize: track.originalLocalSize ?? null,
+      originalLocalType: track.originalLocalType || "",
     };
     updateShareButton(false);
     renderPlaylist();

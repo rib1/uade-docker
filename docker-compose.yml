@@ -29,17 +29,12 @@
 #    docker compose run --rm --build uade-test-race-condition-runner
 # 6. To bring up the multi-instance UI locally (two app containers sharing cache):
 #    powershell:
-#    $env:GIT_COMMIT = (git rev-parse HEAD); docker compose -f docker-compose.yml -f test/docker-compose.multiinstance.yml up -d --build uade-web-a uade-web-b
-#    or in bash:
-#    GIT_COMMIT=$(git rev-parse HEAD); docker compose -f docker-compose.yml -f test/docker-compose.multiinstance.yml up -d --build uade-web-a uade-web-b
+#    docker compose -f docker-compose.yml -f test/docker-compose.multiinstance.yml up -d --build uade-web-a uade-web-b
 #    UI URLs:
 #      http://localhost:5001  (uade-web-a)
 #      http://localhost:5002  (uade-web-b)
 # 7. To run the multi-instance tests:
-#    powershell:
-#    $env:GIT_COMMIT = (git rev-parse HEAD); docker compose -f docker-compose.yml -f test/docker-compose.multiinstance.yml run --rm --build uade-test-multiinstance-runner
-#    or in bash:
-#    GIT_COMMIT=$(git rev-parse HEAD); docker compose -f docker-compose.yml -f test/docker-compose.multiinstance.yml run --rm --build uade-test-multiinstance-runner
+#    docker compose -f docker-compose.yml -f test/docker-compose.multiinstance.yml run --rm --build uade-test-multiinstance-runner
 # 8. To stop and clean up the multi-instance setup:
 #    docker compose -f docker-compose.yml -f test/docker-compose.multiinstance.yml down -v
 # 9. To run a DAST scan (UADE_TEST_MODE is OFF by default):

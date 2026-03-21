@@ -321,7 +321,7 @@ UADE Web Player enforces rate limits to prevent abuse and ensure fair usage:
 - Conversion endpoints: 10 requests/min per IP
 - Queue probe endpoint (`/probe-upload`): 40 requests/min per IP
 - Play endpoints: 50 requests/min per IP
-- Download endpoint: 3 requests/min per IP
-- Global limit: 200 requests/hour per IP (all endpoints combined)
+- Download endpoint: 6 requests/min per IP (`flask-limiter` enforces `DOWNLOAD_RATE_LIMIT`)
+- Global limit: 200 requests/hour per IP (all endpoints combined, enforced via `RATE_LIMIT`)
 
 > Rate limits are enforced per instance/pod. For global limits across all instances, a distributed backend (e.g., Redis) is required.
