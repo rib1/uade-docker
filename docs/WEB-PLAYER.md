@@ -586,7 +586,19 @@ If issues persist, run with debug logging enabled and check cloud provider logs 
 
 To run the integration tests using Docker Compose:
 
-1. **Build and run the endpoint tests:**
+1. **Run the repository code-quality checks first:**
+
+    ```bash
+    ./test/check-code-quality.sh
+    ```
+
+    ```powershell
+    .\test\check-code-quality.ps1
+    ```
+
+    Run the platform-appropriate script before the Docker test stacks so the repo-mandated quality gate always executes as part of the test workflow.
+
+2. **Build and run the endpoint tests:**
 
     ```powershell
     $env:GIT_COMMIT = (git rev-parse HEAD); docker compose -f docker-compose.yml -f test/docker-compose.endpoints.yml run --rm --build uade-test-runner
@@ -594,7 +606,7 @@ To run the integration tests using Docker Compose:
 
     This builds the test image, starts any required dependencies, runs the endpoint tests, and removes the one-off `uade-test-runner` container when it exits.
 
-2. **To run tests again (after initial setup):**
+3. **To run tests again (after initial setup):**
 
     ```powershell
     docker compose -f docker-compose.yml -f test/docker-compose.endpoints.yml run --rm uade-test-runner
@@ -610,7 +622,7 @@ To run the integration tests using Docker Compose:
 
     Use this only for known upstream flakiness. The default test run still includes ModArchive coverage.
 
-3. **To run the accessibility test:**
+4. **To run the accessibility test:**
 
     ```powershell
     docker compose -f docker-compose.yml -f test/docker-compose.accessibility.yml run --rm --build uade-test-accessibility-runner

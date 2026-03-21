@@ -79,7 +79,7 @@ The Flask app is a **single 2200+ line file** with clear functional sections:
 - `playPlaylistTrack()` - Plays track from queue; handles three paths: already-converted local (instant), deferred local (tries `/convert-probed` with moduleHash first, falls back to `/upload` if 404, caches result), URL (convert-url)
 - `renderPlaylist()` - Orchestrates queue panel via `renderPlaylistLauncherBar()`, `renderPlaylistPanelControls()`, `renderPlaylistTrackItem()`
 - `setupQueueDropZone()` - Attaches drag-drop events to both launcher bar and queue panel, wires "+ Files" picker
-- `updatePlayerSectionVisibility()` - Shows/hides `#player-content` based on whether audio is loaded; the launcher bar stays always visible
+- `updatePlayerSectionVisibility()` - Shows/hides `#player-content` based on whether audio is loaded; the launcher bar always stays visible
 - `hasSerializableTracks()` - Checks if queue has any non-local (shareable) tracks
 - `loadExamples()` - Fetches `/examples` endpoint and populates grid
 - `setupDragAndDrop()` - Native HTML5 drag-drop events with visual feedback

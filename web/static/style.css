@@ -1,6 +1,6 @@
 :root {
   --primary: #4a9eff;
-  --primary-dark: #4877bf;
+  --primary-dark: #4676bf;
   --primary-contrast: #4477c2;
   --secondary: #6c757d;
   --success: #0a8927;
@@ -147,54 +147,14 @@ footer a:hover {
   font-weight: bold;
 }
 
-.example-card .play-btn {
-  flex: 1;
-  padding: 8px;
-  background: var(--primary-dark);
-  color: white;
-  border: none;
-  border-radius: 6px;
-  cursor: pointer;
-  font-weight: bold;
-  transition: background 0.3s;
-}
-
-.example-card .play-btn:hover {
-  background: var(--primary-contrast);
-}
-
-.example-card .play-btn:focus {
-  outline: none;
-  box-shadow: 0 0 0 3px rgba(74, 158, 255, 0.4);
-}
-
-.example-card .play-btn:disabled {
-  background: var(--secondary);
-  cursor: not-allowed;
-}
-
 .example-actions {
   display: flex;
   flex-direction: column;
   gap: 8px;
 }
 
-.add-playlist-btn {
+.example-actions .btn {
   width: 100%;
-}
-
-.example-card .add-playlist-btn {
-  background: var(--secondary);
-  color: white;
-}
-
-.example-card .add-playlist-btn:hover {
-  background: #5a6268;
-}
-
-.example-card .add-playlist-btn:focus {
-  outline: none;
-  box-shadow: 0 0 0 3px rgba(108, 117, 125, 0.4);
 }
 
 /* Drop Zone */
@@ -400,7 +360,6 @@ footer a:hover {
   box-shadow: none;
 }
 
-.play-btn[aria-busy="true"],
 .btn[aria-busy="true"] {
   opacity: 0.6;
   cursor: progress;

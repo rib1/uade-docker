@@ -30,12 +30,28 @@ def route_search_patterns(route: str) -> list[re.Pattern[str]]:
 
 
 def main() -> None:
-    server_path = Path("web/server.py")
+    script_dir = Path(__file__).resolve().parent
+    server_path_candidates = [
+        script_dir / "web/server.py",
+        script_dir.parent / "web/server.py",
+    ]
+    server_path = next((path for path in server_path_candidates if path.exists()), None)
+    if server_path is None:
+        print("Could not locate web/server.py for endpoint coverage reporting.", file=sys.stderr)
+        raise SystemExit(1)
+
     cli_paths = [Path(arg) for arg in sys.argv[1:]]
-    test_paths = cli_paths or [Path("test_endpoints.sh"), Path("test_multiinstance.sh")]
+    test_paths = cli_paths or [
+        script_dir / "test_endpoints.sh",
+        script_dir / "test_multiinstance.sh",
+    ]
 
     server_text = server_path.read_text(encoding="utf-8")
     existing_test_paths = [path for path in test_paths if path.exists()]
+    if not existing_test_paths:
+        print("No test files found for endpoint coverage reporting.", file=sys.stderr)
+        raise SystemExit(1)
+
     tests_text = "\n".join(path.read_text(encoding="utf-8") for path in existing_test_paths)
     explicit_covers = {
         match.group(1).strip()

@@ -165,7 +165,7 @@ test_url() {
 # 1. Test name (string)
 # 2. Example ID (string)
 test_play_example() {
-    # covers: /examples
+    # covers: /play-example/<example_id>
     TEST_NAME=$1
     EXAMPLE_ID=$2
 
@@ -389,6 +389,54 @@ test_probe_upload_error() {
 
     echo "SUCCESS: Probe upload returned expected error."
     echo "Response body: $BODY"
+    echo ""
+}
+
+test_probe_upload_preserves_negative_cache() {
+    TEST_NAME=$1
+    FILE_PATH=$2
+    MODULE_HASH=$(md5sum "$FILE_PATH" | awk '{print $1}')
+
+    echo "--- Testing Probe Upload Negative Cache Preservation: $TEST_NAME ---"
+
+    for attempt in 1 2; do
+        RESPONSE_ALL=$(curl -s -w "\n%{http_code}" -X POST -F "file=@$FILE_PATH" "$BASE_URL/probe-upload")
+        HTTP_CODE=$(echo "$RESPONSE_ALL" | tail -n1)
+        BODY=$(echo "$RESPONSE_ALL" | sed '$d')
+
+        if [ "$HTTP_CODE" -ne 500 ]; then
+            echo "ERROR: Probe upload attempt $attempt returned HTTP $HTTP_CODE (expected 500) for '$TEST_NAME'"
+            echo "Response body: $BODY"
+            exit 1
+        fi
+
+        if ! echo "$BODY" | grep -q "Could not detect module metadata"; then
+            echo "ERROR: Probe upload attempt $attempt returned unexpected error body for '$TEST_NAME'"
+            echo "Response body: $BODY"
+            exit 1
+        fi
+    done
+
+    CONVERT_RESPONSE_ALL=$(curl -s -w "\n%{http_code}" -X POST \
+        -H "Content-Type: application/json" \
+        -d "{\"module_hash\":\"$MODULE_HASH\",\"filename\":\"$(basename "$FILE_PATH")\"}" \
+        "$BASE_URL/convert-probed")
+    CONVERT_HTTP_CODE=$(echo "$CONVERT_RESPONSE_ALL" | tail -n1)
+    CONVERT_BODY=$(echo "$CONVERT_RESPONSE_ALL" | sed '$d')
+
+    if [ "$CONVERT_HTTP_CODE" -ne 404 ]; then
+        echo "ERROR: convert-probed returned HTTP $CONVERT_HTTP_CODE (expected 404) for '$TEST_NAME'"
+        echo "Response body: $CONVERT_BODY"
+        exit 1
+    fi
+
+    if ! echo "$CONVERT_BODY" | grep -q "Module not found"; then
+        echo "ERROR: convert-probed returned unexpected body for '$TEST_NAME'"
+        echo "Response body: $CONVERT_BODY"
+        exit 1
+    fi
+
+    echo "SUCCESS: Repeated invalid probe uploads preserved the negative cache marker."
     echo ""
 }
 
@@ -2695,6 +2743,7 @@ test_upload_error "Reject oversized file upload" "fixtures/invalid/too-large.bin
 # Probe-upload tests
 test_probe_upload "Probe upload Protracker module" "fixtures/modules/space_debris.mod"
 test_probe_upload_error "Probe upload non-module file" "fixtures/modules/gutenberg.txt" 500 "Could not detect module metadata"
+test_probe_upload_preserves_negative_cache "Probe upload invalid file preserves negative cache" "fixtures/modules/gutenberg.txt"
 test_probe_upload_error "Probe upload empty file" "fixtures/invalid/empty.bin" 400 "Empty file provided"
 test_probe_upload_error "Probe upload oversized file" "fixtures/invalid/too-large.bin" 413
 test_probe_upload_no_file

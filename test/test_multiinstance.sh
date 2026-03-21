@@ -409,11 +409,11 @@ test_probe_on_a_convert_on_b_expected_gap() {
     fi
 
     if [ "$CONVERT_CODE" -eq 200 ]; then
-        record_success "$TEST_NAME"
+        record_failure "$TEST_NAME" "unexpected HTTP 200 from convert-probed on B; body=${CONVERT_BODY}"
         return
     fi
 
-    record_failure "$TEST_NAME" "expected HTTP 404 fallback trigger or HTTP 200, got HTTP ${CONVERT_CODE}; body=${CONVERT_BODY}"
+    record_failure "$TEST_NAME" "expected HTTP 404 fallback trigger from convert-probed on B, got HTTP ${CONVERT_CODE}; body=${CONVERT_BODY}"
 }
 
 test_queue_hop_probe_convert_play() {
@@ -434,9 +434,7 @@ test_queue_hop_probe_convert_play() {
     CONVERT_CODE=$(echo "$CONVERT_ALL" | tail -n1)
     CONVERT_BODY=$(echo "$CONVERT_ALL" | sed '$d')
 
-    if [ "$CONVERT_CODE" -eq 200 ]; then
-        FILE_ID=$(echo "$CONVERT_BODY" | jq -r .file_id)
-    elif [ "$CONVERT_CODE" -eq 404 ] && echo "$CONVERT_BODY" | grep -q "Module not found"; then
+    if [ "$CONVERT_CODE" -eq 404 ] && echo "$CONVERT_BODY" | grep -q "Module not found"; then
         UPLOAD_ALL=$(curl -sS -w "\n%{http_code}" -X POST \
             -F "file=@fixtures/modules/space_debris.mod" \
             "${BASE_URL_A}/upload")
@@ -449,8 +447,11 @@ test_queue_hop_probe_convert_play() {
         fi
 
         FILE_ID=$(echo "$UPLOAD_BODY" | jq -r .file_id)
+    elif [ "$CONVERT_CODE" -eq 200 ]; then
+        record_failure "$TEST_NAME" "unexpected HTTP 200 from convert-probed on B; body=${CONVERT_BODY}"
+        return
     else
-        record_failure "$TEST_NAME" "expected convert-probed on B to return HTTP 200 or 404 fallback trigger, got HTTP ${CONVERT_CODE}; body=${CONVERT_BODY}"
+        record_failure "$TEST_NAME" "expected convert-probed on B to return HTTP 404 fallback trigger, got HTTP ${CONVERT_CODE}; body=${CONVERT_BODY}"
         return
     fi
 
