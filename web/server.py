@@ -749,6 +749,20 @@ def touch_for_lru(file_path):
         logger.warning(f"Could not touch file for LRU update {file_path}", exc_info=True)
 
 
+def find_existing_probed_module_path(module_hash: str) -> Path | None:
+    """Return a cached probed module path by exact filename match within MODULES_DIR."""
+    expected_name = f"probed_{module_hash}"
+
+    try:
+        for entry in MODULES_DIR.iterdir():
+            if entry.name == expected_name and entry.is_file():
+                return entry.resolve()
+    except OSError:
+        return None
+
+    return None
+
+
 def is_cache_access_record(remote_path):
     """Return True when the remote cache path points to a sidecar access record."""
     return str(remote_path).endswith(CACHE_ACCESS_RECORD_SUFFIX)
@@ -1958,15 +1972,9 @@ def test_remove_probed_module():
     if not isinstance(module_hash, str) or not _MD5_HEX_RE.match(module_hash):
         return json_response({"error": "Invalid module hash"}, 400)
 
-    probed_path = (MODULES_DIR / f"probed_{module_hash}").resolve()
-    modules_dir_base = MODULES_DIR.resolve()
-    try:
-        probed_path.relative_to(modules_dir_base)
-    except ValueError:
-        return json_response({"error": "Invalid target path"}, 400)
-
     removed = False
-    if probed_path.exists():
+    probed_path = find_existing_probed_module_path(module_hash)
+    if probed_path and probed_path.exists():
         probed_path.unlink(missing_ok=True)
         removed = True
 
@@ -2105,9 +2113,9 @@ def convert_probed():
     if not _MD5_HEX_RE.match(module_hash):
         return json_response({"error": "Invalid module hash"}, 400)
 
-    probed_path = MODULES_DIR / f"probed_{module_hash}"
+    probed_path = find_existing_probed_module_path(module_hash)
 
-    if not probed_path.exists() or probed_path.stat().st_size == 0:
+    if probed_path is None or not probed_path.exists() or probed_path.stat().st_size == 0:
         return json_response({"error": "Module not found — please re-upload"}, 404)
 
     touch_for_lru(probed_path)
