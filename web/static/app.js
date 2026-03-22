@@ -815,7 +815,7 @@ async function handleQueueFileDrop(file, { showStatusMessages = true, autoPlayWh
   let queueFile = file;
   try {
     queueFile = await materializeUploadFile(file);
-  } catch (error) {
+  } catch (_error) {
     if (showStatusMessages) {
       showStatus(`✗ Skipped unreadable dropped file: ${file.name}`, "warning");
     }
@@ -1268,7 +1268,7 @@ async function handleShare() {
     setTimeout(() => {
       shareBtn.textContent = originalText;
     }, 2000);
-  } catch (err) {
+  } catch (_err) {
     // Fallback for older browsers or insecure contexts
     showStatus("Failed to copy link to clipboard", "warning");
   }
@@ -1929,7 +1929,7 @@ async function playDeferredLocalTrack(
         return;
       }
 
-      if (response.status !== 404) {
+      if (response.status !== 404 && !track.localFile) {
         const errorData = await response.json().catch(() => ({}));
         showStatus(`✗ Error: ${errorData.error || "Conversion failed"}`, "error");
         restoreUiState();
@@ -2208,7 +2208,9 @@ function updateMediaSession(title, artist, album) {
 // Subsong Navigation
 function updateSubsongNavigation() {
   const container = document.getElementById("subsong-navigation");
-  if (!container) return;
+  if (!container) {
+    return;
+  }
 
   // Clear existing content
   container.replaceChildren();
@@ -2272,14 +2274,18 @@ function jumpToSubsong(startTime) {
 }
 
 function formatTime(seconds) {
-  if (!seconds || seconds === 0) return "0:00";
+  if (!seconds || seconds === 0) {
+    return "0:00";
+  }
   const mins = Math.floor(seconds / 60);
   const secs = Math.floor(seconds % 60);
   return `${mins}:${secs.toString().padStart(2, "0")}`;
 }
 
 function updateCurrentSubsongIndex() {
-  if (!audioPlayer || currentSubsongDurations.length === 0) return;
+  if (!audioPlayer || currentSubsongDurations.length === 0) {
+    return;
+  }
 
   const currentTime = audioPlayer.currentTime;
   let cumulativeTime = 0;

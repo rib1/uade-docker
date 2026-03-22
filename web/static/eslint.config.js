@@ -14,9 +14,19 @@ module.exports = [
       },
     },
     rules: {
+      curly: ["error", "all"],
+      eqeqeq: ["error", "always"],
       semi: ["error", "always"],
       quotes: ["error", "double"],
-      "no-unused-vars": "warn",
+      "no-empty": ["error", { allowEmptyCatch: true }],
+      "no-lonely-if": "error",
+      "no-unused-vars": ["error", {
+        argsIgnorePattern: "^_",
+        caughtErrors: "all",
+        caughtErrorsIgnorePattern: "^_",
+        varsIgnorePattern: "^_"
+      }],
+      "no-var": "error",
       "no-console": "off"
     },
   },
