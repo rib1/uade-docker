@@ -43,10 +43,12 @@ This document contains project-specific learnings and regression-avoidance notes
 **Key Takeaways:** Defer heavy work until it's needed. Keep the probe-then-convert pattern sharp. Cache conversion results on the track object so replay is instant.
 
 - **Deferred Conversion:** Probe local files on queue add (`/probe-upload`), which returns a `module_hash` (content-addressed MD5). When playback is triggered, the client tries `/convert-probed` with the hash (avoiding re-upload); if 404, falls back to `/upload` with the full file. Treat `/convert-probed` as a best-effort optimization, not guaranteed shared state. It is a great fit for the primary single-container Docker Desktop path, but multi-container deployments should assume fallback may be needed after a container hop.
-- **Track Object Mutation:** After a deferred track is converted, set `localFile` to null, keep `moduleHash` on the track, and cache `playUrl`/`downloadUrl` on the track object. Subsequent plays use the cached URLs without re-uploading.
+- **Track Object Mutation:** After a deferred track is converted, keep both `localFile` and `moduleHash` on the track and cache `playUrl`/`downloadUrl` on the track object. Subsequent plays use the cached URLs without re-uploading, but preserving `localFile` keeps `/upload` recovery available if cached audio later expires or `/convert-probed` is unavailable.
 - **File Object Lifecycle:** `File` objects from drag-drop or file input remain valid as long as the page is alive, but cannot survive serialization. Exclude local tracks from share/bookmark URLs, but browser-local saved queues may serialize local tracks via `moduleHash` or cached conversion URLs.
 - **Three Playback Paths:** `playPlaylistTrack()` must handle three cases: (1) already-converted local track with cached URLs, (2) deferred local track with `localFile` + `moduleHash` (tries `/convert-probed` first, falls back to `/upload`), (3) URL-based track (uses `/convert-url`). Keep these paths explicit — collapsing them introduces subtle regressions.
 - **Saved Queue Durability:** When serializing a converted local track for browser-local restore, preserve `moduleHash` alongside cached `playUrl`/`downloadUrl`. If the converted audio expires later, replay should fall back to `/convert-probed` before removing the queue item.
+- **Cached Track Verification:** Do not treat every failed `HEAD` probe of cached local audio as permanent expiry. `404`/`410` are real cache-miss signals, but transient verification failures should preserve the queue item instead of removing it.
+- **Recovery Priority:** If a cached local track still has `localFile`, `/upload` remains a valid recovery path even when `moduleHash` is missing or `/convert-probed` fails for non-404 reasons. Treat `/convert-probed` as an optimization, not the only recovery route.
 - **Multi-Container Expectation:** Shared converted-audio cache is the important cross-instance guarantee. Probed local-file state is container-local by default, so queue playback must remain correct when `/convert-probed` fails and `/upload` is required instead.
 - **Probe vs Upload:** `/probe-upload` returns metadata without conversion artifacts. Do not reuse the probe response as if it were a conversion result.
 - **Batch Guardrails:** Queue add probes local files one-by-one, so `/probe-upload` may need a higher rate limit than normal conversion endpoints. Pair that with a client-side batch cap so one drop or file-picker action cannot enqueue an unbounded number of probes.
@@ -141,12 +143,14 @@ This document contains project-specific learnings and regression-avoidance notes
 - **Configuration:** For Ruff specifically, `pyproject.toml` is the source of truth for rule selection.
 - **Best Practices:** When enabling stricter Ruff rules (e.g., `FBT`, `SLF`, `ARG`), prefer fixing code over adding ignores.
 - **Toolchain:** The repo's quality flow should validate the full supported stack: frontend assets, Python, Dockerfiles, Compose files, workflows, shell scripts, YAML, and instruction files.
+- **Toolchain:** `knip` is now part of the quality workflow for JavaScript dead-code auditing. Keep its scope defined through `test/knip.config.js` with explicit entry files and script-invoked dependency ignores, rather than relying on raw package-graph discovery.
 - **Toolchain:** The Ruff portion of the quality check should run both `ruff format --check` and `ruff check`.
 - **Toolchain:** Aggregate multi-file failures in PowerShell scripts to show all errors, not just the last one.
 - **Toolchain:** Keep quality-tool versions in Dependabot-managed manifests where possible. Docker-based tools such as Hadolint, Actionlint, and ShellCheck should be pinned in `test/docker-compose.tooling.yml`, while supporting `apk` packages in test Dockerfiles remain manual pins and should not be treated as Dependabot-managed.
 - **Validation Scope:** Explicitly include `docker-compose.dev.yml` in validation scripts and quality-check container mounts if it's part of the supported workflow.
 - **Layer Caching:** In `Dockerfile.quality`, COPY each dependency manifest (`docker-compose.tooling.yml`, `package.json`, `requirements-quality.txt`) immediately before its install step. Bundling all COPYs together means a change to any one manifest invalidates every install layer.
 - **COPY --chmod:** Use `COPY --chmod=755` instead of a separate `RUN chmod` to eliminate an extra layer.
+- **Dead CSS:** Do not add dead-CSS auditing to the enforced quality loop until the selector analysis has a stable safelist for dynamic UI states. Simple audits mostly flag generated classes like `status-*` and dataset-driven selectors such as `data-drag-cue-active`, which creates more noise than signal.
 
 ## UI State Management Lessons
 
