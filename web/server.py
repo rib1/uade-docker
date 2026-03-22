@@ -1276,7 +1276,7 @@ def parse_subsong_durations(uade_output, subsong_count):
             durations[subsong_index] = time_sec
 
     # Construct ordered list of durations
-    duration_list = [durations.get(idx, 0.0) for idx in range(0, subsong_count)]
+    duration_list = [durations.get(idx, 0.0) for idx in range(subsong_count)]
 
     # Validate that parsed count matches expected count
     if len(duration_list) != subsong_count:
