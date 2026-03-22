@@ -490,6 +490,7 @@ async function performConversion(
     uiAlreadyLocked = false,
     originalBtnText: providedOriginalBtnText = null,
     playFileOptions = {},
+    activePlaylistTrackId = null,
   } = {},
 ) {
   let originalBtnText = providedOriginalBtnText;
@@ -524,7 +525,10 @@ async function performConversion(
       if (onSuccessCallback) {
         onSuccessCallback(data);
       }
-      resetButtonAfterDelay(button, originalBtnText);
+      resetButtonAfterDelay(
+        getLivePlaylistPlayButton(activePlaylistTrackId, button),
+        originalBtnText,
+      );
       return; // on success, the function ends here.
     } else {
       showStatus(`✗ Error: ${data.error}`, "error");
@@ -1727,6 +1731,25 @@ function getPlaylistNextLabel() {
   return nextTrack ? `Next: ${nextTrack.name}` : "End of playlist";
 }
 
+function getLivePlaylistPlayButton(trackId, fallbackButton) {
+  if (!trackId) {
+    return fallbackButton;
+  }
+
+  const activeButton = playlistList.querySelector(".playlist-item.active .playlist-play-btn");
+  if (activeButton) {
+    return activeButton;
+  }
+
+  const trackIndex = playlistTracks.findIndex((track) => track.id === trackId);
+  if (trackIndex === -1) {
+    return fallbackButton;
+  }
+
+  const items = playlistList.querySelectorAll(".playlist-item");
+  return items[trackIndex]?.querySelector(".playlist-play-btn") || fallbackButton;
+}
+
 async function playCachedLocalTrack(track, trackId, button) {
   syncUiLockState(true);
   const originalBtnText = showButtonLoadingAndGetOriginal(button);
@@ -1815,7 +1838,7 @@ async function playCachedLocalTrack(track, trackId, button) {
     { preservePlaylistSelection: true },
   );
   renderPlaylist();
-  resetButtonAfterDelay(button, originalBtnText);
+  resetButtonAfterDelay(getLivePlaylistPlayButton(trackId, button), originalBtnText);
 }
 
 async function playDeferredLocalTrack(
@@ -1899,7 +1922,10 @@ async function playDeferredLocalTrack(
           { preservePlaylistSelection: true },
         );
         onConversionSuccess(data);
-        resetButtonAfterDelay(button, originalBtnText);
+        resetButtonAfterDelay(
+          getLivePlaylistPlayButton(trackId, button),
+          originalBtnText,
+        );
         return;
       }
 
@@ -1938,6 +1964,7 @@ async function playDeferredLocalTrack(
       uiAlreadyLocked,
       originalBtnText,
       playFileOptions: { preservePlaylistSelection: true },
+      activePlaylistTrackId: trackId,
     },
   );
 }
@@ -1966,7 +1993,10 @@ async function playUrlTrack(track, trackId, button) {
       updateShareButton(true);
       renderPlaylist();
     },
-    { playFileOptions: { preservePlaylistSelection: true } },
+    {
+      playFileOptions: { preservePlaylistSelection: true },
+      activePlaylistTrackId: trackId,
+    },
   );
 }
 
