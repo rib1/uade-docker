@@ -1,7 +1,8 @@
 #!/bin/bash
 
 # UADE Docker - Code Quality Automation Script
-# This script runs all code quality checks: ESLint, Black, Ruff, mypy, ActionLint
+# This script runs all code quality checks, including linting, dead-code auditing,
+# formatting, and workflow/config validation across the repo.
 # No local dependencies needed - all tools run in Docker containers
 #
 # Usage:
@@ -17,6 +18,7 @@
 #   ./test/check-code-quality.sh --yamllint   # Yamllint only
 #   ./test/check-code-quality.sh --stylelint  # Stylelint only
 #   ./test/check-code-quality.sh --htmlhint   # HTMLHint only
+#   ./test/check-code-quality.sh --knip       # knip dead-code audit only
 #   ./test/check-code-quality.sh --mypy       # mypy only
 #   ./test/check-code-quality.sh --instructions # Instruction files only
 
@@ -110,6 +112,7 @@ fi
 ESLINT_VERSION="$(read_npm_tool_version eslint)"
 STYLELINT_VERSION="$(read_npm_tool_version stylelint)"
 HTMLHINT_VERSION="$(read_npm_tool_version htmlhint)"
+KNIP_VERSION="$(read_npm_tool_version knip)"
 BLACK_VERSION="$(read_pip_tool_version black)"
 RUFF_VERSION="$(read_pip_tool_version ruff)"
 MYPY_VERSION="$(read_pip_tool_version mypy)"
@@ -136,6 +139,7 @@ RUN_SHELLCHECK=true
 RUN_YAMLLINT=true
 RUN_STYLELINT=true
 RUN_HTMLHINT=true
+RUN_KNIP=true
 RUN_MYPY=true
 RUN_INSTRUCTIONS=true
 
@@ -285,6 +289,22 @@ for arg in "$@"; do
             RUN_MYPY=false
             shift
             ;;
+        --knip)
+            RUN_KNIP=true
+            RUN_ESLINT=false
+            RUN_BLACK=false
+            RUN_RUFF=false
+            RUN_ACTIONLINT=false
+            RUN_HADOLINT=false
+            RUN_COMPOSE=false
+            RUN_SHELLCHECK=false
+            RUN_YAMLLINT=false
+            RUN_STYLELINT=false
+            RUN_HTMLHINT=false
+            RUN_MYPY=false
+            RUN_INSTRUCTIONS=false
+            shift
+            ;;
         --mypy)
             RUN_MYPY=true
             RUN_ESLINT=false
@@ -316,7 +336,7 @@ for arg in "$@"; do
             ;;
         *)
             echo "Unknown option: $arg"
-            echo "Usage: $0 [--fix] [--eslint|--stylelint|--htmlhint|--black|--ruff|--mypy|--actionlint|--hadolint|--compose|--shellcheck|--yamllint|--instructions]"
+            echo "Usage: $0 [--fix] [--eslint|--stylelint|--htmlhint|--knip|--black|--ruff|--mypy|--actionlint|--hadolint|--compose|--shellcheck|--yamllint|--instructions]"
             exit 1
             ;;
     esac
@@ -460,6 +480,30 @@ if [ "$RUN_HTMLHINT" = true ]; then
         print_result "HTMLHint" 0
     else
         print_result "HTMLHint" $EXIT_CODE "$OUTPUT"
+    fi
+fi
+
+# knip
+if [ "$RUN_KNIP" = true ]; then
+    print_header "knip - JavaScript Dead-Code Audit"
+
+    echo "Running knip on /web/static and /test with repo-specific config..."
+
+    if command -v knip >/dev/null 2>&1; then
+        OUTPUT=$(cd "${PROJECT_ROOT}/test" && knip --config knip.config.js --no-progress 2>&1)
+        EXIT_CODE=$?
+    else
+        OUTPUT=$(docker run --rm \
+               -v "${PROJECT_ROOT}:/workspace" \
+               --workdir /workspace/test \
+               node:24-alpine sh -lc "npm install -g knip@${KNIP_VERSION} >/dev/null && knip --config knip.config.js --no-progress" 2>&1)
+        EXIT_CODE=$?
+    fi
+
+    if [ $EXIT_CODE -eq 0 ]; then
+        print_result "knip" 0
+    else
+        print_result "knip" $EXIT_CODE "$OUTPUT"
     fi
 fi
 

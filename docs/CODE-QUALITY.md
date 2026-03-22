@@ -4,20 +4,21 @@ This document explains the code quality checks and how to run them for the UADE 
 
 ## Overview
 
-The UADE Docker project uses twelve automated code quality tools:
+The UADE Docker project uses thirteen automated code quality tools:
 
 1. **ESLint** - JavaScript linting and style checking
 2. **Stylelint** - CSS linting and style checking
 3. **HTMLHint** - HTML validation and quality checks
-4. **Black** - Python code formatting and consistency
-5. **Ruff** - Fast Python linting and formatting
-6. **mypy** - Lightweight Python type checking
-7. **Hadolint** - Dockerfile linting and best practices
-8. **Docker Compose** - Compose file validation
-9. **ActionLint** - GitHub Actions workflow validation
-10. **ShellCheck** - Shell script linting and bug detection
-11. **Yamllint** - YAML syntax and style validation
-12. **Instruction Files** - Repo guidance validation for instruction markdown and skill files
+4. **knip** - JavaScript dead-code auditing for frontend and test/tooling entrypoints
+5. **Black** - Python code formatting and consistency
+6. **Ruff** - Fast Python linting and formatting
+7. **mypy** - Lightweight Python type checking
+8. **Hadolint** - Dockerfile linting and best practices
+9. **Docker Compose** - Compose file validation
+10. **ActionLint** - GitHub Actions workflow validation
+11. **ShellCheck** - Shell script linting and bug detection
+12. **Yamllint** - YAML syntax and style validation
+13. **Instruction Files** - Repo guidance validation for instruction markdown and skill files
 
 ## How to Run Checks
 
@@ -38,7 +39,7 @@ docker compose -f docker-compose.yml -f test/docker-compose.quality.yml run --rm
 
 This approach:
 
-- Runs ESLint, Stylelint, HTMLHint, Black, Ruff, mypy, Hadolint, ActionLint, ShellCheck, Yamllint, and instruction-file checks in an isolated container
+- Runs ESLint, Stylelint, HTMLHint, knip, Black, Ruff, mypy, Hadolint, ActionLint, ShellCheck, Yamllint, and instruction-file checks in an isolated container
 - No local installation required
 - Consistent results across all environments
 - Properly exits with code 1 on failures
@@ -120,6 +121,36 @@ docker run --rm -v ${pwd}:/workspace --workdir /workspace node:24-alpine sh -lc 
 
 ```bash
 docker run --rm -v ${pwd}:/workspace --workdir /workspace node:24-alpine sh -lc "npm install -g \"htmlhint@$(node -p 'require(\"/workspace/test/package.json\").devDependencies.htmlhint')\" >/dev/null && htmlhint --config .htmlhintrc web/static/index.html"
+```
+
+## Dead Code Roadmap
+
+The quality suite now includes a dedicated JavaScript dead-code pass through `knip`, scoped by the repo-specific configuration in `test/knip.config.js`.
+
+Planned follow-up:
+
+1. **Phase 2: CSS selector audit**
+
+   Run unused-selector analysis as a separate follow-up instead of bundling it into the first phase. CSS cleanup is more likely to produce false positives in this project because some classes and IDs are created or toggled dynamically in `web/static/app.js`, so the audit should be handled as an explicit second pass with a safelist strategy.
+
+### knip (JavaScript Dead Code)
+
+**Purpose:** Detect unused JavaScript files, exports, and dependencies in the configured frontend and test/tooling scope.
+
+**Version source:** `test/package.json` (`knip`)
+
+**Configuration:** `test/knip.config.js`
+
+**Files checked:** Configured frontend app and test/tooling entrypoints plus their project files
+
+**Recommended command:**
+
+```bash
+./test/check-code-quality.sh --knip
+```
+
+```powershell
+.\test\check-code-quality.ps1 -Knip
 ```
 
 ### Black (Python)
@@ -275,7 +306,7 @@ docker compose -f docker-compose.yml -f test/docker-compose.quality.yml run --rm
 
 This approach:
 
-- Runs ESLint, Stylelint, HTMLHint, Black, Ruff, mypy, Hadolint, ActionLint, ShellCheck, and Yamllint in an isolated container
+- Runs ESLint, Stylelint, HTMLHint, knip, Black, Ruff, mypy, Hadolint, ActionLint, ShellCheck, and Yamllint in an isolated container
 - No local installation required
 - Consistent results across all environments
 - Properly exits with code 1 on failures
@@ -284,7 +315,7 @@ This approach:
 
 ### Local Script Execution (All Checks Including Compose Validation)
 
-Run the scripts directly on your machine to execute all eleven checks:
+Run the scripts directly on your machine to execute all thirteen checks:
 
 **Bash (Linux/Mac/Git Bash):**
 
@@ -299,6 +330,7 @@ Run the scripts directly on your machine to execute all eleven checks:
 ./test/check-code-quality.sh --eslint
 ./test/check-code-quality.sh --stylelint
 ./test/check-code-quality.sh --htmlhint
+./test/check-code-quality.sh --knip
 ./test/check-code-quality.sh --black
 ./test/check-code-quality.sh --ruff
 ./test/check-code-quality.sh --hadolint
@@ -322,6 +354,7 @@ Run the scripts directly on your machine to execute all eleven checks:
 .\test\check-code-quality.ps1 -ESLint
 .\test\check-code-quality.ps1 -Stylelint
 .\test\check-code-quality.ps1 -HTMLHint
+.\test\check-code-quality.ps1 -Knip
 .\test\check-code-quality.ps1 -Black
 .\test\check-code-quality.ps1 -Ruff
 .\test\check-code-quality.ps1 -Hadolint
@@ -339,6 +372,7 @@ Run the scripts directly on your machine to execute all eleven checks:
 ./test/check-code-quality.sh --eslint
 ./test/check-code-quality.sh --stylelint
 ./test/check-code-quality.sh --htmlhint
+./test/check-code-quality.sh --knip
 ./test/check-code-quality.sh --black
 ./test/check-code-quality.sh --ruff
 ./test/check-code-quality.sh --mypy
@@ -354,6 +388,7 @@ Run the scripts directly on your machine to execute all eleven checks:
 .\test\check-code-quality.ps1 -ESLint
 .\test\check-code-quality.ps1 -Stylelint
 .\test\check-code-quality.ps1 -HTMLHint
+.\test\check-code-quality.ps1 -Knip
 .\test\check-code-quality.ps1 -Black
 .\test\check-code-quality.ps1 -Ruff
 .\test\check-code-quality.ps1 -MyPy
@@ -376,6 +411,17 @@ ESLint is configured for ES2021 syntax with the following rules:
 - Double quotes required
 - No unused variables allowed
 - No console statements in production code
+
+### knip Configuration
+
+**File:** `test/knip.config.js`
+
+knip is configured with:
+
+- Explicit entry files for frontend app code and test/tooling scripts
+- Separate scoped project globs for frontend and test/tooling files
+- Ignores for tool-only dependencies that are invoked through shell scripts instead of JavaScript imports
+- A focused JavaScript/module dead-code pass, leaving CSS selector auditing for a later dedicated phase
 
 ### Black Configuration
 
@@ -432,7 +478,7 @@ The code quality checks run automatically as part of CI/CD via the [code-quality
 **Workflow behavior:**
 
 - Builds the quality-check Docker container
-- Runs ESLint, Stylelint, HTMLHint, Black, Ruff, mypy, Hadolint, ActionLint, ShellCheck, and Yamllint
+- Runs ESLint, Stylelint, HTMLHint, knip, Black, Ruff, mypy, Hadolint, ActionLint, ShellCheck, and Yamllint
 - Fails the build if any check reports errors
 - Provides helpful error messages with fix instructions
 
@@ -443,6 +489,7 @@ The workflow will fail if:
 - ESLint finds linting issues (syntax errors, style violations)
 - Stylelint finds CSS linting issues
 - HTMLHint finds HTML validation issues
+- knip identifies unused JavaScript files, exports, or dependencies in the configured scope
 - Black detects formatting inconsistencies
 - Ruff identifies linting or formatting issues
 - mypy identifies Python type issues in the configured scope
@@ -589,7 +636,7 @@ Subsequent runs are much faster due to Docker image caching.
 
 Both `check-code-quality.sh` (Bash) and `check-code-quality.ps1` (PowerShell) scripts:
 
-1. **Parse arguments** - Determines which checks to run (--fix, --eslint, --stylelint, --htmlhint, --black, --ruff, --mypy, --hadolint, --compose, --actionlint, --shellcheck, --yamllint)
+1. **Parse arguments** - Determines which checks to run (--fix, --eslint, --stylelint, --htmlhint, --knip, --black, --ruff, --mypy, --hadolint, --compose, --actionlint, --shellcheck, --yamllint)
 2. **Detect environment** - Checks if tools are available locally or need Docker
 3. **Run checks** - Executes each tool (local or Docker container)
 4. **Capture output** - Stores results directly in variables (no temp files)
@@ -601,7 +648,7 @@ The scripts intelligently choose execution mode:
 
 **Quality-Check Container Mode:**
 
-- Tools (ESLint, Stylelint, HTMLHint, Black, Ruff, mypy, Hadolint, ActionLint, ShellCheck, Yamllint) are pre-installed
+- Tools (ESLint, Stylelint, HTMLHint, knip, Black, Ruff, mypy, Hadolint, ActionLint, ShellCheck, Yamllint) are pre-installed
 - Runs directly without nested Docker
 - Faster execution, simpler volume mounting
 
@@ -627,6 +674,7 @@ Tools are run with proper error handling:
 - ESLint: Non-zero exit on linting errors
 - Stylelint: Non-zero exit on CSS linting errors
 - HTMLHint: Non-zero exit on HTML validation errors
+- knip: Non-zero exit on configured JavaScript dead-code findings
 - Black: Non-zero exit on formatting inconsistencies
 - Ruff: Non-zero exit on linting or formatting issues
 - mypy: Non-zero exit on detected type issues in configured scope

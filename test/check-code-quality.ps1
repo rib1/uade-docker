@@ -1,6 +1,7 @@
 # UADE Docker - Code Quality Check (Windows PowerShell)
 #
-# This script runs code quality checks on Windows without needing bash
+# This script runs code quality checks on Windows without needing bash,
+# including linting, dead-code auditing, formatting, and workflow/config validation.
 #
 # Usage:
 #   .\test\check-code-quality.ps1              # Run all checks
@@ -15,6 +16,7 @@
 #   .\test\check-code-quality.ps1 -Yamllint    # Yamllint only
 #   .\test\check-code-quality.ps1 -Stylelint   # Stylelint only
 #   .\test\check-code-quality.ps1 -HTMLHint    # HTMLHint only
+#   .\test\check-code-quality.ps1 -Knip        # knip dead-code audit only
 #   .\test\check-code-quality.ps1 -MyPy        # mypy only
 #   .\test\check-code-quality.ps1 -Instructions # Instruction files only
 #
@@ -33,6 +35,7 @@ param(
     [switch]$Yamllint,
     [switch]$Stylelint,
     [switch]$HTMLHint,
+    [switch]$Knip,
     [switch]$MyPy,
     [switch]$Instructions
 )
@@ -75,6 +78,7 @@ $NpmQuality = Get-Content -Path $NpmQualityManifest -Raw | ConvertFrom-Json
 $ESLINT_VERSION = $NpmQuality.devDependencies.eslint
 $STYLELINT_VERSION = $NpmQuality.devDependencies.stylelint
 $HTMLHINT_VERSION = $NpmQuality.devDependencies.htmlhint
+$KNIP_VERSION = $NpmQuality.devDependencies.knip
 $PyPins = @{}
 Get-Content -Path $PyQualityManifest | ForEach-Object {
     if ($_ -match '^([A-Za-z0-9._-]+)==(.+)$') {
@@ -100,6 +104,7 @@ foreach ($Required in @(
     @{ Name = "eslint"; Value = $ESLINT_VERSION },
     @{ Name = "stylelint"; Value = $STYLELINT_VERSION },
     @{ Name = "htmlhint"; Value = $HTMLHINT_VERSION },
+    @{ Name = "knip"; Value = $KNIP_VERSION },
     @{ Name = "black"; Value = $BLACK_VERSION },
     @{ Name = "ruff"; Value = $RUFF_VERSION },
     @{ Name = "mypy"; Value = $MYPY_VERSION },
@@ -120,10 +125,11 @@ $PassedChecks = 0
 $FailedChecks = 0
 
 # Default to run all if no specific tool selected
-if (-not $ESLint -and -not $Black -and -not $Ruff -and -not $ActionLint -and -not $Hadolint -and -not $Compose -and -not $ShellCheck -and -not $Yamllint -and -not $Stylelint -and -not $HTMLHint -and -not $MyPy -and -not $Instructions) {
+if (-not $ESLint -and -not $Black -and -not $Ruff -and -not $ActionLint -and -not $Hadolint -and -not $Compose -and -not $ShellCheck -and -not $Yamllint -and -not $Stylelint -and -not $HTMLHint -and -not $Knip -and -not $MyPy -and -not $Instructions) {
     $ESLint = $true
     $Stylelint = $true
     $HTMLHint = $true
+    $Knip = $true
     $Black = $true
     $Ruff = $true
     $ActionLint = $true
@@ -284,6 +290,26 @@ if ($HTMLHint) {
         Write-Result "HTMLHint" 0
     } else {
         Write-Result "HTMLHint" 1 $output
+    }
+}
+
+# knip Check
+if ($Knip) {
+    Write-Header "knip - JavaScript Dead-Code Audit"
+
+    Write-Host "Running knip on /web/static and /test with repo-specific config..."
+
+    $output = & docker run --rm `
+        -v "${ProjectRoot}:/workspace" `
+        --workdir /workspace/test `
+        node:24-alpine sh -lc "npm install -g knip@$KNIP_VERSION >/dev/null && knip --config knip.config.js --no-progress" 2>&1
+
+    $exitCode = $LASTEXITCODE
+
+    if ($exitCode -eq 0) {
+        Write-Result "knip" 0
+    } else {
+        Write-Result "knip" 1 $output
     }
 }
 

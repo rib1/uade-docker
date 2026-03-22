@@ -39,7 +39,8 @@ COPY test/package.json /tmp/quality/package.json
 RUN npm install -g \
     "eslint@$(node -p 'require("/tmp/quality/package.json").devDependencies.eslint')" \
     "stylelint@$(node -p 'require("/tmp/quality/package.json").devDependencies.stylelint')" \
-    "htmlhint@$(node -p 'require("/tmp/quality/package.json").devDependencies.htmlhint')"
+    "htmlhint@$(node -p 'require("/tmp/quality/package.json").devDependencies.htmlhint')" \
+    "knip@$(node -p 'require("/tmp/quality/package.json").devDependencies.knip')"
 
 # Install Black, Ruff, mypy, and yamllint via pip
 # hadolint ignore=DL3042,DL3059
