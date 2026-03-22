@@ -530,9 +530,8 @@ async function performConversion(
         originalBtnText,
       );
       return; // on success, the function ends here.
-    } else {
-      showStatus(`✗ Error: ${data.error}`, "error");
     }
+    showStatus(`✗ Error: ${data.error}`, "error");
   } catch (error) {
     showStatus(`✗ Conversion failed: ${error.message}`, "error");
   }
