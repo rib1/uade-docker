@@ -18,6 +18,7 @@
     "function-url-no-scheme-relative": true,
     "keyframe-block-no-duplicate-selectors": true,
     "length-zero-no-unit": true,
+    "media-feature-name-value-no-unknown": true,
     "media-feature-name-no-unknown": true,
     "no-empty-source": true,
     "no-duplicate-selectors": true,
