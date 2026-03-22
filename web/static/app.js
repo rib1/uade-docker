@@ -486,7 +486,11 @@ async function performConversion(
   successMessageTemplate,
   moduleNameOverride,
   onSuccessCallback = () => {},
-  { uiAlreadyLocked = false, originalBtnText: providedOriginalBtnText = null } = {},
+  {
+    uiAlreadyLocked = false,
+    originalBtnText: providedOriginalBtnText = null,
+    playFileOptions = {},
+  } = {},
 ) {
   let originalBtnText = providedOriginalBtnText;
   if (!uiAlreadyLocked || originalBtnText === null) {
@@ -514,7 +518,8 @@ async function performConversion(
         data.audio_format || "wav",
         data.module_format,
         data.subsongs,
-        data.subsong_durations || []
+        data.subsong_durations || [],
+        playFileOptions,
       );
       if (onSuccessCallback) {
         onSuccessCallback(data);
@@ -1807,9 +1812,8 @@ async function playCachedLocalTrack(track, trackId, button) {
     track.moduleFormat,
     track.subsongs,
     track.subsongDurations || [],
+    { preservePlaylistSelection: true },
   );
-  // Restore playlist track ID after playFile clears it
-  currentPlaylistTrackId = trackId;
   renderPlaylist();
   resetButtonAfterDelay(button, originalBtnText);
 }
@@ -1892,6 +1896,7 @@ async function playDeferredLocalTrack(
           data.file_id, moduleName, data.play_url, data.download_url,
           data.player_format || "Module", data.audio_format || "wav",
           data.module_format, data.subsongs, data.subsong_durations || [],
+          { preservePlaylistSelection: true },
         );
         onConversionSuccess(data);
         resetButtonAfterDelay(button, originalBtnText);
@@ -1929,7 +1934,11 @@ async function playDeferredLocalTrack(
     "✓ {moduleName} converted and ready to play",
     track.name,
     onConversionSuccess,
-    { uiAlreadyLocked, originalBtnText },
+    {
+      uiAlreadyLocked,
+      originalBtnText,
+      playFileOptions: { preservePlaylistSelection: true },
+    },
   );
 }
 
@@ -1957,6 +1966,7 @@ async function playUrlTrack(track, trackId, button) {
       updateShareButton(true);
       renderPlaylist();
     },
+    { playFileOptions: { preservePlaylistSelection: true } },
   );
 }
 
@@ -2031,7 +2041,8 @@ function playFile(
   audioFormat = "wav",
   moduleFormat,
   subsongs = "1",
-  subsongDurations = []
+  subsongDurations = [],
+  { preservePlaylistSelection = false } = {},
 ) {
   currentDownloadUrl = downloadUrl;
   currentPlayableTrackName = moduleName || "Module";
@@ -2040,7 +2051,7 @@ function playFile(
   currentSubsongDurations = subsongDurations || [];
 
   // Non-queue playback should not leave queue navigation highlighted as active.
-  if (currentPlaylistTrackId !== null) {
+  if (!preservePlaylistSelection && currentPlaylistTrackId !== null) {
     currentPlaylistTrackId = null;
     renderPlaylist();
   }
