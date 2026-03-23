@@ -27,6 +27,7 @@ Container_Boundary(web_container, "Web Player Container - Built FROM CLI Base") 
     Component(player_service, "Player Service", "Python", "Manages UADE playback lifecycle")
     Component(uade_wrapper, "UADE Wrapper", "Python subprocess", "Wraps uade123 CLI for programmatic control")
     Component(static_files, "Static Assets", "HTML/CSS/JS", "Web interface and player controls")
+    ComponentDb(cache, "Server-Side Cache", "Local/S3/GCS", "Stores converted audio")
 }
 
 ContainerDb(ghcr, "GitHub Container Registry", "Docker Registry", "Stores container images")
@@ -37,6 +38,7 @@ Rel(user, uade_cli, "Executes", "CLI")
 
 Rel(flask_app, web_routes, "Routes requests to")
 Rel(flask_app, api_routes, "Routes API calls to")
+Rel(flask_app, cache, "Reads/Writes")
 Rel(web_routes, static_files, "Serves")
 Rel(api_routes, player_service, "Uses")
 Rel(player_service, uade_wrapper, "Controls")
@@ -180,12 +182,8 @@ The Web Player Container is built using multi-stage Docker build with `FROM uade
 - **Technology:** Flask-Limiter (Python)
 - **Responsibilities:**
   - Enforce per-endpoint and global rate limits to prevent abuse
-  - Conversion endpoints: 10 requests/min per IP
-  - Queue probe endpoint (`/probe-upload`): 40 requests/min per IP
-  - Play endpoints: 50 requests/min per IP
-  - Download endpoint: 3 requests/min per IP
-  - Global limit: 200 requests/hour per IP (all endpoints combined)
   - Limits are per instance/pod unless a distributed backend (e.g., Redis) is configured
+  - For exact limits, see the **[Rate Limiting section in the Web Player Documentation](WEB-PLAYER.md#rate-limiting)**.
 
 > Rate limiting logic is applied before request processing. In multi-instance/cloud deployments, limits are not global unless a shared backend is used.
 
@@ -231,9 +229,9 @@ The Web Player Container is built using multi-stage Docker build with `FROM uade
 
 1. User accesses web interface via browser
 2. Flask serves static HTML/CSS/JS
-3. User uploads or selects module file
-4. API endpoint receives play request
-5. Player Service validates and queues request
+3. User uploads a file, enters a URL, or queues a local file for deferred playback
+4. API endpoint receives either a convert/play request or a queue probe request
+5. Player Service validates the request and, for queued local files, uses `/probe-upload` first and `/convert-probed` as a best-effort optimization before `/upload` fallback
 6. UADE Wrapper spawns uade123 process (from base image)
 7. uade123 decodes audio stream using UADE Core
 8. Audio data streamed back to browser
@@ -249,126 +247,31 @@ The Web Player Container is built using multi-stage Docker build with `FROM uade
 6. Player Engine executes on 68k emulator
 7. Audio output to Docker host audio device
 
+## Why This Diagram Exists
+
+This document is the structural view of the system: what runs where, which components talk to each other, and how the CLI and web containers are related.
+
+For the operational details that change more often, use the source-of-truth docs instead of repeating them here:
+
+- **User-facing behavior, endpoints, rate limits, queue flow:** [`WEB-PLAYER.md`](WEB-PLAYER.md)
+- **Runtime architecture, cache behavior, deployment model, multi-instance caveats:** [`ARCHITECTURE.md`](ARCHITECTURE.md)
+- **Quality, security automation, and test tooling:** [`CODE-QUALITY.md`](CODE-QUALITY.md)
+
 ## Architecture Benefits
 
-### Multi-Stage Build Advantages
-
-- **Code Reuse**: Web player inherits complete CLI functionality
-- **Consistency**: Both containers use identical UADE binaries
-- **Smaller Images**: Shared base layer reduces total storage
-- **Simplified Updates**: UADE updates only need to modify base image
-- **Testing**: CLI container can test UADE before web deployment
+- **Code reuse:** The web player inherits the same UADE binaries and player engines as the CLI image.
+- **Consistency:** CLI and web playback rely on the same decoding stack.
+- **Separation of concerns:** Audio conversion stays isolated from the browser UI layer.
+- **Flexible deployment:** The CLI image can run standalone, while the web image layers Flask and static assets on top.
 
 ### Layered Architecture
 
-- **Separation of Concerns**: Audio engine separate from web interface
-- **Independent Scaling**: CLI and web can scale differently
-- **Flexibility**: Can deploy CLI-only or full web player
-- **Development**: Test audio separately from web layer
+The system is intentionally layered: the CLI container provides the reusable UADE decoding base, while the web container adds HTTP routing, API endpoints, queue behavior, and browser assets on top. That keeps playback logic reusable across both deployment modes while letting the web-specific UX evolve independently.
 
-## Security Model
+## Deployment Summary
 
-### CLI Player Security (Base Layer)
+- **CLI Player:** Local Docker engine, standalone image for direct command-line playback.
+- **Web Player:** Web runtime built `FROM uade-cli`, served locally with Docker Compose or remotely on Cloud Run.
+- **Registry and automation:** GitHub Actions builds images and publishes them to GitHub Container Registry.
 
-- **User Context**: Non-root user (uadeuser:1000)
-- **File System**: Read-only recommended for module volumes
-- **Network**: No network access required
-- **Capabilities**: No elevated privileges
-
-### Web Player Security (Additional Layer)
-
-- **Inherited Security**: All CLI security measures apply
-- **Process Isolation**: UADE runs as subprocess
-- **File System**: Read-only modules directory
-- **Network**: Minimal attack surface (HTTP only)
-- **Resource Limits**: Memory and CPU constraints
-
-### Security Testing (DAST)
-
-UADE Web Player supports manual Dynamic Application Security Testing (DAST) using OWASP ZAP. To run a security scan against the running web service:
-
-- Baseline scan: `docker compose run --rm --build zap-scan`
-- Full scan: `docker compose run --rm --build zap-full-scan`
-- Seeded baseline scan: `docker compose run --rm --build zap-scan-seeded`
-- Seeded full scan: `docker compose run --rm --build zap-full-scan-seeded`
-- The HTML report will be generated in the `./reports` directory.
-
-Seeded scans target a dedicated `uade-web-seeded` service so local fixture-host requests can be exercised without changing the default app service behavior.
-
-ZAP exit code `2` indicates warning-level findings, not a failed scan run.
-
-DAST scans are not automated in CI/CD and must be run manually by developers.
-
-## Performance Characteristics
-
-### CLI Player Performance (Base)
-
-- **Container Start**: <1 second
-- **Playback Start**: <100ms
-- **Memory**: ~50MB footprint
-- **CPU**: Single-threaded (1 core)
-
-### Web Player Performance (CLI Base + Flask)
-
-- **Cold Start**: ~2-3 seconds (Cloud Run)
-- **Playback Start**: 100-500ms (includes Flask overhead)
-- **Concurrent Users**: 4 workers support 20-40 users
-- **Memory**: ~150MB per worker (~100MB Flask + ~50MB UADE)
-- **CPU**: Minimal (mostly I/O wait)
-
-### Concurrency Testing
-
-- **Manual Stress and Concurrency Testing:** Concurrency tests are implemented
-
-## Monitoring and Observability
-
-### CLI Player Observability
-
-- **Logs**: Docker container logs
-- **Debug**: UADE verbose output (-v)
-- **Performance**: Time command integration
-
-### Web Player Metrics
-
-- **Logs**: Cloud Logging (structured JSON)
-- **Metrics**: Container resource usage
-- **Tracing**: Request/response timing
-- **Health**: `/health` endpoint (detailed runtime status)
-
-## Deployment Architecture
-
-### Multi-Stage Build Process
-
-1. **Stage 1 - CLI Base Image** (Dockerfile)
-   - Build UADE from source
-   - Install player engines and metadata
-   - Create standalone CLI player image
-   - Can be deployed independently
-
-2. **Stage 2 - Web Player Image** (Dockerfile.web)
-   - Use `FROM uade-cli` to inherit base
-   - Add Python, Flask, and web dependencies
-   - Copy web application code
-   - Configure Gunicorn server
-   - Deploy to Cloud Run
-
-### CI/CD Pipeline
-
-1. Code pushed to GitHub
-2. GitHub Actions triggers on main branch
-3. **Code Quality Checks** (ESLint, Stylelint, HTMLHint, Black, Ruff, Hadolint, Docker Compose validation, ActionLint, ShellCheck, Yamllint)
-4. **Security Scanning** (CodeQL, Semgrep, Bandit, Trivy, Hadolint)
-5. Build CLI base image (stage 1)
-6. Build web player image FROM CLI base (stage 2)
-7. Push both images to GitHub Container Registry
-8. Deploy web player to Cloud Run
-
-See [docs/CODE-QUALITY.md](CODE-QUALITY.md) for detailed code quality automation.
-
-### Container Deployment
-
-- **CLI Player**: Local Docker engine, standalone image
-- **Web Player**: Cloud Run (serverless), built FROM CLI base
-- **Registry**: GitHub Container Registry (ghcr.io)
-- **Automation**: GitHub Actions workflows
-- **Image Relationship**: Web image depends on CLI image
+For CI/CD pipeline detail, security scanning, DAST workflows, concurrency testing, and performance guidance, see [`CODE-QUALITY.md`](CODE-QUALITY.md) and [`ARCHITECTURE.md`](ARCHITECTURE.md).

@@ -19,6 +19,7 @@ The UADE Docker project uses thirteen automated code quality tools:
 11. **ShellCheck** - Shell script linting and bug detection
 12. **Yamllint** - YAML syntax and style validation
 13. **Instruction Files** - Repo guidance validation for instruction markdown and skill files
+14. **Documentation Files** - Markdown integrity checks for `README.md` and `docs/*.md`
 
 ## How to Run Checks
 
@@ -28,7 +29,7 @@ The UADE Docker project uses thirteen automated code quality tools:
 - Dependabot monitors both manifests and opens update PRs.
 - Dependabot also monitors Docker tags in `/test` (including `test/docker-compose.tooling.yml`).
 
-### Docker Compose Service (Recommended)
+### Recommended Compose Workflow
 
 Use the Docker Compose quality-check service for consistent, isolated checks:
 
@@ -39,7 +40,7 @@ docker compose -f docker-compose.yml -f test/docker-compose.quality.yml run --rm
 
 This approach:
 
-- Runs ESLint, Stylelint, HTMLHint, knip, Black, Ruff, mypy, Hadolint, ActionLint, ShellCheck, Yamllint, and instruction-file checks in an isolated container
+- Runs ESLint, Stylelint, HTMLHint, knip, Black, Ruff, mypy, Hadolint, ActionLint, ShellCheck, Yamllint, instruction-file checks, and documentation-file checks in an isolated container
 - No local installation required
 - Consistent results across all environments
 - Properly exits with code 1 on failures
@@ -58,6 +59,22 @@ This approach:
 
 ```powershell
 .\test\check-code-quality.ps1 -Instructions
+```
+
+### Documentation Files
+
+**Purpose:** Catch markdown integrity problems in user and developer docs such as duplicate headings, unlabeled fenced code blocks, broken relative links, and missing core documentation files.
+
+**Implementation:** `test/check-documentation.mjs`
+
+**Recommended commands:**
+
+```bash
+./test/check-code-quality.sh --documentation
+```
+
+```powershell
+.\test\check-code-quality.ps1 -Documentation
 ```
 
 ## Tools
@@ -315,7 +332,7 @@ This approach:
 
 ### Local Script Execution (All Checks Including Compose Validation)
 
-Run the scripts directly on your machine to execute all thirteen checks:
+Run the scripts directly on your machine to execute all fourteen checks:
 
 **Bash (Linux/Mac/Git Bash):**
 
@@ -339,6 +356,7 @@ Run the scripts directly on your machine to execute all thirteen checks:
 ./test/check-code-quality.sh --shellcheck
 ./test/check-code-quality.sh --yamllint
 ./test/check-code-quality.sh --mypy
+./test/check-code-quality.sh --documentation
 ```
 
 **PowerShell (Windows):**
@@ -363,40 +381,7 @@ Run the scripts directly on your machine to execute all thirteen checks:
 .\test\check-code-quality.ps1 -ShellCheck
 .\test\check-code-quality.ps1 -Yamllint
 .\test\check-code-quality.ps1 -MyPy
-```
-
-### Individual Tool Commands
-
-```bash
-# Bash
-./test/check-code-quality.sh --eslint
-./test/check-code-quality.sh --stylelint
-./test/check-code-quality.sh --htmlhint
-./test/check-code-quality.sh --knip
-./test/check-code-quality.sh --black
-./test/check-code-quality.sh --ruff
-./test/check-code-quality.sh --mypy
-./test/check-code-quality.sh --hadolint
-./test/check-code-quality.sh --compose
-./test/check-code-quality.sh --actionlint
-./test/check-code-quality.sh --shellcheck
-./test/check-code-quality.sh --yamllint
-```
-
-```powershell
-# PowerShell
-.\test\check-code-quality.ps1 -ESLint
-.\test\check-code-quality.ps1 -Stylelint
-.\test\check-code-quality.ps1 -HTMLHint
-.\test\check-code-quality.ps1 -Knip
-.\test\check-code-quality.ps1 -Black
-.\test\check-code-quality.ps1 -Ruff
-.\test\check-code-quality.ps1 -MyPy
-.\test\check-code-quality.ps1 -Hadolint
-.\test\check-code-quality.ps1 -Compose
-.\test\check-code-quality.ps1 -ActionLint
-.\test\check-code-quality.ps1 -ShellCheck
-.\test\check-code-quality.ps1 -Yamllint
+.\test\check-code-quality.ps1 -Documentation
 ```
 
 ## Configuration Files
@@ -459,7 +444,7 @@ existing repository formatting style.
 
 ## GitHub Actions Integration
 
-The code quality checks run automatically as part of CI/CD via the [code-quality.yml](.github/workflows/code-quality.yml) workflow.
+The code quality checks run automatically as part of CI/CD via the [`code-quality.yml`](../.github/workflows/code-quality.yml) workflow.
 
 **Workflow triggers:**
 
@@ -478,7 +463,7 @@ The code quality checks run automatically as part of CI/CD via the [code-quality
 **Workflow behavior:**
 
 - Builds the quality-check Docker container
-- Runs ESLint, Stylelint, HTMLHint, knip, Black, Ruff, mypy, Hadolint, ActionLint, ShellCheck, and Yamllint
+- Runs ESLint, Stylelint, HTMLHint, knip, Black, Ruff, mypy, Hadolint, ActionLint, ShellCheck, Yamllint, instruction-file checks, and documentation-file checks
 - Fails the build if any check reports errors
 - Provides helpful error messages with fix instructions
 
@@ -497,6 +482,7 @@ The workflow will fail if:
 - ActionLint identifies workflow validation errors
 - ShellCheck identifies shell script issues
 - Yamllint identifies YAML syntax/configuration issues
+- Documentation checks identify duplicate headings, unlabeled fences, broken relative doc links, or missing core docs
 
 **How to fix failures:**
 
@@ -569,7 +555,7 @@ Then commit and push the fixes.
 
 ### Docker Not Running
 
-```
+```text
 Error: Docker daemon is not running
 ```
 
@@ -636,7 +622,7 @@ Subsequent runs are much faster due to Docker image caching.
 
 Both `check-code-quality.sh` (Bash) and `check-code-quality.ps1` (PowerShell) scripts:
 
-1. **Parse arguments** - Determines which checks to run (--fix, --eslint, --stylelint, --htmlhint, --knip, --black, --ruff, --mypy, --hadolint, --compose, --actionlint, --shellcheck, --yamllint)
+1. **Parse arguments** - Determines which checks to run (--fix, --eslint, --stylelint, --htmlhint, --knip, --black, --ruff, --mypy, --hadolint, --compose, --actionlint, --shellcheck, --yamllint, --instructions, --documentation)
 2. **Detect environment** - Checks if tools are available locally or need Docker
 3. **Run checks** - Executes each tool (local or Docker container)
 4. **Capture output** - Stores results directly in variables (no temp files)
@@ -648,7 +634,7 @@ The scripts intelligently choose execution mode:
 
 **Quality-Check Container Mode:**
 
-- Tools (ESLint, Stylelint, HTMLHint, knip, Black, Ruff, mypy, Hadolint, ActionLint, ShellCheck, Yamllint) are pre-installed
+- Tools (ESLint, Stylelint, HTMLHint, knip, Black, Ruff, mypy, Hadolint, ActionLint, ShellCheck, Yamllint) are pre-installed, while repo-specific Node scripts handle instruction and documentation checks
 - Runs directly without nested Docker
 - Faster execution, simpler volume mounting
 
@@ -682,6 +668,7 @@ Tools are run with proper error handling:
 - ActionLint: Non-zero exit on workflow validation errors
 - ShellCheck: Non-zero exit on shell script linting errors
 - Yamllint: Non-zero exit on YAML validation errors
+- Documentation Files: Non-zero exit on duplicate headings, missing fence languages, broken relative links, or missing core docs
 
 Script aggregates all results and returns:
 

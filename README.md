@@ -54,7 +54,8 @@ This project uses semantic versioning for the UADE CLI base image to ensure stab
 
 - **Modland** - <https://modland.com/pub/modules/>
 - **The Mod Archive** - <https://modarchive.org>
-- **AMP** - <https://amp.dascene.net>
+
+For downloading music, check the recommended archives in the **[CLI Usage Documentation](docs/CLI-USAGE.md#popular-module-archives)**.
 
 ## Development
 

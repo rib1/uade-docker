@@ -116,14 +116,7 @@ This file tracks all published versions of the `uade-cli` base Docker image and 
 
 - **Status:** Awaiting UADE upstream release
 - **Expected:** Q1 2025 (check [UADE Releases](https://gitlab.com/uade-music-player/uade/-/releases))
-
-**Process for next version:**
-
-1. Check upstream releases
-2. Build new base image: `3.06-base.1`
-3. Run full integration and server regression test suite
-4. Update Dockerfile.web pin to `uade-cli:3.06-base.1`
-5. Commit and tag release
+- For the maintainer workflow to publish the next version, see [DOCKER_VERSIONING.md](./DOCKER_VERSIONING.md).
 
 ---
 
@@ -132,38 +125,6 @@ This file tracks all published versions of the `uade-cli` base Docker image and 
 | Dockerfile.web Version | UADE CLI Version | Release Date | Status |
 |---|---|---|---|
 | v1.0 | 3.05-base.1 | 2025-11-11 | Current Dockerfile.web pin |
-
----
-
-## Building New Versions
-
-### For Maintainers: Quick Reference
-
-**Create a new build number (same UADE version):**
-
-```bash
-# Example: 3.05-base.2 → 3.05-base.3 (security/compliance patch)
-docker build -f Dockerfile -t ghcr.io/rib1/uade-cli:3.05-base.3 .
-docker tag ghcr.io/rib1/uade-cli:3.05-base.3 ghcr.io/rib1/uade-cli:3.05-base
-docker tag ghcr.io/rib1/uade-cli:3.05-base.3 ghcr.io/rib1/uade-cli:latest
-docker push ghcr.io/rib1/uade-cli:3.05-base.3
-```
-
-**Create a new UADE version (reset build to 1):**
-
-```bash
-# Example: 3.05-base.1 → 3.06-base.1
-# 1. Update Dockerfile to clone --branch uade-3.06
-# 2. Build:
-docker build -f Dockerfile -t ghcr.io/rib1/uade-cli:3.06-base.1 .
-# 3. Test (full integration and server regression suite)
-# 4. Push:
-docker push ghcr.io/rib1/uade-cli:3.06-base.1
-docker tag ghcr.io/rib1/uade-cli:3.06-base.1 ghcr.io/rib1/uade-cli:latest
-docker push ghcr.io/rib1/uade-cli:latest
-# 5. Update docs/UADE_VERSIONS.md
-# 6. Update Dockerfile.web (after integration/regression tests pass)
-```
 
 ---
 
@@ -194,39 +155,17 @@ docker push ghcr.io/rib1/uade-cli:latest
 
 ---
 
-## Rollback Instructions
+## Maintainer Workflow
 
-If a version has critical issues:
+This file tracks published versions and deployment status only.
 
-### Step 1: Revert Dockerfile.web to previous version
+For maintainer procedures, use [`DOCKER_VERSIONING.md`](./DOCKER_VERSIONING.md):
 
-```dockerfile
-# If 3.05-base.3 has issues:
-# Change:
-FROM ghcr.io/rib1/uade-cli:3.05-base.3
-
-# To:
-FROM ghcr.io/rib1/uade-cli:3.05-base.2
-```
-
-### Step 2: Rebuild and test
-
-```bash
-docker build -f Dockerfile.web -t uade-web:test .
-# Run integration and server regression tests
-docker compose -f docker-compose.yml -f test/docker-compose.endpoints.yml run --rm --build uade-test-runner
-docker compose -f docker-compose.yml -f test/docker-compose.ratelimit.yml run --rm --build uade-test-ratelimit-runner
-docker compose run --rm --build uade-test-race-condition-runner
-```
-
-### Step 3: Commit and redeploy
-
-```bash
-git add Dockerfile.web
-git commit -m "Rollback to uade-cli:3.05-base.2 (critical fix for issue #X)"
-git push origin main
-# Redeploy to Cloud Run, etc.
-```
+- build and tag commands
+- GHCR publish workflow
+- `Dockerfile.web` pinning policy
+- rollback steps
+- version-bump checklist
 
 ---
 

@@ -17,6 +17,7 @@ Prefer the repo's Docker-first workflows over local-tool assumptions:
 - Keep changes aligned with the project's minimal-dependency approach.
 - When you learn something non-obvious and repo-specific while working, update `references/project-lessons.md` so the next pass does not have to rediscover it.
 - When you discover instruction drift or a docs regression pattern, update `test/check-instructions.mjs` so the quality pipeline can catch it automatically next time.
+- When you notice documentation drift, do not stop at the one-off doc fix. Also consider whether a lightweight check belongs in `test/check-documentation.mjs` or `test/check-instructions.mjs` so the same drift is less likely to recur.
 
 Preserve the pinned base-image strategy described in the repo instructions. Treat `Dockerfile.web` as depending on a stable published UADE base image rather than rebuilding UADE ad hoc.
 

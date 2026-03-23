@@ -493,4 +493,9 @@ if (shouldListFoundReferences) {
   }
 }
 
+console.log("Checked instruction files:");
+for (const relativePath of instructionFiles) {
+  console.log(`- ${relativePath}`);
+}
+
 console.log("Instruction files look consistent.");

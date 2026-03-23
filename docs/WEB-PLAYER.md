@@ -345,9 +345,9 @@ Content-Type: application/json
 }
 ```
 
-Returns the same response format as `/upload`. Returns 400 for invalid hash format, 404 if the probed module has been cleaned up from server storage. The client treats 404 as a fallback trigger to upload and convert with `/upload` instead.
+Returns the same response format as `/upload`. Returns 400 for invalid hash format and 404 if the probed module is no longer available on the serving instance. The client treats 404 as a fallback trigger to upload and convert with `/upload` instead.
 
-`/convert-probed` is a best-effort optimization, not a durability guarantee. It works well in the primary single-container Docker Desktop setup, where the probe and later conversion usually hit the same container-local module storage. In multi-container environments, do not rely on `/convert-probed` succeeding after a hop to another container or pod unless you have explicitly provided shared storage for probed source files. The supported behavior is to fall back to `/upload` when `/convert-probed` returns 404.
+This endpoint is a best-effort optimization for the queue flow described in [Queue](#queue). For the multi-instance and cache-model caveats behind that behavior, see [`ARCHITECTURE.md`](ARCHITECTURE.md).
 
 Rate-limited to 10 requests/minute.
 
@@ -420,6 +420,8 @@ The server maintains its own cache of converted audio files. This is primarily f
 - **Write Throttling:** Cache-hit access sidecars are not rewritten on every request by default.
   `CACHE_ACCESS_UPDATE_INTERVAL_SECONDS` controls the minimum interval between updates for the same entry.
 
+For the cache read-path details and multi-instance matrix, see [`ARCHITECTURE.md`](ARCHITECTURE.md).
+
 **Configuration:**
 
 Set the `CACHE_URI` environment variable to your desired cache location:
@@ -447,45 +449,26 @@ Older or unsupported browsers automatically receive WAV files as fallback. No co
 
 ## Architecture
 
-### Multi-Stage Build
+This document focuses on user-visible behavior and deployment knobs. For the full system view, diagrams, cache matrix, and multi-instance behavior, see [`ARCHITECTURE.md`](ARCHITECTURE.md) and [`COMPONENT-DIAGRAM.md`](COMPONENT-DIAGRAM.md).
 
-- **Stage 1 (base):** Compile UADE and dependencies from source
-- **Stage 2 (runtime):** Lightweight image with Python 3.13/Flask + UADE binaries + FLAC encoder
+Architecture highlights:
 
-### Production Server
-
-- Uses **Gunicorn** WSGI server
-- **Local/Docker Compose:** 4 workers for parallel requests
-- **Cloud Run:** 1 worker + 4 threads (optimized for memory)
-- Health checks for container orchestration
-- Structured logging for cloud platforms
-- Graceful shutdown handling
-- 300s timeout for large file conversions
-
-### Audio Compression
-
-- **Smart Format Selection:** Detects browser FLAC support via User-Agent
-- **Automatic Compression:** Converts WAV to FLAC for capable browsers (Chrome, Firefox, Edge, Safari)
-- **50-70% Size Reduction:** Typical TFMX files reduce from 30MB WAV to 10-15MB FLAC
-- **Lossless Quality:** FLAC maintains bit-perfect audio fidelity
-- **Fallback Support:** Non-capable browsers still receive WAV files
-
-### File Management
-
-- Automatic cleanup of local files older than 1 hour on eligible requests
-- Cleanup is request-triggered, runs at most once per interval per process, and skips `/play/*` and `/download/*`
-- Separate directories: modules, conversions, cache
-- UUID-based filenames (no collisions)
-- URL-based caching: If the same URL is requested again, the cached file is reused instantly
-- MD5-based Stateless Remote Cache: Converted files are stored in a remote cache (S3/GCS/local) for instant replay and deduplication across all instances
+- Multi-stage build: the web image is built `FROM uade-cli`
+- Production serving uses Gunicorn
+- FLAC is preferred automatically on capable browsers, with WAV fallback
+- Cleanup is request-triggered and skips `/play/*` and `/download/*`
+- Converted audio can be cached on local disk or shared remote storage (`file`, `s3`, `gcs`)
 
 ## Security
 
-- File size limits (10MB default)
-- Filename sanitization
+Key protections:
+
+- File size limits and filename sanitization
 - Subprocess calls without shell injection
-- Read-only source code mount in Docker Compose
-- Rate limiting ready (add Redis for multi-instance)
+- Read-only source mount in local Docker Compose
+- Per-endpoint and global rate limiting
+
+For CI security automation, DAST workflow, and deployment-level security notes, see [`CODE-QUALITY.md`](CODE-QUALITY.md) and [`ARCHITECTURE.md`](ARCHITECTURE.md).
 
 ## Rate Limiting
 
@@ -494,7 +477,7 @@ UADE Web Player uses per-endpoint and global rate limits to prevent abuse and en
 - **Conversion endpoints** (`/upload`, `/convert-probed`, `/convert-url`, `/probe-url`): 10 requests per minute per IP
 - **Queue probe endpoint** (`/probe-upload`): 40 requests per minute per IP
 - **Play endpoints** (`/play`, `/play-example`): 50 requests per minute per IP
-- **Download endpoint** (`/download`): 3 requests per minute per IP
+- **Download endpoint** (`/download`): 6 requests per minute per IP
 - **Global limit**: 200 requests per hour per IP (all endpoints combined)
 
 At startup, when rate limiting is enabled, the server logs a warning if `PROBE_UPLOAD_RATE_LIMIT_PER_MINUTE` is less than double `QUEUE_DROP_FILE_LIMIT`, because repeated queue drops can otherwise hit the probe rate limiter within a minute.

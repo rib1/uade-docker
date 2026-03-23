@@ -19,6 +19,7 @@
 #   .\test\check-code-quality.ps1 -Knip        # knip dead-code audit only
 #   .\test\check-code-quality.ps1 -MyPy        # mypy only
 #   .\test\check-code-quality.ps1 -Instructions # Instruction files only
+#   .\test\check-code-quality.ps1 -Documentation # Documentation files only
 #
 # Requirements:
 #   - Docker Desktop installed and running
@@ -37,7 +38,8 @@ param(
     [switch]$HTMLHint,
     [switch]$Knip,
     [switch]$MyPy,
-    [switch]$Instructions
+    [switch]$Instructions,
+    [switch]$Documentation
 )
 
 # Color codes
@@ -125,7 +127,7 @@ $PassedChecks = 0
 $FailedChecks = 0
 
 # Default to run all if no specific tool selected
-if (-not $ESLint -and -not $Black -and -not $Ruff -and -not $ActionLint -and -not $Hadolint -and -not $Compose -and -not $ShellCheck -and -not $Yamllint -and -not $Stylelint -and -not $HTMLHint -and -not $Knip -and -not $MyPy -and -not $Instructions) {
+if (-not $ESLint -and -not $Black -and -not $Ruff -and -not $ActionLint -and -not $Hadolint -and -not $Compose -and -not $ShellCheck -and -not $Yamllint -and -not $Stylelint -and -not $HTMLHint -and -not $Knip -and -not $MyPy -and -not $Instructions -and -not $Documentation) {
     $ESLint = $true
     $Stylelint = $true
     $HTMLHint = $true
@@ -139,6 +141,7 @@ if (-not $ESLint -and -not $Black -and -not $Ruff -and -not $ActionLint -and -no
     $Yamllint = $true
     $MyPy = $true
     $Instructions = $true
+    $Documentation = $true
 }
 
 # Helper function to print headers
@@ -302,7 +305,7 @@ if ($Knip) {
     $output = & docker run --rm `
         -v "${ProjectRoot}:/workspace" `
         --workdir /workspace/test `
-        node:24-alpine sh -lc "npm install -g knip@$KNIP_VERSION >/dev/null && knip --config knip.config.js --no-progress" 2>&1
+        node:24-alpine sh -lc "npm install -g knip@$KNIP_VERSION >/dev/null && knip --config knip.config.js --no-progress --treat-config-hints-as-errors" 2>&1
 
     $exitCode = $LASTEXITCODE
 
@@ -622,6 +625,31 @@ if ($Instructions) {
         Write-Result "Instruction Files" 0
     } else {
         Write-Result "Instruction Files" 1 $output
+    }
+}
+
+# Documentation Files Check
+if ($Documentation) {
+    Write-Header "Documentation Files - Markdown Integrity Validation"
+
+    Write-Host "Running repo-specific checks on README.md and docs/*.md..."
+
+    try {
+        $nodeVersion = node --version 2>$null
+        $output = & node (Join-Path $ProjectRoot "test/check-documentation.mjs") 2>&1
+        $exitCode = $LASTEXITCODE
+    } catch {
+        $output = & docker run --rm `
+            -v "${ProjectRoot}:/workspace" `
+            --workdir /workspace `
+            node:25-alpine node test/check-documentation.mjs 2>&1
+        $exitCode = $LASTEXITCODE
+    }
+
+    if ($exitCode -eq 0) {
+        Write-Result "Documentation Files" 0
+    } else {
+        Write-Result "Documentation Files" 1 $output
     }
 }
 

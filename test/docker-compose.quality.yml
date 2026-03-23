@@ -18,6 +18,7 @@ services:
       - ./.github:/workspace/.github:ro
       - ./docs:/workspace/docs:ro
       - ./references:/workspace/references:ro
+      - ./README.md:/workspace/README.md:ro
       - ./SKILL.md:/workspace/SKILL.md:ro
       - ./test:/workspace/test:ro
       - ./pyproject.toml:/workspace/pyproject.toml:ro
