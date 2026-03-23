@@ -330,9 +330,9 @@ This approach:
 
 **Note:** Docker Compose file validation requires the Docker Compose plugin and is only available via local script execution.
 
-### Local Script Execution (All Checks Including Compose Validation)
+### Local Script Execution (Alternative to Docker)
 
-Run the scripts directly on your machine to execute all fourteen checks:
+If you prefer not to use the Docker quality service, run the scripts directly on your machine to execute all fourteen checks:
 
 **Bash (Linux/Mac/Git Bash):**
 
@@ -343,20 +343,8 @@ Run the scripts directly on your machine to execute all fourteen checks:
 # Run with auto-fixes enabled
 ./test/check-code-quality.sh --fix
 
-# Run specific checks only
-./test/check-code-quality.sh --eslint
-./test/check-code-quality.sh --stylelint
-./test/check-code-quality.sh --htmlhint
-./test/check-code-quality.sh --knip
-./test/check-code-quality.sh --black
-./test/check-code-quality.sh --ruff
-./test/check-code-quality.sh --hadolint
-./test/check-code-quality.sh --compose
-./test/check-code-quality.sh --actionlint
-./test/check-code-quality.sh --shellcheck
-./test/check-code-quality.sh --yamllint
-./test/check-code-quality.sh --mypy
-./test/check-code-quality.sh --documentation
+# Show help for individual checks
+./test/check-code-quality.sh --help
 ```
 
 **PowerShell (Windows):**
@@ -368,20 +356,16 @@ Run the scripts directly on your machine to execute all fourteen checks:
 # Run with auto-fixes enabled
 .\test\check-code-quality.ps1 -Fix
 
-# Run specific checks only
-.\test\check-code-quality.ps1 -ESLint
-.\test\check-code-quality.ps1 -Stylelint
-.\test\check-code-quality.ps1 -HTMLHint
-.\test\check-code-quality.ps1 -Knip
-.\test\check-code-quality.ps1 -Black
-.\test\check-code-quality.ps1 -Ruff
-.\test\check-code-quality.ps1 -Hadolint
-.\test\check-code-quality.ps1 -Compose
-.\test\check-code-quality.ps1 -ActionLint
-.\test\check-code-quality.ps1 -ShellCheck
-.\test\check-code-quality.ps1 -Yamllint
-.\test\check-code-quality.ps1 -MyPy
-.\test\check-code-quality.ps1 -Documentation
+# Show help for individual checks
+.\test\check-code-quality.ps1 -Help
+```
+
+### Discovering Individual Checks with Docker
+
+If you want to stay inside the Docker workflow, run the quality script help through the Compose service:
+
+```bash
+docker compose -f docker-compose.yml -f test/docker-compose.quality.yml run --rm quality-check --help
 ```
 
 ## Configuration Files

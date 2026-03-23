@@ -53,5 +53,5 @@ COPY --chmod=755 test/check-code-quality.sh /usr/local/bin/check-code-quality.sh
 # Set PROJECT_ROOT to the workspace mount point
 ENV PROJECT_ROOT=/workspace
 
-# Run the quality check script
-CMD ["/usr/local/bin/check-code-quality.sh"]
+# Run the quality check script and allow Compose `run` args to pass through.
+ENTRYPOINT ["/usr/local/bin/check-code-quality.sh"]

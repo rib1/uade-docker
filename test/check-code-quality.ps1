@@ -6,6 +6,7 @@
 # Usage:
 #   .\test\check-code-quality.ps1              # Run all checks
 #   .\test\check-code-quality.ps1 -Fix         # Run with fixes enabled
+#   .\test\check-code-quality.ps1 -Help        # Show usage and available checks
 #   .\test\check-code-quality.ps1 -ESLint      # ESLint only
 #   .\test\check-code-quality.ps1 -Black       # Black only
 #   .\test\check-code-quality.ps1 -Ruff        # Ruff only
@@ -25,6 +26,7 @@
 #   - Docker Desktop installed and running
 
 param(
+    [switch]$Help,
     [switch]$Fix,
     [switch]$ESLint,
     [switch]$Black,
@@ -41,6 +43,35 @@ param(
     [switch]$Instructions,
     [switch]$Documentation
 )
+
+function Show-Usage {
+    Write-Host "Usage: .\test\check-code-quality.ps1 [-Fix] [-Help] [single-check switch]"
+    Write-Host ""
+    Write-Host "Run all checks:"
+    Write-Host "  .\test\check-code-quality.ps1"
+    Write-Host ""
+    Write-Host "Run with auto-fixes:"
+    Write-Host "  .\test\check-code-quality.ps1 -Fix"
+    Write-Host ""
+    Write-Host "Show help:"
+    Write-Host "  .\test\check-code-quality.ps1 -Help"
+    Write-Host ""
+    Write-Host "Run a specific check:"
+    Write-Host "  -ESLint"
+    Write-Host "  -Stylelint"
+    Write-Host "  -HTMLHint"
+    Write-Host "  -Knip"
+    Write-Host "  -Black"
+    Write-Host "  -Ruff"
+    Write-Host "  -MyPy"
+    Write-Host "  -Hadolint"
+    Write-Host "  -Compose"
+    Write-Host "  -ActionLint"
+    Write-Host "  -ShellCheck"
+    Write-Host "  -Yamllint"
+    Write-Host "  -Instructions"
+    Write-Host "  -Documentation"
+}
 
 # Color codes
 $Green = @{ ForegroundColor = "Green" }
@@ -125,6 +156,11 @@ foreach ($Required in @(
 $TotalChecks = 0
 $PassedChecks = 0
 $FailedChecks = 0
+
+if ($Help) {
+    Show-Usage
+    exit 0
+}
 
 # Default to run all if no specific tool selected
 if (-not $ESLint -and -not $Black -and -not $Ruff -and -not $ActionLint -and -not $Hadolint -and -not $Compose -and -not $ShellCheck -and -not $Yamllint -and -not $Stylelint -and -not $HTMLHint -and -not $Knip -and -not $MyPy -and -not $Instructions -and -not $Documentation) {
@@ -610,7 +646,7 @@ if ($Instructions) {
     Write-Host "Running repo-specific checks on instruction files..."
 
     try {
-        $nodeVersion = node --version 2>$null
+        node --version 2>$null | Out-Null
         $output = & node (Join-Path $ProjectRoot "test/check-instructions.mjs") 2>&1
         $exitCode = $LASTEXITCODE
     } catch {
@@ -635,7 +671,7 @@ if ($Documentation) {
     Write-Host "Running repo-specific checks on README.md and docs/*.md..."
 
     try {
-        $nodeVersion = node --version 2>$null
+        node --version 2>$null | Out-Null
         $output = & node (Join-Path $ProjectRoot "test/check-documentation.mjs") 2>&1
         $exitCode = $LASTEXITCODE
     } catch {

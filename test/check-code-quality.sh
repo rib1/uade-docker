@@ -8,6 +8,7 @@
 # Usage:
 #   ./test/check-code-quality.sh              # Run all checks
 #   ./test/check-code-quality.sh --fix        # Run with fixes enabled
+#   ./test/check-code-quality.sh --help       # Show usage and available checks
 #   ./test/check-code-quality.sh --eslint     # ESLint only
 #   ./test/check-code-quality.sh --black      # Black only
 #   ./test/check-code-quality.sh --ruff       # Ruff only
@@ -128,6 +129,72 @@ TOTAL_CHECKS=0
 PASSED_CHECKS=0
 FAILED_CHECKS=0
 
+print_usage() {
+    cat <<'EOF'
+Usage: ./test/check-code-quality.sh [--fix] [--help] [single-check option]
+
+Run all checks:
+  ./test/check-code-quality.sh
+
+Run with auto-fixes:
+  ./test/check-code-quality.sh --fix
+
+Show help:
+  ./test/check-code-quality.sh --help
+
+Run a specific check:
+  --eslint
+  --stylelint
+  --htmlhint
+  --knip
+  --black
+  --ruff
+  --mypy
+  --hadolint
+  --compose
+  --actionlint
+  --shellcheck
+  --yamllint
+  --instructions
+  --documentation
+EOF
+}
+
+enable_only_check() {
+    local selected_check="$1"
+    RUN_ESLINT=false
+    RUN_BLACK=false
+    RUN_RUFF=false
+    RUN_ACTIONLINT=false
+    RUN_HADOLINT=false
+    RUN_COMPOSE=false
+    RUN_SHELLCHECK=false
+    RUN_YAMLLINT=false
+    RUN_STYLELINT=false
+    RUN_HTMLHINT=false
+    RUN_KNIP=false
+    RUN_MYPY=false
+    RUN_INSTRUCTIONS=false
+    RUN_DOCUMENTATION=false
+
+    case "$selected_check" in
+        eslint) RUN_ESLINT=true ;;
+        black) RUN_BLACK=true ;;
+        ruff) RUN_RUFF=true ;;
+        actionlint) RUN_ACTIONLINT=true ;;
+        hadolint) RUN_HADOLINT=true ;;
+        compose) RUN_COMPOSE=true ;;
+        shellcheck) RUN_SHELLCHECK=true ;;
+        yamllint) RUN_YAMLLINT=true ;;
+        stylelint) RUN_STYLELINT=true ;;
+        htmlhint) RUN_HTMLHINT=true ;;
+        knip) RUN_KNIP=true ;;
+        mypy) RUN_MYPY=true ;;
+        instructions) RUN_INSTRUCTIONS=true ;;
+        documentation) RUN_DOCUMENTATION=true ;;
+    esac
+}
+
 # Parse arguments
 FIX_MODE=false
 RUN_ESLINT=true
@@ -147,227 +214,73 @@ RUN_DOCUMENTATION=true
 
 for arg in "$@"; do
     case $arg in
+        --help|-h)
+            print_usage
+            exit 0
+            ;;
         --fix)
             FIX_MODE=true
             shift
             ;;
         --eslint)
-            RUN_ESLINT=true
-            RUN_BLACK=false
-            RUN_RUFF=false
-            RUN_ACTIONLINT=false
-            RUN_HADOLINT=false
-            RUN_COMPOSE=false
-            RUN_SHELLCHECK=false
-            RUN_YAMLLINT=false
-            RUN_STYLELINT=false
-            RUN_HTMLHINT=false
-            RUN_MYPY=false
-            RUN_DOCUMENTATION=false
+            enable_only_check eslint
             shift
             ;;
         --black)
-            RUN_BLACK=true
-            RUN_ESLINT=false
-            RUN_RUFF=false
-            RUN_ACTIONLINT=false
-            RUN_HADOLINT=false
-            RUN_COMPOSE=false
-            RUN_SHELLCHECK=false
-            RUN_YAMLLINT=false
-            RUN_STYLELINT=false
-            RUN_HTMLHINT=false
-            RUN_MYPY=false
-            RUN_DOCUMENTATION=false
+            enable_only_check black
             shift
             ;;
         --ruff)
-            RUN_RUFF=true
-            RUN_ESLINT=false
-            RUN_BLACK=false
-            RUN_ACTIONLINT=false
-            RUN_HADOLINT=false
-            RUN_COMPOSE=false
-            RUN_SHELLCHECK=false
-            RUN_YAMLLINT=false
-            RUN_STYLELINT=false
-            RUN_HTMLHINT=false
-            RUN_MYPY=false
-            RUN_DOCUMENTATION=false
+            enable_only_check ruff
             shift
             ;;
         --actionlint)
-            RUN_ACTIONLINT=true
-            RUN_ESLINT=false
-            RUN_BLACK=false
-            RUN_RUFF=false
-            RUN_HADOLINT=false
-            RUN_COMPOSE=false
-            RUN_SHELLCHECK=false
-            RUN_YAMLLINT=false
-            RUN_STYLELINT=false
-            RUN_HTMLHINT=false
-            RUN_MYPY=false
-            RUN_DOCUMENTATION=false
+            enable_only_check actionlint
             shift
             ;;
         --hadolint)
-            RUN_HADOLINT=true
-            RUN_ESLINT=false
-            RUN_BLACK=false
-            RUN_RUFF=false
-            RUN_ACTIONLINT=false
-            RUN_COMPOSE=false
-            RUN_SHELLCHECK=false
-            RUN_YAMLLINT=false
-            RUN_STYLELINT=false
-            RUN_HTMLHINT=false
-            RUN_MYPY=false
-            RUN_DOCUMENTATION=false
+            enable_only_check hadolint
             shift
             ;;
         --compose)
-            RUN_COMPOSE=true
-            RUN_ESLINT=false
-            RUN_BLACK=false
-            RUN_RUFF=false
-            RUN_ACTIONLINT=false
-            RUN_HADOLINT=false
-            RUN_SHELLCHECK=false
-            RUN_YAMLLINT=false
-            RUN_STYLELINT=false
-            RUN_HTMLHINT=false
-            RUN_MYPY=false
-            RUN_DOCUMENTATION=false
+            enable_only_check compose
             shift
             ;;
         --shellcheck)
-            RUN_SHELLCHECK=true
-            RUN_ESLINT=false
-            RUN_BLACK=false
-            RUN_RUFF=false
-            RUN_ACTIONLINT=false
-            RUN_HADOLINT=false
-            RUN_COMPOSE=false
-            RUN_YAMLLINT=false
-            RUN_STYLELINT=false
-            RUN_HTMLHINT=false
-            RUN_MYPY=false
-            RUN_DOCUMENTATION=false
+            enable_only_check shellcheck
             shift
             ;;
         --yamllint)
-            RUN_YAMLLINT=true
-            RUN_ESLINT=false
-            RUN_BLACK=false
-            RUN_RUFF=false
-            RUN_ACTIONLINT=false
-            RUN_HADOLINT=false
-            RUN_COMPOSE=false
-            RUN_SHELLCHECK=false
-            RUN_STYLELINT=false
-            RUN_HTMLHINT=false
-            RUN_MYPY=false
-            RUN_DOCUMENTATION=false
+            enable_only_check yamllint
             shift
             ;;
         --stylelint)
-            RUN_STYLELINT=true
-            RUN_ESLINT=false
-            RUN_BLACK=false
-            RUN_RUFF=false
-            RUN_ACTIONLINT=false
-            RUN_HADOLINT=false
-            RUN_COMPOSE=false
-            RUN_SHELLCHECK=false
-            RUN_YAMLLINT=false
-            RUN_HTMLHINT=false
-            RUN_MYPY=false
-            RUN_DOCUMENTATION=false
+            enable_only_check stylelint
             shift
             ;;
         --htmlhint)
-            RUN_HTMLHINT=true
-            RUN_ESLINT=false
-            RUN_BLACK=false
-            RUN_RUFF=false
-            RUN_ACTIONLINT=false
-            RUN_HADOLINT=false
-            RUN_COMPOSE=false
-            RUN_SHELLCHECK=false
-            RUN_YAMLLINT=false
-            RUN_STYLELINT=false
-            RUN_MYPY=false
-            RUN_DOCUMENTATION=false
+            enable_only_check htmlhint
             shift
             ;;
         --knip)
-            RUN_KNIP=true
-            RUN_ESLINT=false
-            RUN_BLACK=false
-            RUN_RUFF=false
-            RUN_ACTIONLINT=false
-            RUN_HADOLINT=false
-            RUN_COMPOSE=false
-            RUN_SHELLCHECK=false
-            RUN_YAMLLINT=false
-            RUN_STYLELINT=false
-            RUN_HTMLHINT=false
-            RUN_MYPY=false
-            RUN_INSTRUCTIONS=false
-            RUN_DOCUMENTATION=false
+            enable_only_check knip
             shift
             ;;
         --mypy)
-            RUN_MYPY=true
-            RUN_ESLINT=false
-            RUN_BLACK=false
-            RUN_RUFF=false
-            RUN_ACTIONLINT=false
-            RUN_HADOLINT=false
-            RUN_COMPOSE=false
-            RUN_SHELLCHECK=false
-            RUN_YAMLLINT=false
-            RUN_STYLELINT=false
-            RUN_HTMLHINT=false
-            RUN_DOCUMENTATION=false
+            enable_only_check mypy
             shift
             ;;
         --instructions)
-            RUN_INSTRUCTIONS=true
-            RUN_ESLINT=false
-            RUN_BLACK=false
-            RUN_RUFF=false
-            RUN_ACTIONLINT=false
-            RUN_HADOLINT=false
-            RUN_COMPOSE=false
-            RUN_SHELLCHECK=false
-            RUN_YAMLLINT=false
-            RUN_STYLELINT=false
-            RUN_HTMLHINT=false
-            RUN_MYPY=false
-            RUN_DOCUMENTATION=false
+            enable_only_check instructions
             shift
             ;;
         --documentation)
-            RUN_DOCUMENTATION=true
-            RUN_ESLINT=false
-            RUN_BLACK=false
-            RUN_RUFF=false
-            RUN_ACTIONLINT=false
-            RUN_HADOLINT=false
-            RUN_COMPOSE=false
-            RUN_SHELLCHECK=false
-            RUN_YAMLLINT=false
-            RUN_STYLELINT=false
-            RUN_HTMLHINT=false
-            RUN_MYPY=false
-            RUN_INSTRUCTIONS=false
+            enable_only_check documentation
             shift
             ;;
         *)
             echo "Unknown option: $arg"
-            echo "Usage: $0 [--fix] [--eslint|--stylelint|--htmlhint|--knip|--black|--ruff|--mypy|--actionlint|--hadolint|--compose|--shellcheck|--yamllint|--instructions|--documentation]"
+            print_usage
             exit 1
             ;;
     esac
