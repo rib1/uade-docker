@@ -4,7 +4,7 @@ This document explains the code quality checks and how to run them for the UADE 
 
 ## Overview
 
-The UADE Docker project uses thirteen automated code quality tools:
+The UADE Docker project uses fourteen automated code quality tools:
 
 1. **ESLint** - JavaScript linting and style checking
 2. **Stylelint** - CSS linting and style checking

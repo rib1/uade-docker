@@ -54,15 +54,35 @@ function normalizeHeadingText(value) {
   return value.trim().toLowerCase().replace(/\s+/g, " ");
 }
 
+function findOriginalLineForHeading(content, headingSource, startIndex) {
+  const searchStart = Math.max(startIndex, 0);
+  let originalIndex = content.indexOf(headingSource, searchStart);
+  if (originalIndex === -1) {
+    originalIndex = content.indexOf(headingSource);
+  }
+  if (originalIndex === -1) {
+    return null;
+  }
+  return content.slice(0, originalIndex).split("\n").length;
+}
+
 function validateDuplicateHeadings(relativePath, content) {
   const contentWithoutCodeBlocks = stripFencedCodeBlocks(content);
   const headingPattern = /^(#{1,6})\s+(.+?)\s*#*\s*$/gm;
   const seen = new Map();
+  let lastOriginalIndex = 0;
 
   for (const match of contentWithoutCodeBlocks.matchAll(headingPattern)) {
     const headingText = normalizeHeadingText(match[2]);
     if (!headingText) {
       continue;
+    }
+    const line = findOriginalLineForHeading(content, match[0], lastOriginalIndex);
+    if (line !== null) {
+      const originalIndex = content.indexOf(match[0], lastOriginalIndex);
+      if (originalIndex !== -1) {
+        lastOriginalIndex = originalIndex + match[0].length;
+      }
     }
     if (seen.has(headingText)) {
       addFailure(
@@ -71,8 +91,7 @@ function validateDuplicateHeadings(relativePath, content) {
       );
       continue;
     }
-    const line = content.slice(0, match.index).split("\n").length;
-    seen.set(headingText, line);
+    seen.set(headingText, line ?? 1);
   }
 }
 
