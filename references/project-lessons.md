@@ -143,6 +143,7 @@ This document contains project-specific learnings and regression-avoidance notes
 - **Configuration:** For Ruff specifically, `pyproject.toml` is the source of truth for rule selection.
 - **Best Practices:** When enabling stricter Ruff rules (e.g., `FBT`, `SLF`, `ARG`), prefer fixing code over adding ignores.
 - **Toolchain:** The repo's quality flow should validate the full supported stack: frontend assets, Python, Dockerfiles, Compose files, workflows, shell scripts, YAML, and instruction files.
+- **Documentation Checks:** Keep repo guidance validation and general documentation validation separate. `test/check-instructions.mjs` should stay focused on instruction/guidance contracts, while `test/check-documentation.mjs` should own markdown/doc integrity checks. If a new checker is added under `test/`, make sure the existing ESLint `/test/*.{js,mjs}` pass covers it, register it in `test/knip.config.js` if needed, and mount every file it needs in the quality-check container.
 - **Toolchain:** `knip` is now part of the quality workflow for JavaScript dead-code auditing. Keep its scope defined through `test/knip.config.js` with explicit entry files and script-invoked dependency ignores, rather than relying on raw package-graph discovery.
 - **Toolchain:** The Ruff portion of the quality check should run both `ruff format --check` and `ruff check`.
 - **Toolchain:** Aggregate multi-file failures in PowerShell scripts to show all errors, not just the last one.

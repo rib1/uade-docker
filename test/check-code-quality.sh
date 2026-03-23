@@ -21,6 +21,7 @@
 #   ./test/check-code-quality.sh --knip       # knip dead-code audit only
 #   ./test/check-code-quality.sh --mypy       # mypy only
 #   ./test/check-code-quality.sh --instructions # Instruction files only
+#   ./test/check-code-quality.sh --documentation # Documentation files only
 
 # Don't use set -e because we want to run all checks even if one fails
 # We handle errors manually and exit at the end based on FAILED_CHECKS count
@@ -142,6 +143,7 @@ RUN_HTMLHINT=true
 RUN_KNIP=true
 RUN_MYPY=true
 RUN_INSTRUCTIONS=true
+RUN_DOCUMENTATION=true
 
 for arg in "$@"; do
     case $arg in
@@ -161,6 +163,7 @@ for arg in "$@"; do
             RUN_STYLELINT=false
             RUN_HTMLHINT=false
             RUN_MYPY=false
+            RUN_DOCUMENTATION=false
             shift
             ;;
         --black)
@@ -175,6 +178,7 @@ for arg in "$@"; do
             RUN_STYLELINT=false
             RUN_HTMLHINT=false
             RUN_MYPY=false
+            RUN_DOCUMENTATION=false
             shift
             ;;
         --ruff)
@@ -189,6 +193,7 @@ for arg in "$@"; do
             RUN_STYLELINT=false
             RUN_HTMLHINT=false
             RUN_MYPY=false
+            RUN_DOCUMENTATION=false
             shift
             ;;
         --actionlint)
@@ -203,6 +208,7 @@ for arg in "$@"; do
             RUN_STYLELINT=false
             RUN_HTMLHINT=false
             RUN_MYPY=false
+            RUN_DOCUMENTATION=false
             shift
             ;;
         --hadolint)
@@ -217,6 +223,7 @@ for arg in "$@"; do
             RUN_STYLELINT=false
             RUN_HTMLHINT=false
             RUN_MYPY=false
+            RUN_DOCUMENTATION=false
             shift
             ;;
         --compose)
@@ -231,6 +238,7 @@ for arg in "$@"; do
             RUN_STYLELINT=false
             RUN_HTMLHINT=false
             RUN_MYPY=false
+            RUN_DOCUMENTATION=false
             shift
             ;;
         --shellcheck)
@@ -245,6 +253,7 @@ for arg in "$@"; do
             RUN_STYLELINT=false
             RUN_HTMLHINT=false
             RUN_MYPY=false
+            RUN_DOCUMENTATION=false
             shift
             ;;
         --yamllint)
@@ -259,6 +268,7 @@ for arg in "$@"; do
             RUN_STYLELINT=false
             RUN_HTMLHINT=false
             RUN_MYPY=false
+            RUN_DOCUMENTATION=false
             shift
             ;;
         --stylelint)
@@ -273,6 +283,7 @@ for arg in "$@"; do
             RUN_YAMLLINT=false
             RUN_HTMLHINT=false
             RUN_MYPY=false
+            RUN_DOCUMENTATION=false
             shift
             ;;
         --htmlhint)
@@ -287,6 +298,7 @@ for arg in "$@"; do
             RUN_YAMLLINT=false
             RUN_STYLELINT=false
             RUN_MYPY=false
+            RUN_DOCUMENTATION=false
             shift
             ;;
         --knip)
@@ -303,6 +315,7 @@ for arg in "$@"; do
             RUN_HTMLHINT=false
             RUN_MYPY=false
             RUN_INSTRUCTIONS=false
+            RUN_DOCUMENTATION=false
             shift
             ;;
         --mypy)
@@ -317,6 +330,7 @@ for arg in "$@"; do
             RUN_YAMLLINT=false
             RUN_STYLELINT=false
             RUN_HTMLHINT=false
+            RUN_DOCUMENTATION=false
             shift
             ;;
         --instructions)
@@ -332,11 +346,28 @@ for arg in "$@"; do
             RUN_STYLELINT=false
             RUN_HTMLHINT=false
             RUN_MYPY=false
+            RUN_DOCUMENTATION=false
+            shift
+            ;;
+        --documentation)
+            RUN_DOCUMENTATION=true
+            RUN_ESLINT=false
+            RUN_BLACK=false
+            RUN_RUFF=false
+            RUN_ACTIONLINT=false
+            RUN_HADOLINT=false
+            RUN_COMPOSE=false
+            RUN_SHELLCHECK=false
+            RUN_YAMLLINT=false
+            RUN_STYLELINT=false
+            RUN_HTMLHINT=false
+            RUN_MYPY=false
+            RUN_INSTRUCTIONS=false
             shift
             ;;
         *)
             echo "Unknown option: $arg"
-            echo "Usage: $0 [--fix] [--eslint|--stylelint|--htmlhint|--knip|--black|--ruff|--mypy|--actionlint|--hadolint|--compose|--shellcheck|--yamllint|--instructions]"
+            echo "Usage: $0 [--fix] [--eslint|--stylelint|--htmlhint|--knip|--black|--ruff|--mypy|--actionlint|--hadolint|--compose|--shellcheck|--yamllint|--instructions|--documentation]"
             exit 1
             ;;
     esac
@@ -490,13 +521,13 @@ if [ "$RUN_KNIP" = true ]; then
     echo "Running knip on /web/static and /test with repo-specific config..."
 
     if command -v knip >/dev/null 2>&1; then
-        OUTPUT=$(cd "${PROJECT_ROOT}/test" && knip --config knip.config.js --no-progress 2>&1)
+        OUTPUT=$(cd "${PROJECT_ROOT}/test" && knip --config knip.config.js --no-progress --treat-config-hints-as-errors 2>&1)
         EXIT_CODE=$?
     else
         OUTPUT=$(docker run --rm \
                -v "${PROJECT_ROOT}:/workspace" \
                --workdir /workspace/test \
-               node:24-alpine sh -lc "npm install -g knip@${KNIP_VERSION} >/dev/null && knip --config knip.config.js --no-progress" 2>&1)
+               node:24-alpine sh -lc "npm install -g knip@${KNIP_VERSION} >/dev/null && knip --config knip.config.js --no-progress --treat-config-hints-as-errors" 2>&1)
         EXIT_CODE=$?
     fi
 
@@ -875,6 +906,30 @@ if [ "$RUN_INSTRUCTIONS" = true ]; then
         print_result "Instruction Files" 0
     else
         print_result "Instruction Files" $EXIT_CODE "$OUTPUT"
+    fi
+fi
+
+# Documentation Files Check
+if [ "$RUN_DOCUMENTATION" = true ]; then
+    print_header "Documentation Files - Markdown Integrity Validation"
+
+    echo "Running repo-specific checks on README.md and docs/*.md..."
+
+    if command -v node >/dev/null 2>&1; then
+        OUTPUT=$(cd "${PROJECT_ROOT}" && node test/check-documentation.mjs 2>&1)
+        EXIT_CODE=$?
+    else
+        OUTPUT=$(docker run --rm \
+               -v "${PROJECT_ROOT}:/workspace" \
+               --workdir /workspace \
+               node:25-alpine node test/check-documentation.mjs 2>&1)
+        EXIT_CODE=$?
+    fi
+
+    if [ $EXIT_CODE -eq 0 ]; then
+        print_result "Documentation Files" 0
+    else
+        print_result "Documentation Files" $EXIT_CODE "$OUTPUT"
     fi
 fi
 

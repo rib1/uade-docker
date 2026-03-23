@@ -7,8 +7,9 @@ This document describes the architecture of the UADE Docker system, showing both
 ```mermaid
 architecture-beta
     group user(cloud)[User Interface]
-    group local(server)[Local Docker]
-    group gcp(cloud)[Google Cloud Platform]
+    group local(server)[Local Runtime]
+    group delivery(cloud)[Delivery and Cloud Runtime]
+    group storage(database)[Shared Storage]
 
     service browser(internet)[Web Browser] in user
     service cli(disk)[Command Line] in user
@@ -16,9 +17,10 @@ architecture-beta
     service docker_cli(server)[UADE CLI Container] in local
     service docker_web(server)[UADE Web Container] in local
 
-    service github(internet)[GitHub Actions] in gcp
-  service ghcr(database)[GitHub Container Registry] in gcp
-    service cloudrun(server)[Cloud Run Service] in gcp
+    service github(internet)[GitHub Actions] in delivery
+    service ghcr(database)[GitHub Container Registry] in delivery
+    service cloudrun(server)[Cloud Run Service] in delivery
+    service shared_cache(database)[Shared Cache] in storage
 
     service modland(internet)[Modland Archive]
 
@@ -30,8 +32,9 @@ architecture-beta
   ghcr:R --> L:cloudrun
 
     cloudrun:B --> T:modland
+    cloudrun:R --> L:shared_cache
     docker_web:B --> T:modland
-    docker_cli:B --> T:modland
+    docker_web:R --> L:shared_cache
 ```
 
 ## Components
@@ -41,7 +44,7 @@ architecture-beta
 - **Web Browser** - Access web player via HTTPS
 - **Command Line** - Run Docker commands locally via PowerShell/Bash
 
-### Local Docker Layer
+### Local Runtime (Docker) Layer
 
 - **UADE CLI Container** (`uade-cli`)
   - Debian stable-slim base
@@ -58,7 +61,7 @@ architecture-beta
   - Non-root user (uid=1000)
   - Rate limiting (per endpoint & global, per instance)
 
-### Google Cloud Platform Layer
+### Delivery and Cloud Runtime Layer
 
 - **GitHub Actions**
   - Automated CI/CD pipeline
@@ -79,6 +82,13 @@ architecture-beta
   - Minimal service account (zero permissions)
   - gVisor sandbox isolation
   - 2Gi memory, 2 CPU, 300s timeout
+
+### Shared Storage Layer
+
+- **Shared Cache**
+  - Converted-audio cache backed by local disk, AWS S3, or Google Cloud Storage
+  - Shared across web instances when `CACHE_URI` points to a shared backend
+  - Used for instant replay, deduplication, and multi-instance cache recovery
 
 ### External Services
 
@@ -183,33 +193,18 @@ This is why `/convert-probed` is documented as a best-effort optimization rather
 
 ### CI/CD
 
-- **Code Quality Checks**: Automated quality checks run on every push and pull request:
-  - **ESLint:** JavaScript/TypeScript linting with strict rules
-  - **Stylelint:** CSS linting and style validation
-  - **HTMLHint:** HTML validation and structural checks
-  - **Black:** Python code formatting enforcer
-  - **Ruff:** Python linting and import/style validation
-  - **Hadolint:** Dockerfile linting and best practices validation
-  - **Docker Compose Validation:** Validates all compose files including test overrides
-  - **ActionLint:** GitHub Actions workflow validation
-  - **ShellCheck:** Shell script validation for test and automation scripts
-  - **Yamllint:** YAML validation for workflows and compose files
-  - See [docs/CODE-QUALITY.md](CODE-QUALITY.md) for detailed usage and configuration
+- **Code Quality Checks:** Automated quality checks run on every push and pull request.
+- **Dependency Review:** Pull requests are checked for vulnerable dependencies before merge.
+- **SAST:** CodeQL, Semgrep, and Bandit provide static security analysis in CI.
+- **Container Scanning:** Trivy and Hadolint cover container and Dockerfile security hygiene.
+- For the maintained tool list, commands, and workflow details, see [`CODE-QUALITY.md`](CODE-QUALITY.md).
 - **Dependabot**: Automatically monitors and updates Docker, Pip, and GitHub Actions dependencies with security patches.
-- **Dependency Review**: Scans for vulnerable dependencies in every pull request and blocks merging if issues of `moderate` severity or higher are found.
-- SAST (Static Application Security Testing):
-  - **CodeQL:** Analyzes Python and JavaScript for security vulnerabilities.
-  - **Semgrep:** Scans for a wide range of security issues including OWASP Top 10, secrets, and language-specific bugs.
-  - **Bandit:** Performs security analysis specifically for Python code.
-- Container Scanning:
-  - **Trivy:** Scans the filesystem and Docker images for known vulnerabilities.
-  - **Hadolint:** Lints Dockerfiles to enforce best practices in CI/CD (also used in code quality checks).
 
 ## Dynamic Application Security Testing (DAST)
 
 ### OWASP ZAP Integration
 
-- **Manual DAST:** DAST scans are not run automatically in CI/CD pipelines. Developers must manually run OWASP ZAP using docker-compose:
+- **Manual DAST:** DAST scans are not run automatically in CI/CD pipelines. Developers must manually run OWASP ZAP using docker compose:
   - Baseline scan: `docker compose run --rm --build zap-scan`
   - Full scan: `docker compose run --rm --build zap-full-scan`
   - Seeded baseline scan: `docker compose run --rm --build zap-scan-seeded`
@@ -220,6 +215,7 @@ This is why `/convert-probed` is documented as a best-effort optimization rather
 - **Exclusions:** Health endpoints and static assets are excluded from scans to reduce noise.
 - **Exit Codes:** ZAP exit code `2` means the scan completed with warnings; it is not, by itself, an infrastructure failure.
 - **Remediation:** All detected vulnerabilities should be triaged and resolved before production deployment. Critical and high findings must block releases.
+- For the maintained developer workflow wording, see [`WEB-PLAYER.md`](WEB-PLAYER.md) and [`CODE-QUALITY.md`](CODE-QUALITY.md).
 
 ## Concurrency Testing
 
@@ -316,12 +312,8 @@ This is why `/convert-probed` is documented as a best-effort optimization rather
 
 ## Rate Limiting
 
-UADE Web Player enforces rate limits to prevent abuse and ensure fair usage:
+UADE Web Player enforces per-endpoint and global rate limits to prevent abuse and ensure fair usage using Flask-Limiter. 
 
-- Conversion endpoints: 10 requests/min per IP
-- Queue probe endpoint (`/probe-upload`): 40 requests/min per IP
-- Play endpoints: 50 requests/min per IP
-- Download endpoint: 6 requests/min per IP (`flask-limiter` enforces `DOWNLOAD_RATE_LIMIT`)
-- Global limit: 200 requests/hour per IP (all endpoints combined, enforced via `RATE_LIMIT`)
+For the exact current limits (conversions, play endpoints, downloads, etc.), see the **[Rate Limiting section in the Web Player Documentation](WEB-PLAYER.md#rate-limiting)**.
 
 > Rate limits are enforced per instance/pod. For global limits across all instances, a distributed backend (e.g., Redis) is required.
