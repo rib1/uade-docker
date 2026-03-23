@@ -491,6 +491,7 @@ async function performConversion(
     originalBtnText: providedOriginalBtnText = null,
     playFileOptions = {},
     activePlaylistTrackId = null,
+    showInitialStatus = true,
   } = {},
 ) {
   let originalBtnText = providedOriginalBtnText;
@@ -500,7 +501,9 @@ async function performConversion(
   } else {
     setButtonLoadingState(button, "Converting...");
   }
-  showStatus(initialStatusMessage, "info");
+  if (showInitialStatus) {
+    showStatus(initialStatusMessage, "info");
+  }
 
   try {
     const response = await fetch(endpoint, options);
@@ -1847,6 +1850,7 @@ async function playDeferredLocalTrack(
   { uiAlreadyLocked = false, originalBtnText: providedOriginalBtnText = null } = {},
 ) {
   let originalBtnText = providedOriginalBtnText;
+  let hasShownConversionStatus = false;
 
   const ensureLoadingState = (loadingText = "Converting...") => {
     if (!uiAlreadyLocked || originalBtnText === null) {
@@ -1899,6 +1903,7 @@ async function playDeferredLocalTrack(
   if (track.moduleHash) {
     ensureLoadingState("Converting...");
     showStatus(`Converting ${track.name}...`, "info");
+    hasShownConversionStatus = true;
 
     try {
       const response = await fetch("/convert-probed", {
@@ -1964,6 +1969,7 @@ async function playDeferredLocalTrack(
       originalBtnText,
       playFileOptions: { preservePlaylistSelection: true },
       activePlaylistTrackId: trackId,
+      showInitialStatus: !hasShownConversionStatus,
     },
   );
 }
