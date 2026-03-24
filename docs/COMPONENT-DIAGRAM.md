@@ -229,13 +229,12 @@ The Web Player Container is built using multi-stage Docker build with `FROM uade
 
 1. User accesses web interface via browser
 2. Flask serves static HTML/CSS/JS
-3. User uploads a file, enters a URL, or queues a local file for deferred playback
-4. API endpoint receives either a convert/play request or a queue probe request
-5. Player Service validates the request and, for queued local files, uses `/probe-upload` first and `/convert-probed` as a best-effort optimization before `/upload` fallback
-6. UADE Wrapper spawns uade123 process (from base image)
+3. User uploads a file, enters a URL, or queues a local file or URL for deferred playback
+4. API endpoint receives a conversion or probe request
+5. Player Service validates the request and checks cache
+6. If cached audio is unavailable, UADE Wrapper spawns uade123 process (from base image)
 7. uade123 decodes audio stream using UADE Core
-8. Audio data streamed back to browser
-9. Status updates via API polling
+8. Audio data is served back to browser
 
 ### CLI Player Execution Flow
 

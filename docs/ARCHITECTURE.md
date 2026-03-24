@@ -109,23 +109,15 @@ architecture-beta
 
 ### Web Player Workflow
 
-1. User uploads a module file, provides a URL, or plays a queued local file.
-2. The browser first checks its local cache for the converted audio file. If found, it's played instantly and the process stops here.
-3. If not in the browser cache, the Flask server receives the request.
-4. For URL requests, the source module file is downloaded. A local cache is checked first, based on the URL, to avoid re-downloading.
-5. For local queue tracks, the file is probed on drop via `/probe-upload` (returns metadata + `module_hash`). When playback is triggered, the client tries `/convert-probed` with the hash as a best-effort optimization (no re-upload needed). In the primary single-container Docker Desktop setup this usually succeeds because probe and playback share the same local module storage. In multi-container deployments it must not be relied on across container hops unless probed source files are also on shared storage. If the probed file is unavailable on the serving instance (404), the client falls back to a full `/upload`.
-6. An MD5 hash of the source module file content is calculated.
-7. The system checks for a pre-converted WAV or FLAC file in the main **server-side cache** (local or remote) using this hash.
-8. **If a server-side cached audio file is found:**
-  a.  The cached audio is served directly to the user, who is notified that the song was served from the **server-side cache**.
-  b.  The user's browser will now cache this file for one month.
-9. **If no cached audio file is found:**
-    a. If the source file is an LHA or ZIP archive, it is extracted to find the music file.
-    b. The UADE player converts the module to WAV.
-    c. If FLAC is preferred by the client, the WAV file is then converted to FLAC.
-    d. The converted audio file (WAV or FLAC) is saved to the main **server-side cache**.
-    e. The audio is streamed back to the browser, which will cache it for one month.
-10. Temporary files are cleaned up periodically.
+The UI uses four request patterns:
+
+1. **Direct local-file play:** `/upload`
+2. **Direct URL play:** `/convert-url`
+3. **Queued local-file play:** `/probe-upload`, then `/convert-probed` as an optimization, with `/upload` fallback
+4. **Queued URL play:** `/probe-url`, then `/convert-url`
+5. **Playback:** successful conversion responses return a `file_id`, and the browser plays the resulting audio via `/play/{file_id}`
+
+In every conversion path, the backend checks the main **server-side cache** for converted WAV/FLAC audio using the module content hash, converts if needed, then returns browser-cacheable audio. For URL-based requests, the downloaded source file is also checked in a container-local disk cache keyed by URL before re-download. Browser-side cache only works when that exact WAV or FLAC response has already been cached for the same playback URL. Temporary files are cleaned up periodically.
 
 ### Cache Matrix
 
@@ -274,7 +266,7 @@ This is why `/convert-probed` is documented as a best-effort optimization rather
 
 ### Application
 
-- **Client-Side Caching:** Converted audio is cached in the browser for one month, enabling instant playback on repeat visits.
+- **Client-Side Caching:** Converted audio responses are browser-cacheable for one month, enabling instant playback on repeat visits when the exact WAV/FLAC artifact URL is already cached.
 - **Server-Side Caching:**
   - Source modules from URLs are cached locally to prevent re-downloads (using an MD5 hash of the URL).
   - Converted audio files are stored in a content-addressable cache (local or remote S3/GCS, see Infrastructure) for deduplication and instant serving.
@@ -312,7 +304,7 @@ This is why `/convert-probed` is documented as a best-effort optimization rather
 
 ## Rate Limiting
 
-UADE Web Player enforces per-endpoint and global rate limits to prevent abuse and ensure fair usage using Flask-Limiter. 
+UADE Web Player enforces per-endpoint and global rate limits to prevent abuse and ensure fair usage using Flask-Limiter.
 
 For the exact current limits (conversions, play endpoints, downloads, etc.), see the **[Rate Limiting section in the Web Player Documentation](WEB-PLAYER.md#rate-limiting)**.
 
