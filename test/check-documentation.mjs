@@ -151,6 +151,27 @@ function validateRelativeLinks(relativePath, content) {
   }
 }
 
+function validateNoHardcodedWorkspacePaths(relativePath, content) {
+  const normalizedRoot = projectRoot.replace(/\\/g, "/").toLowerCase();
+  const normalizedContent = content.replace(/\\/g, "/").toLowerCase();
+  const rootWithoutLeadingSlash = normalizedRoot.replace(/^\/+/, "");
+
+  if (normalizedRoot && normalizedContent.includes(normalizedRoot)) {
+    addFailure(
+      relativePath,
+      "must not contain hardcoded local workspace paths; use repo-relative paths instead",
+    );
+    return;
+  }
+
+  if (rootWithoutLeadingSlash && normalizedContent.includes(`/${rootWithoutLeadingSlash}`)) {
+    addFailure(
+      relativePath,
+      "must not contain hardcoded local workspace paths; use repo-relative paths instead",
+    );
+  }
+}
+
 function validateReadmeIntegrity() {
   const readmePath = "README.md";
   if (!fileExists(readmePath)) {
@@ -209,6 +230,7 @@ for (const relativePath of findMarkdownFiles()) {
   validateDuplicateHeadings(relativePath, content);
   validateFencedCodeLanguages(relativePath, content);
   validateRelativeLinks(relativePath, content);
+  validateNoHardcodedWorkspacePaths(relativePath, content);
 }
 
 if (failures.length > 0) {
