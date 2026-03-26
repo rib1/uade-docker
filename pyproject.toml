@@ -68,9 +68,7 @@ max-line-length = 100
 [tool.mypy]
 python_version = "3.13"
 files = ["web/server.py"]
-ignore_missing_imports = true
 follow_imports = "silent"
-disable_error_code = ["import-untyped"]
 check_untyped_defs = true
 warn_return_any = true
 no_implicit_optional = true
@@ -88,6 +86,16 @@ disallow_any_unimported = true
 warn_unused_ignores = true
 show_error_codes = true
 pretty = true
+
+[[tool.mypy.overrides]]
+module = [
+    "fsspec",
+    "flask",
+    "flask_limiter",
+    "flask_limiter.util",
+    "werkzeug.utils",
+]
+ignore_missing_imports = true
 
 [build-system]
 requires = ["setuptools>=45", "wheel", "setuptools_scm[toml]>=6.2"]
