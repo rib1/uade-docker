@@ -449,6 +449,14 @@ audio::-webkit-media-controls-enclosure {
   flex-wrap: wrap;
 }
 
+.player-controls .btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1.2;
+  min-height: 44px;
+}
+
 .btn-small {
   padding: 8px 12px;
   font-size: 0.85rem;
