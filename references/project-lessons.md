@@ -154,6 +154,10 @@ This document contains project-specific learnings and regression-avoidance notes
 - **Layer Caching:** In `Dockerfile.quality`, COPY each dependency manifest (`docker-compose.tooling.yml`, `package.json`, `requirements-quality.txt`) immediately before its install step. Bundling all COPYs together means a change to any one manifest invalidates every install layer.
 - **COPY --chmod:** Use `COPY --chmod=755` instead of a separate `RUN chmod` to eliminate an extra layer.
 - **Dead CSS:** Do not add dead-CSS auditing to the enforced quality loop until the selector analysis has a stable safelist for dynamic UI states. Simple audits mostly flag generated classes like `status-*` and dataset-driven selectors such as `data-drag-cue-active`, which creates more noise than signal.
+- **Dead CSS:** Once dead-CSS auditing is enforced, treat dynamic selectors as first-class inputs. In this repo, `status-*` classes and `data-drag-cue-active` selectors are runtime-generated from JavaScript, so the PurgeCSS config must preserve them explicitly rather than relying on static HTML discovery.
+- **Dead CSS:** For PurgeCSS in particular, protecting dynamic selectors via synthetic raw `content` entries is more reliable than relying on selector safelist encoding alone. Keep the protected-selector list in `test/purgecss.config.js` aligned with the runtime class and dataset usage in `web/static/app.js`.
+- **Dead CSS:** The audit mode and fix mode must use the same PurgeCSS engine and inputs. If fix mode can remove selectors that audit mode did not report, the checker is wrong; compare generated CSS against the source CSS instead of trusting CLI text output alone.
+- **Toolchain:** New Node-based quality helpers under `test/` should avoid top-level `await` unless the repo's ESLint parser settings explicitly support it. Wrapping async entrypoints in `async function main()` keeps them compatible with the current `/test/*.mjs` lint rules.
 
 ## UI State Management Lessons
 

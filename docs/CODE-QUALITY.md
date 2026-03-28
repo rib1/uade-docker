@@ -34,6 +34,7 @@ The quality suite covers:
 
 - JavaScript: `ESLint`
 - CSS: `Stylelint`
+- CSS dead selector audit: `PurgeCSS`
 - HTML: `HTMLHint`
 - JavaScript dead code: `knip`
 - Python formatting: `Black`
@@ -65,6 +66,7 @@ The per-tool rules live in the normal project config files:
 - ESLint: [`web/static/eslint.config.js`](../web/static/eslint.config.js)
 - Stylelint: [`.stylelintrc.json`](../.stylelintrc.json)
 - HTMLHint: [`.htmlhintrc`](../.htmlhintrc)
+- PurgeCSS: [`test/purgecss.config.js`](../test/purgecss.config.js)
 - knip: [`test/knip.config.js`](../test/knip.config.js)
 - Black, Ruff, mypy: [`pyproject.toml`](../pyproject.toml)
 - Hadolint: [`.hadolint.yaml`](../.hadolint.yaml)

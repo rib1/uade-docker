@@ -4,6 +4,8 @@ const toolingEntries = [
   "./accessibility-preflight.js",
   "./check-documentation.mjs",
   "./check-instructions.mjs",
+  "./check-purgecss.mjs",
+  "./purgecss.config.js",
 ];
 
 const frontendProjectFiles = ["../web/static/**/*.js"];
@@ -21,5 +23,6 @@ module.exports = {
     "stylelint",
     "htmlhint",
     "pa11y-ci",
+    "purgecss",
   ],
 };

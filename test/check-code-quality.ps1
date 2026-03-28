@@ -19,6 +19,7 @@
 #   .\test\check-code-quality.ps1 -HTMLHint    # HTMLHint only
 #   .\test\check-code-quality.ps1 -Knip        # knip dead-code audit only
 #   .\test\check-code-quality.ps1 -MyPy        # mypy only
+#   .\test\check-code-quality.ps1 -PurgeCSS    # PurgeCSS unused CSS check only
 #   .\test\check-code-quality.ps1 -Instructions # Instruction files only
 #   .\test\check-code-quality.ps1 -Documentation # Documentation files only
 #
@@ -41,7 +42,8 @@ param(
     [switch]$Knip,
     [switch]$MyPy,
     [switch]$Instructions,
-    [switch]$Documentation
+    [switch]$Documentation,
+    [switch]$PurgeCSS
 )
 
 function Show-Usage {
@@ -71,6 +73,7 @@ function Show-Usage {
     Write-Host "  -Yamllint"
     Write-Host "  -Instructions"
     Write-Host "  -Documentation"
+    Write-Host "  -PurgeCSS"
 }
 
 # Color codes
@@ -112,6 +115,7 @@ $ESLINT_VERSION = $NpmQuality.devDependencies.eslint
 $STYLELINT_VERSION = $NpmQuality.devDependencies.stylelint
 $HTMLHINT_VERSION = $NpmQuality.devDependencies.htmlhint
 $KNIP_VERSION = $NpmQuality.devDependencies.knip
+$PURGECSS_VERSION = $NpmQuality.devDependencies.purgecss
 $PyPins = @{}
 Get-Content -Path $PyQualityManifest | ForEach-Object {
     if ($_ -match '^([A-Za-z0-9._-]+)==(.+)$') {
@@ -138,6 +142,7 @@ foreach ($Required in @(
     @{ Name = "stylelint"; Value = $STYLELINT_VERSION },
     @{ Name = "htmlhint"; Value = $HTMLHINT_VERSION },
     @{ Name = "knip"; Value = $KNIP_VERSION },
+    @{ Name = "purgecss"; Value = $PURGECSS_VERSION },
     @{ Name = "black"; Value = $BLACK_VERSION },
     @{ Name = "ruff"; Value = $RUFF_VERSION },
     @{ Name = "mypy"; Value = $MYPY_VERSION },
@@ -163,7 +168,7 @@ if ($Help) {
 }
 
 # Default to run all if no specific tool selected
-if (-not $ESLint -and -not $Black -and -not $Ruff -and -not $ActionLint -and -not $Hadolint -and -not $Compose -and -not $ShellCheck -and -not $Yamllint -and -not $Stylelint -and -not $HTMLHint -and -not $Knip -and -not $MyPy -and -not $Instructions -and -not $Documentation) {
+if (-not $ESLint -and -not $Black -and -not $Ruff -and -not $ActionLint -and -not $Hadolint -and -not $Compose -and -not $ShellCheck -and -not $Yamllint -and -not $Stylelint -and -not $HTMLHint -and -not $Knip -and -not $MyPy -and -not $Instructions -and -not $Documentation -and -not $PurgeCSS) {
     $ESLint = $true
     $Stylelint = $true
     $HTMLHint = $true
@@ -178,8 +183,8 @@ if (-not $ESLint -and -not $Black -and -not $Ruff -and -not $ActionLint -and -no
     $MyPy = $true
     $Instructions = $true
     $Documentation = $true
+    $PurgeCSS = $true
 }
-
 # Helper function to print headers
 function Write-Header {
     param([string]$Title)
@@ -220,6 +225,44 @@ try {
     Write-Host "ERROR: Docker is not installed or not in PATH" @Red
     Write-Host "Please install Docker Desktop from: https://www.docker.com/products/docker-desktop" @Yellow
     exit 1
+}
+
+# PurgeCSS Check
+if ($PurgeCSS) {
+    Write-Header "PurgeCSS - Unused CSS Removal Check"
+
+    Write-Host "Running PurgeCSS on web/static/style.css against all HTML and JS in web/..."
+
+    $purgeCssArgs = @("check-purgecss.mjs")
+    if ($Fix) {
+        $purgeCssArgs += "--fix"
+    }
+
+    $hasNode = $null -ne (Get-Command node -ErrorAction SilentlyContinue)
+    $hasPurgeCSS = $null -ne (Get-Command purgecss -ErrorAction SilentlyContinue)
+
+    if ($hasNode -and $hasPurgeCSS) {
+        Push-Location (Join-Path $ProjectRoot "test")
+        try {
+            $output = & node @purgeCssArgs 2>&1
+            $exitCode = $LASTEXITCODE
+        } finally {
+            Pop-Location
+        }
+    } else {
+        $purgeCssCommand = "npm install -g purgecss@$PURGECSS_VERSION >/dev/null && node " + ($purgeCssArgs -join " ")
+        $output = & docker run --rm `
+            -v "${ProjectRoot}:/workspace" `
+            --workdir /workspace/test `
+            node:24-alpine sh -lc $purgeCssCommand 2>&1
+        $exitCode = $LASTEXITCODE
+    }
+
+    if ($exitCode -eq 0) {
+        Write-Result "PurgeCSS" 0
+    } else {
+        Write-Result "PurgeCSS" 1 $output
+    }
 }
 
 # ESLint Check
@@ -398,7 +441,7 @@ if ($MyPy) {
     $output = & docker run --rm `
         -v "${ProjectRoot}:/workspace" `
         --workdir /workspace `
-        python:3.13-slim sh -lc "pip install --no-cache-dir mypy==$MYPY_VERSION >/dev/null && mypy --config-file pyproject.toml --no-error-summary" 2>&1
+        python:3.13-slim sh -lc "pip install --no-cache-dir -r test/requirements-quality.txt >/dev/null && mypy --config-file pyproject.toml --no-error-summary" 2>&1
 
     $exitCode = $LASTEXITCODE
 

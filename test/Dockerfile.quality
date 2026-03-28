@@ -40,15 +40,18 @@ RUN npm install -g \
     "eslint@$(node -p 'require("/tmp/quality/package.json").devDependencies.eslint')" \
     "stylelint@$(node -p 'require("/tmp/quality/package.json").devDependencies.stylelint')" \
     "htmlhint@$(node -p 'require("/tmp/quality/package.json").devDependencies.htmlhint')" \
-    "knip@$(node -p 'require("/tmp/quality/package.json").devDependencies.knip')"
+    "knip@$(node -p 'require("/tmp/quality/package.json").devDependencies.knip')" \
+    "purgecss@$(node -p 'require("/tmp/quality/package.json").devDependencies.purgecss')"
 
 # Install Black, Ruff, mypy, and yamllint via pip
 # hadolint ignore=DL3042,DL3059
 COPY test/requirements-quality.txt /tmp/quality/requirements-quality.txt
 RUN pip3 install --no-cache-dir --break-system-packages -r /tmp/quality/requirements-quality.txt
 
-# Copy check script from test folder (context is project root)
+# Copy check scripts and config from test folder (context is project root)
 COPY --chmod=755 test/check-code-quality.sh /usr/local/bin/check-code-quality.sh
+COPY test/check-purgecss.mjs /usr/local/bin/check-purgecss.mjs
+COPY test/purgecss.config.js /usr/local/bin/purgecss.config.js
 
 # Set PROJECT_ROOT to the workspace mount point
 ENV PROJECT_ROOT=/workspace

@@ -21,7 +21,8 @@
 #   ./test/check-code-quality.sh --htmlhint   # HTMLHint only
 #   ./test/check-code-quality.sh --knip       # knip dead-code audit only
 #   ./test/check-code-quality.sh --mypy       # mypy only
-#   ./test/check-code-quality.sh --instructions # Instruction files only
+#   ./test/check-code-quality.sh --purgecss      # PurgeCSS unused CSS check only
+#   ./test/check-code-quality.sh --instructions  # Instruction files only
 #   ./test/check-code-quality.sh --documentation # Documentation files only
 
 # Don't use set -e because we want to run all checks even if one fails
@@ -115,6 +116,7 @@ ESLINT_VERSION="$(read_npm_tool_version eslint)"
 STYLELINT_VERSION="$(read_npm_tool_version stylelint)"
 HTMLHINT_VERSION="$(read_npm_tool_version htmlhint)"
 KNIP_VERSION="$(read_npm_tool_version knip)"
+PURGECSS_VERSION="$(read_npm_tool_version purgecss)"
 BLACK_VERSION="$(read_pip_tool_version black)"
 RUFF_VERSION="$(read_pip_tool_version ruff)"
 MYPY_VERSION="$(read_pip_tool_version mypy)"
@@ -155,6 +157,7 @@ Run a specific check:
   --actionlint
   --shellcheck
   --yamllint
+  --purgecss
   --instructions
   --documentation
 EOF
@@ -176,6 +179,7 @@ enable_only_check() {
     RUN_MYPY=false
     RUN_INSTRUCTIONS=false
     RUN_DOCUMENTATION=false
+    RUN_PURGECSS=false
 
     case "$selected_check" in
         eslint) RUN_ESLINT=true ;;
@@ -192,6 +196,8 @@ enable_only_check() {
         mypy) RUN_MYPY=true ;;
         instructions) RUN_INSTRUCTIONS=true ;;
         documentation) RUN_DOCUMENTATION=true ;;
+        purgecss) RUN_PURGECSS=true ;;
+        # purifycss removed
     esac
 }
 
@@ -208,6 +214,7 @@ RUN_YAMLLINT=true
 RUN_STYLELINT=true
 RUN_HTMLHINT=true
 RUN_KNIP=true
+RUN_PURGECSS=true
 RUN_MYPY=true
 RUN_INSTRUCTIONS=true
 RUN_DOCUMENTATION=true
@@ -278,6 +285,11 @@ for arg in "$@"; do
             enable_only_check documentation
             shift
             ;;
+        --purgecss)
+            enable_only_check purgecss
+            shift
+            ;;
+        # --purifycss removed
         *)
             echo "Unknown option: $arg"
             print_usage
@@ -285,7 +297,6 @@ for arg in "$@"; do
             ;;
     esac
 done
-
 # Helper function to print headers
 print_header() {
     echo -e "\n${BLUE}================================================================${NC}"
@@ -312,6 +323,35 @@ print_result() {
         ((FAILED_CHECKS++))
     fi
 }
+
+# PurgeCSS Check
+if [ "$RUN_PURGECSS" = true ]; then
+    print_header "PurgeCSS - Unused CSS Removal Check"
+
+    echo "Running PurgeCSS on web/static/style.css against all HTML and JS in web/..."
+
+    PURGECSS_FIX_ARG=""
+    if [ "$FIX_MODE" = true ]; then
+        PURGECSS_FIX_ARG="--fix"
+    fi
+
+    if command -v node >/dev/null 2>&1 && command -v purgecss >/dev/null 2>&1; then
+        OUTPUT=$(cd "${PROJECT_ROOT}/test" && node check-purgecss.mjs $PURGECSS_FIX_ARG 2>&1)
+        EXIT_CODE=$?
+    else
+        OUTPUT=$(docker run --rm \
+            -v "${PROJECT_ROOT}:/workspace" \
+            --workdir /workspace/test \
+            node:24-alpine sh -lc "npm install -g purgecss@${PURGECSS_VERSION} >/dev/null && node check-purgecss.mjs ${PURGECSS_FIX_ARG}" 2>&1)
+        EXIT_CODE=$?
+    fi
+
+    if [ $EXIT_CODE -eq 0 ]; then
+        print_result "PurgeCSS" 0
+    else
+        print_result "PurgeCSS" $EXIT_CODE "$OUTPUT"
+    fi
+fi
 
 # ESLint Check
 if [ "$RUN_ESLINT" = true ]; then
