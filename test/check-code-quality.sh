@@ -144,20 +144,31 @@ Run with auto-fixes:
 Show help:
   ./test/check-code-quality.sh --help
 
-Run a specific check:
-  --eslint
+Frontend Checks:
+CSS Checks:
+  --purgecss
   --stylelint
-  --htmlhint
+
+JavaScript Checks:
+  --eslint
   --knip
+
+HTML Checks:
+  --htmlhint
+
+Backend Python Checks:
   --black
   --ruff
   --mypy
+
+Infrastructure Checks:
   --hadolint
   --compose
   --actionlint
   --shellcheck
   --yamllint
-  --purgecss
+
+Markdown And Documentation Checks:
   --instructions
   --documentation
 EOF
@@ -324,8 +335,22 @@ print_result() {
     fi
 }
 
+print_group_header() {
+    echo
+    echo "--- $1 ---"
+    echo
+}
+
+print_subgroup_header() {
+    echo
+    echo "$1:"
+    echo
+}
+
 # PurgeCSS Check
 if [ "$RUN_PURGECSS" = true ]; then
+    print_group_header "Frontend Checks"
+    print_subgroup_header "CSS Checks"
     print_header "PurgeCSS - Unused CSS Removal Check"
 
     echo "Running PurgeCSS on web/static/style.css against all HTML and JS in web/..."
@@ -353,8 +378,41 @@ if [ "$RUN_PURGECSS" = true ]; then
     fi
 fi
 
+# Stylelint
+if [ "$RUN_STYLELINT" = true ]; then
+    print_header "Stylelint - CSS Linting"
+
+    echo "Running Stylelint on /web/static/*.css..."
+
+    STYLELINT_ARGS=(--config .stylelintrc.json "web/static/*.css")
+    if [ "$FIX_MODE" = true ]; then
+        STYLELINT_ARGS=(--config .stylelintrc.json --fix "web/static/*.css")
+    fi
+
+    if command -v stylelint >/dev/null 2>&1; then
+        OUTPUT=$(cd "${PROJECT_ROOT}" && stylelint "${STYLELINT_ARGS[@]}" 2>&1)
+        EXIT_CODE=$?
+    else
+        OUTPUT=$(docker run --rm \
+               -v "${PROJECT_ROOT}:/workspace" \
+               --workdir /workspace \
+               node:24-alpine sh -lc "npm install -g stylelint@${STYLELINT_VERSION} >/dev/null && stylelint ${STYLELINT_ARGS[*]}" 2>&1)
+        EXIT_CODE=$?
+    fi
+
+    if [ $EXIT_CODE -eq 0 ]; then
+        print_result "Stylelint" 0
+    else
+        print_result "Stylelint" $EXIT_CODE "$OUTPUT"
+    fi
+fi
+
 # ESLint Check
 if [ "$RUN_ESLINT" = true ]; then
+    if [ "$RUN_PURGECSS" != true ] && [ "$RUN_STYLELINT" != true ]; then
+        print_group_header "Frontend Checks"
+    fi
+    print_subgroup_header "JavaScript Checks"
     print_header "ESLint - JavaScript/CSS Linting"
 
     echo "Running ESLint on /web/static and /test/*.{js,mjs}..."
@@ -414,61 +472,12 @@ if [ "$RUN_ESLINT" = true ]; then
     fi
 fi
 
-# Stylelint
-if [ "$RUN_STYLELINT" = true ]; then
-    print_header "Stylelint - CSS Linting"
-
-    echo "Running Stylelint on /web/static/*.css..."
-
-    STYLELINT_ARGS=(--config .stylelintrc.json "web/static/*.css")
-    if [ "$FIX_MODE" = true ]; then
-        STYLELINT_ARGS=(--config .stylelintrc.json --fix "web/static/*.css")
-    fi
-
-    if command -v stylelint >/dev/null 2>&1; then
-        OUTPUT=$(cd "${PROJECT_ROOT}" && stylelint "${STYLELINT_ARGS[@]}" 2>&1)
-        EXIT_CODE=$?
-    else
-        OUTPUT=$(docker run --rm \
-               -v "${PROJECT_ROOT}:/workspace" \
-               --workdir /workspace \
-               node:24-alpine sh -lc "npm install -g stylelint@${STYLELINT_VERSION} >/dev/null && stylelint ${STYLELINT_ARGS[*]}" 2>&1)
-        EXIT_CODE=$?
-    fi
-
-    if [ $EXIT_CODE -eq 0 ]; then
-        print_result "Stylelint" 0
-    else
-        print_result "Stylelint" $EXIT_CODE "$OUTPUT"
-    fi
-fi
-
-# HTMLHint
-if [ "$RUN_HTMLHINT" = true ]; then
-    print_header "HTMLHint - HTML Validation"
-
-    echo "Running HTMLHint on /web/static/index.html..."
-
-    if command -v htmlhint >/dev/null 2>&1; then
-        OUTPUT=$(cd "${PROJECT_ROOT}" && htmlhint --config .htmlhintrc web/static/index.html 2>&1)
-        EXIT_CODE=$?
-    else
-        OUTPUT=$(docker run --rm \
-               -v "${PROJECT_ROOT}:/workspace" \
-               --workdir /workspace \
-               node:24-alpine sh -lc "npm install -g htmlhint@${HTMLHINT_VERSION} >/dev/null && htmlhint --config .htmlhintrc web/static/index.html" 2>&1)
-        EXIT_CODE=$?
-    fi
-
-    if [ $EXIT_CODE -eq 0 ]; then
-        print_result "HTMLHint" 0
-    else
-        print_result "HTMLHint" $EXIT_CODE "$OUTPUT"
-    fi
-fi
-
 # knip
 if [ "$RUN_KNIP" = true ]; then
+    if [ "$RUN_PURGECSS" != true ] && [ "$RUN_STYLELINT" != true ] && [ "$RUN_ESLINT" != true ]; then
+        print_group_header "Frontend Checks"
+        print_subgroup_header "JavaScript Checks"
+    fi
     print_header "knip - JavaScript Dead-Code Audit"
 
     echo "Running knip on /web/static and /test with repo-specific config..."
@@ -491,89 +500,37 @@ if [ "$RUN_KNIP" = true ]; then
     fi
 fi
 
-# ShellCheck
-if [ "$RUN_SHELLCHECK" = true ]; then
-    print_header "ShellCheck - Shell Script Linting"
-
-    mapfile -t SHELL_FILES < <(find "${PROJECT_ROOT}/test" -maxdepth 1 -type f -name "*.sh" 2>/dev/null | sort)
-
-    if [ "${#SHELL_FILES[@]}" -eq 0 ]; then
-        echo -e "${YELLOW}⚠ No shell scripts found${NC}"
-    else
-        FILE_COUNT=${#SHELL_FILES[@]}
-        echo "Found $FILE_COUNT shell script(s). Validating..."
-
-        if command -v shellcheck >/dev/null 2>&1; then
-            OUTPUT=$(shellcheck -x --severity=style "${SHELL_FILES[@]}" 2>&1)
-            EXIT_CODE=$?
-        else
-            SHELL_FILES_REL=()
-            for file in "${SHELL_FILES[@]}"; do
-                SHELL_FILES_REL+=("${file#"${PROJECT_ROOT}"/}")
-            done
-            OUTPUT=$(docker run --rm \
-                -v "${PROJECT_ROOT}:/workspace" \
-                --workdir /workspace \
-                "${SHELLCHECK_IMAGE}" -x --severity=style "${SHELL_FILES_REL[@]}" 2>&1)
-            EXIT_CODE=$?
-        fi
-
-        if [ $EXIT_CODE -eq 0 ]; then
-            print_result "ShellCheck" 0
-        else
-            print_result "ShellCheck" $EXIT_CODE "$OUTPUT"
-        fi
+# HTMLHint
+if [ "$RUN_HTMLHINT" = true ]; then
+    if [ "$RUN_PURGECSS" != true ] && [ "$RUN_STYLELINT" != true ] && [ "$RUN_ESLINT" != true ] && [ "$RUN_KNIP" != true ]; then
+        print_group_header "Frontend Checks"
     fi
-fi
+    print_subgroup_header "HTML Checks"
+    print_header "HTMLHint - HTML Validation"
 
-# Yamllint
-if [ "$RUN_YAMLLINT" = true ]; then
-    print_header "Yamllint - YAML Validation"
+    echo "Running HTMLHint on /web/static/index.html..."
 
-    mapfile -t YAML_FILES < <(
-        {
-            find "${PROJECT_ROOT}/.github" "${PROJECT_ROOT}/test" -type f \( -name "*.yml" -o -name "*.yaml" \) 2>/dev/null
-            find "${PROJECT_ROOT}" -maxdepth 1 -type f \( -name "*.yml" -o -name "*.yaml" \) 2>/dev/null
-        } | sort
-    )
-
-    if [ "${#YAML_FILES[@]}" -eq 0 ]; then
-        echo -e "${YELLOW}⚠ No YAML files found${NC}"
-    else
-        FILE_COUNT=${#YAML_FILES[@]}
-        echo "Found $FILE_COUNT YAML file(s). Validating..."
-
-        if command -v yamllint >/dev/null 2>&1; then
-            YAMLLINT_CONFIG="${PROJECT_ROOT}/.yamllint.yml"
-            if [ -f "$YAMLLINT_CONFIG" ]; then
-                OUTPUT=$(yamllint -c "$YAMLLINT_CONFIG" "${YAML_FILES[@]}" 2>&1)
-            else
-                OUTPUT=$(yamllint "${YAML_FILES[@]}" 2>&1)
-            fi
-        else
-            YAML_FILES_REL=()
-            for file in "${YAML_FILES[@]}"; do
-                YAML_FILES_REL+=("${file#"${PROJECT_ROOT}"/}")
-            done
-            OUTPUT=$(docker run --rm \
-                -v "${PROJECT_ROOT}:/workspace" \
-                --workdir /workspace \
-                python:3.13-slim sh -lc \
-                "pip install --no-cache-dir yamllint==${YAMLLINT_VERSION} >/dev/null && if [ -f .yamllint.yml ]; then yamllint -c .yamllint.yml \"\$@\"; else yamllint \"\$@\"; fi" \
-                sh "${YAML_FILES_REL[@]}" 2>&1)
-        fi
+    if command -v htmlhint >/dev/null 2>&1; then
+        OUTPUT=$(cd "${PROJECT_ROOT}" && htmlhint --config .htmlhintrc web/static/index.html 2>&1)
         EXIT_CODE=$?
+    else
+        OUTPUT=$(docker run --rm \
+               -v "${PROJECT_ROOT}:/workspace" \
+               --workdir /workspace \
+               node:24-alpine sh -lc "npm install -g htmlhint@${HTMLHINT_VERSION} >/dev/null && htmlhint --config .htmlhintrc web/static/index.html" 2>&1)
+        EXIT_CODE=$?
+    fi
 
-        if [ $EXIT_CODE -eq 0 ]; then
-            print_result "Yamllint" 0
-        else
-            print_result "Yamllint" $EXIT_CODE "$OUTPUT"
-        fi
+    if [ $EXIT_CODE -eq 0 ]; then
+        print_result "HTMLHint" 0
+    else
+        print_result "HTMLHint" $EXIT_CODE "$OUTPUT"
     fi
 fi
 
 # Black Check
 if [ "$RUN_BLACK" = true ]; then
+    print_group_header "Backend Python Checks"
     print_header "Black - Python Code Formatting"
 
     echo "Running Black on /web, /test/report_endpoint_coverage.py, and /test/zap_seed_targets.py..."
@@ -583,13 +540,10 @@ if [ "$RUN_BLACK" = true ]; then
         FIX_MODE_ARG=""
     fi
 
-    # Check if black is available locally (in quality-check container)
     if command -v black >/dev/null 2>&1; then
-        # Use local black (version pinned in test/Dockerfile.quality)
         OUTPUT=$(cd "${PROJECT_ROOT}" && black "${PYTHON_QUALITY_TARGETS[@]}" --line-length 100 $FIX_MODE_ARG 2>&1)
         EXIT_CODE=$?
     else
-        # Fall back to pinned Black image for consistent results across environments
         OUTPUT=$(docker run --rm \
                -v "${PROJECT_ROOT}:/workspace" \
                --workdir /workspace \
@@ -618,23 +572,18 @@ if [ "$RUN_RUFF" = true ]; then
         RUFF_FORMAT_ARGS=()
     fi
 
-    # Check if ruff is available locally (in Docker container)
     if command -v ruff >/dev/null 2>&1; then
-        # Use local ruff
         OUTPUT_FORMAT=$(cd "${PROJECT_ROOT}" && ruff format "${PYTHON_QUALITY_TARGETS[@]}" "${RUFF_FORMAT_ARGS[@]}" 2>&1)
         EXIT_CODE_FORMAT=$?
         OUTPUT_CHECK=$(cd "${PROJECT_ROOT}" && ruff check "${PYTHON_QUALITY_TARGETS[@]}" "${RUFF_CHECK_ARGS[@]}" 2>&1)
         EXIT_CODE_CHECK=$?
     else
-        # Fall back to Docker (for local dev environments)
         OUTPUT=$(docker run --rm \
                -v "${PROJECT_ROOT}:/workspace" \
                --workdir /workspace \
                "ghcr.io/astral-sh/ruff:${RUFF_VERSION}" \
                check "${PYTHON_QUALITY_TARGETS[@]}" "${RUFF_CHECK_ARGS[@]}" 2>&1)
         EXIT_CODE=$?
-        # Ruff format and check in one go with Docker is a bit more complex,
-        # so we'll just show the check output for now. The CI uses local ruff.
         OUTPUT_FORMAT=""
         EXIT_CODE_FORMAT=0
         OUTPUT_CHECK="$OUTPUT"
@@ -645,7 +594,6 @@ if [ "$RUN_RUFF" = true ]; then
         print_result "Ruff" 0
     else
         COMBINED_OUTPUT="${OUTPUT_FORMAT}\n${OUTPUT_CHECK}"
-        # Use the highest exit code
         FINAL_EXIT_CODE=$(( EXIT_CODE_FORMAT > EXIT_CODE_CHECK ? EXIT_CODE_FORMAT : EXIT_CODE_CHECK ))
         print_result "Ruff" "$FINAL_EXIT_CODE" "$COMBINED_OUTPUT"
     fi
@@ -657,10 +605,8 @@ if [ "$RUN_MYPY" = true ]; then
 
     echo "Running mypy on web/server.py..."
 
-    # Keep this pass lightweight and stable during gradual typing adoption.
     MYPY_ARGS=(--config-file pyproject.toml --no-error-summary)
 
-    # Check if mypy is available locally (in Docker container)
     if command -v mypy >/dev/null 2>&1; then
         OUTPUT=$(cd "${PROJECT_ROOT}" && mypy "${MYPY_ARGS[@]}" 2>&1)
         EXIT_CODE=$?
@@ -681,6 +627,7 @@ fi
 
 # Hadolint Check
 if [ "$RUN_HADOLINT" = true ]; then
+    print_group_header "Infrastructure Checks"
     print_header "Hadolint - Dockerfile Linting"
 
     # Find all Dockerfiles
@@ -838,8 +785,90 @@ if [ "$RUN_ACTIONLINT" = true ]; then
     fi
 fi
 
+# ShellCheck
+if [ "$RUN_SHELLCHECK" = true ]; then
+    print_header "ShellCheck - Shell Script Linting"
+
+    mapfile -t SHELL_FILES < <(find "${PROJECT_ROOT}/test" -maxdepth 1 -type f -name "*.sh" 2>/dev/null | sort)
+
+    if [ "${#SHELL_FILES[@]}" -eq 0 ]; then
+        echo -e "${YELLOW}⚠ No shell scripts found${NC}"
+    else
+        FILE_COUNT=${#SHELL_FILES[@]}
+        echo "Found $FILE_COUNT shell script(s). Validating..."
+
+        if command -v shellcheck >/dev/null 2>&1; then
+            OUTPUT=$(shellcheck -x --severity=style "${SHELL_FILES[@]}" 2>&1)
+            EXIT_CODE=$?
+        else
+            SHELL_FILES_REL=()
+            for file in "${SHELL_FILES[@]}"; do
+                SHELL_FILES_REL+=("${file#"${PROJECT_ROOT}"/}")
+            done
+            OUTPUT=$(docker run --rm \
+                -v "${PROJECT_ROOT}:/workspace" \
+                --workdir /workspace \
+                "${SHELLCHECK_IMAGE}" -x --severity=style "${SHELL_FILES_REL[@]}" 2>&1)
+            EXIT_CODE=$?
+        fi
+
+        if [ $EXIT_CODE -eq 0 ]; then
+            print_result "ShellCheck" 0
+        else
+            print_result "ShellCheck" $EXIT_CODE "$OUTPUT"
+        fi
+    fi
+fi
+
+# Yamllint
+if [ "$RUN_YAMLLINT" = true ]; then
+    print_header "Yamllint - YAML Validation"
+
+    mapfile -t YAML_FILES < <(
+        {
+            find "${PROJECT_ROOT}/.github" "${PROJECT_ROOT}/test" -type f \( -name "*.yml" -o -name "*.yaml" \) 2>/dev/null
+            find "${PROJECT_ROOT}" -maxdepth 1 -type f \( -name "*.yml" -o -name "*.yaml" \) 2>/dev/null
+        } | sort
+    )
+
+    if [ "${#YAML_FILES[@]}" -eq 0 ]; then
+        echo -e "${YELLOW}⚠ No YAML files found${NC}"
+    else
+        FILE_COUNT=${#YAML_FILES[@]}
+        echo "Found $FILE_COUNT YAML file(s). Validating..."
+
+        if command -v yamllint >/dev/null 2>&1; then
+            YAMLLINT_CONFIG="${PROJECT_ROOT}/.yamllint.yml"
+            if [ -f "$YAMLLINT_CONFIG" ]; then
+                OUTPUT=$(yamllint -c "$YAMLLINT_CONFIG" "${YAML_FILES[@]}" 2>&1)
+            else
+                OUTPUT=$(yamllint "${YAML_FILES[@]}" 2>&1)
+            fi
+        else
+            YAML_FILES_REL=()
+            for file in "${YAML_FILES[@]}"; do
+                YAML_FILES_REL+=("${file#"${PROJECT_ROOT}"/}")
+            done
+            OUTPUT=$(docker run --rm \
+                -v "${PROJECT_ROOT}:/workspace" \
+                --workdir /workspace \
+                python:3.13-slim sh -lc \
+                "pip install --no-cache-dir yamllint==${YAMLLINT_VERSION} >/dev/null && if [ -f .yamllint.yml ]; then yamllint -c .yamllint.yml \"\$@\"; else yamllint \"\$@\"; fi" \
+                sh "${YAML_FILES_REL[@]}" 2>&1)
+        fi
+        EXIT_CODE=$?
+
+        if [ $EXIT_CODE -eq 0 ]; then
+            print_result "Yamllint" 0
+        else
+            print_result "Yamllint" $EXIT_CODE "$OUTPUT"
+        fi
+    fi
+fi
+
 # Instruction Files Check
 if [ "$RUN_INSTRUCTIONS" = true ]; then
+    print_group_header "Markdown And Documentation Checks"
     print_header "Instruction Files - Repo Guidance Validation"
 
     echo "Running repo-specific checks on instruction files..."

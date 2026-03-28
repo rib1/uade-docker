@@ -58,22 +58,33 @@ function Show-Usage {
     Write-Host "Show help:"
     Write-Host "  .\test\check-code-quality.ps1 -Help"
     Write-Host ""
-    Write-Host "Run a specific check:"
-    Write-Host "  -ESLint"
+    Write-Host "Frontend Checks:"
+    Write-Host "CSS Checks:"
+    Write-Host "  -PurgeCSS"
     Write-Host "  -Stylelint"
-    Write-Host "  -HTMLHint"
+    Write-Host ""
+    Write-Host "JavaScript Checks:"
+    Write-Host "  -ESLint"
     Write-Host "  -Knip"
+    Write-Host ""
+    Write-Host "HTML Checks:"
+    Write-Host "  -HTMLHint"
+    Write-Host ""
+    Write-Host "Backend Python Checks:"
     Write-Host "  -Black"
     Write-Host "  -Ruff"
     Write-Host "  -MyPy"
+    Write-Host ""
+    Write-Host "Infrastructure Checks:"
     Write-Host "  -Hadolint"
     Write-Host "  -Compose"
     Write-Host "  -ActionLint"
     Write-Host "  -ShellCheck"
     Write-Host "  -Yamllint"
+    Write-Host ""
+    Write-Host "Markdown And Documentation Checks:"
     Write-Host "  -Instructions"
     Write-Host "  -Documentation"
-    Write-Host "  -PurgeCSS"
 }
 
 # Color codes
@@ -217,6 +228,20 @@ function Write-Result {
     }
 }
 
+function Write-GroupHeader {
+    param([string]$Title)
+    Write-Host ""
+    Write-Host "--- $Title ---" @Yellow
+    Write-Host ""
+}
+
+function Write-SubgroupHeader {
+    param([string]$Title)
+    Write-Host ""
+    Write-Host "${Title}:" @Yellow
+    Write-Host ""
+}
+
 # Check if Docker is available
 try {
     $dockerVersion = docker --version 2>&1
@@ -229,6 +254,8 @@ try {
 
 # PurgeCSS Check
 if ($PurgeCSS) {
+    Write-GroupHeader "Frontend Checks"
+    Write-SubgroupHeader "CSS Checks"
     Write-Header "PurgeCSS - Unused CSS Removal Check"
 
     Write-Host "Running PurgeCSS on web/static/style.css against all HTML and JS in web/..."
@@ -265,8 +292,37 @@ if ($PurgeCSS) {
     }
 }
 
+# Stylelint Check
+if ($Stylelint) {
+    Write-Header "Stylelint - CSS Linting"
+
+    Write-Host "Running Stylelint on /web/static/*.css..."
+
+    $stylelintArgs = @("--config", ".stylelintrc.json", "web/static/*.css")
+    if ($Fix) {
+        $stylelintArgs = @("--config", ".stylelintrc.json", "--fix", "web/static/*.css")
+    }
+
+    $output = & docker run --rm `
+        -v "${ProjectRoot}:/workspace" `
+        --workdir /workspace `
+        node:24-alpine sh -lc "npm install -g stylelint@$STYLELINT_VERSION >/dev/null && stylelint $($stylelintArgs -join ' ')" 2>&1
+
+    $exitCode = $LASTEXITCODE
+
+    if ($exitCode -eq 0) {
+        Write-Result "Stylelint" 0
+    } else {
+        Write-Result "Stylelint" 1 $output
+    }
+}
+
 # ESLint Check
 if ($ESLint) {
+    if (-not $PurgeCSS -and -not $Stylelint) {
+        Write-GroupHeader "Frontend Checks"
+    }
+    Write-SubgroupHeader "JavaScript Checks"
     Write-Header "ESLint - JavaScript/CSS Linting"
 
     Write-Host "Running ESLint on /web/static and /test/*.{js,mjs}..."
@@ -305,8 +361,57 @@ if ($ESLint) {
     }
 }
 
+# knip Check
+if ($Knip) {
+    if (-not $PurgeCSS -and -not $Stylelint -and -not $ESLint) {
+        Write-GroupHeader "Frontend Checks"
+        Write-SubgroupHeader "JavaScript Checks"
+    }
+    Write-Header "knip - JavaScript Dead-Code Audit"
+
+    Write-Host "Running knip on /web/static and /test with repo-specific config..."
+
+    $output = & docker run --rm `
+        -v "${ProjectRoot}:/workspace" `
+        --workdir /workspace/test `
+        node:24-alpine sh -lc "npm install -g knip@$KNIP_VERSION >/dev/null && knip --config knip.config.js --no-progress --treat-config-hints-as-errors" 2>&1
+
+    $exitCode = $LASTEXITCODE
+
+    if ($exitCode -eq 0) {
+        Write-Result "knip" 0
+    } else {
+        Write-Result "knip" 1 $output
+    }
+}
+
+# HTMLHint Check
+if ($HTMLHint) {
+    if (-not $PurgeCSS -and -not $Stylelint -and -not $ESLint -and -not $Knip) {
+        Write-GroupHeader "Frontend Checks"
+    }
+    Write-SubgroupHeader "HTML Checks"
+    Write-Header "HTMLHint - HTML Validation"
+
+    Write-Host "Running HTMLHint on /web/static/index.html..."
+
+    $output = & docker run --rm `
+        -v "${ProjectRoot}:/workspace" `
+        --workdir /workspace `
+        node:24-alpine sh -lc "npm install -g htmlhint@$HTMLHINT_VERSION >/dev/null && htmlhint --config .htmlhintrc web/static/index.html" 2>&1
+
+    $exitCode = $LASTEXITCODE
+
+    if ($exitCode -eq 0) {
+        Write-Result "HTMLHint" 0
+    } else {
+        Write-Result "HTMLHint" 1 $output
+    }
+}
+
 # Black Check
 if ($Black) {
+    Write-GroupHeader "Backend Python Checks"
     Write-Header "Black - Python Code Formatting"
 
     Write-Host "Running Black on /web, /test/report_endpoint_coverage.py, and /test/zap_seed_targets.py..."
@@ -327,71 +432,6 @@ if ($Black) {
         Write-Result "Black" 0
     } else {
         Write-Result "Black" 1 $output
-    }
-}
-
-# Stylelint Check
-if ($Stylelint) {
-    Write-Header "Stylelint - CSS Linting"
-
-    Write-Host "Running Stylelint on /web/static/*.css..."
-
-    $stylelintArgs = @("--config", ".stylelintrc.json", "web/static/*.css")
-    if ($Fix) {
-        $stylelintArgs = @("--config", ".stylelintrc.json", "--fix", "web/static/*.css")
-    }
-
-    $output = & docker run --rm `
-        -v "${ProjectRoot}:/workspace" `
-        --workdir /workspace `
-        node:24-alpine sh -lc "npm install -g stylelint@$STYLELINT_VERSION >/dev/null && stylelint $($stylelintArgs -join ' ')" 2>&1
-
-    $exitCode = $LASTEXITCODE
-
-    if ($exitCode -eq 0) {
-        Write-Result "Stylelint" 0
-    } else {
-        Write-Result "Stylelint" 1 $output
-    }
-}
-
-# HTMLHint Check
-if ($HTMLHint) {
-    Write-Header "HTMLHint - HTML Validation"
-
-    Write-Host "Running HTMLHint on /web/static/index.html..."
-
-    $output = & docker run --rm `
-        -v "${ProjectRoot}:/workspace" `
-        --workdir /workspace `
-        node:24-alpine sh -lc "npm install -g htmlhint@$HTMLHINT_VERSION >/dev/null && htmlhint --config .htmlhintrc web/static/index.html" 2>&1
-
-    $exitCode = $LASTEXITCODE
-
-    if ($exitCode -eq 0) {
-        Write-Result "HTMLHint" 0
-    } else {
-        Write-Result "HTMLHint" 1 $output
-    }
-}
-
-# knip Check
-if ($Knip) {
-    Write-Header "knip - JavaScript Dead-Code Audit"
-
-    Write-Host "Running knip on /web/static and /test with repo-specific config..."
-
-    $output = & docker run --rm `
-        -v "${ProjectRoot}:/workspace" `
-        --workdir /workspace/test `
-        node:24-alpine sh -lc "npm install -g knip@$KNIP_VERSION >/dev/null && knip --config knip.config.js --no-progress --treat-config-hints-as-errors" 2>&1
-
-    $exitCode = $LASTEXITCODE
-
-    if ($exitCode -eq 0) {
-        Write-Result "knip" 0
-    } else {
-        Write-Result "knip" 1 $output
     }
 }
 
@@ -454,6 +494,7 @@ if ($MyPy) {
 
 # Hadolint Check
 if ($Hadolint) {
+    Write-GroupHeader "Infrastructure Checks"
     Write-Header "Hadolint - Dockerfile Linting"
 
     $Dockerfiles = Get-ChildItem -Path $ProjectRoot -Recurse -Include "Dockerfile","Dockerfile.*" -File | Where-Object { $_.FullName -notmatch "node_modules|.git" }
@@ -684,6 +725,7 @@ if ($Yamllint) {
 
 # Instruction Files Check
 if ($Instructions) {
+    Write-GroupHeader "Markdown And Documentation Checks"
     Write-Header "Instruction Files - Repo Guidance Validation"
 
     Write-Host "Running repo-specific checks on instruction files..."
