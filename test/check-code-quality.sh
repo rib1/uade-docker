@@ -21,6 +21,7 @@
 #   ./test/check-code-quality.sh --htmlhint   # HTMLHint only
 #   ./test/check-code-quality.sh --knip       # knip dead-code audit only
 #   ./test/check-code-quality.sh --mypy       # mypy only
+#   ./test/check-code-quality.sh --vulture    # Vulture dead-code audit only
 #   ./test/check-code-quality.sh --purgecss      # PurgeCSS unused CSS check only
 #   ./test/check-code-quality.sh --instructions  # Instruction files only
 #   ./test/check-code-quality.sh --documentation # Documentation files only
@@ -120,11 +121,16 @@ PURGECSS_VERSION="$(read_npm_tool_version purgecss)"
 BLACK_VERSION="$(read_pip_tool_version black)"
 RUFF_VERSION="$(read_pip_tool_version ruff)"
 MYPY_VERSION="$(read_pip_tool_version mypy)"
+VULTURE_VERSION="$(read_pip_tool_version vulture)"
 YAMLLINT_VERSION="$(read_pip_tool_version yamllint)"
 HADOLINT_IMAGE="$(read_tool_image hadolint)"
 ACTIONLINT_IMAGE="$(read_tool_image actionlint)"
 SHELLCHECK_IMAGE="$(read_tool_image shellcheck)"
 PYTHON_QUALITY_TARGETS=(web test/report_endpoint_coverage.py test/zap_seed_targets.py)
+
+# Keep these pin reads explicit even when some fallback installs come from
+# requirements-quality.txt as a whole rather than per-tool pip commands.
+: "${MYPY_VERSION}" "${VULTURE_VERSION}"
 
 # Counters
 TOTAL_CHECKS=0
@@ -160,6 +166,7 @@ Backend Python Checks:
   --black
   --ruff
   --mypy
+  --vulture
 
 Infrastructure Checks:
   --hadolint
@@ -188,6 +195,7 @@ enable_only_check() {
     RUN_HTMLHINT=false
     RUN_KNIP=false
     RUN_MYPY=false
+    RUN_VULTURE=false
     RUN_INSTRUCTIONS=false
     RUN_DOCUMENTATION=false
     RUN_PURGECSS=false
@@ -205,6 +213,7 @@ enable_only_check() {
         htmlhint) RUN_HTMLHINT=true ;;
         knip) RUN_KNIP=true ;;
         mypy) RUN_MYPY=true ;;
+        vulture) RUN_VULTURE=true ;;
         instructions) RUN_INSTRUCTIONS=true ;;
         documentation) RUN_DOCUMENTATION=true ;;
         purgecss) RUN_PURGECSS=true ;;
@@ -227,6 +236,7 @@ RUN_HTMLHINT=true
 RUN_KNIP=true
 RUN_PURGECSS=true
 RUN_MYPY=true
+RUN_VULTURE=true
 RUN_INSTRUCTIONS=true
 RUN_DOCUMENTATION=true
 
@@ -286,6 +296,10 @@ for arg in "$@"; do
             ;;
         --mypy)
             enable_only_check mypy
+            shift
+            ;;
+        --vulture)
+            enable_only_check vulture
             shift
             ;;
         --instructions)
@@ -614,7 +628,7 @@ if [ "$RUN_MYPY" = true ]; then
         OUTPUT=$(docker run --rm \
                -v "${PROJECT_ROOT}:/workspace" \
                --workdir /workspace \
-               python:3.13-slim sh -lc "pip install --no-cache-dir mypy==${MYPY_VERSION} >/dev/null && mypy ${MYPY_ARGS[*]}" 2>&1)
+               python:3.13-slim sh -lc "pip install --no-cache-dir -r test/requirements-quality.txt >/dev/null && mypy ${MYPY_ARGS[*]}" 2>&1)
         EXIT_CODE=$?
     fi
 
@@ -622,6 +636,30 @@ if [ "$RUN_MYPY" = true ]; then
         print_result "mypy" 0
     else
         print_result "mypy" $EXIT_CODE "$OUTPUT"
+    fi
+fi
+
+# Vulture Check
+if [ "$RUN_VULTURE" = true ]; then
+    print_header "Vulture - Python Dead-Code Audit"
+
+    echo "Running Vulture on Python quality targets using pyproject.toml..."
+
+    if command -v vulture >/dev/null 2>&1; then
+        OUTPUT=$(cd "${PROJECT_ROOT}" && vulture --config pyproject.toml 2>&1)
+        EXIT_CODE=$?
+    else
+        OUTPUT=$(docker run --rm \
+               -v "${PROJECT_ROOT}:/workspace" \
+               --workdir /workspace \
+               python:3.13-slim sh -lc "pip install --no-cache-dir -r test/requirements-quality.txt >/dev/null && vulture --config pyproject.toml" 2>&1)
+        EXIT_CODE=$?
+    fi
+
+    if [ $EXIT_CODE -eq 0 ]; then
+        print_result "Vulture" 0
+    else
+        print_result "Vulture" $EXIT_CODE "$OUTPUT"
     fi
 fi
 

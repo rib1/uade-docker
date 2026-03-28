@@ -97,6 +97,21 @@ module = [
 ]
 ignore_missing_imports = true
 
+[tool.vulture]
+exclude = ["build/", "dist/", ".venv/", "__pycache__/"]
+ignore_decorators = [
+    "@app.route",
+    "@app.errorhandler",
+    "@app.after_request",
+    "@app.before_request",
+    "@limiter.exempt",
+    "@limiter.limit",
+    "@contextmanager",
+]
+min_confidence = 100
+paths = ["web", "test/report_endpoint_coverage.py", "test/zap_seed_targets.py"]
+sort_by_size = true
+
 [build-system]
 requires = ["setuptools>=45", "wheel", "setuptools_scm[toml]>=6.2"]
 build-backend = "setuptools.build_meta"

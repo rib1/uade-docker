@@ -19,6 +19,7 @@
 #   .\test\check-code-quality.ps1 -HTMLHint    # HTMLHint only
 #   .\test\check-code-quality.ps1 -Knip        # knip dead-code audit only
 #   .\test\check-code-quality.ps1 -MyPy        # mypy only
+#   .\test\check-code-quality.ps1 -Vulture     # Vulture dead-code audit only
 #   .\test\check-code-quality.ps1 -PurgeCSS    # PurgeCSS unused CSS check only
 #   .\test\check-code-quality.ps1 -Instructions # Instruction files only
 #   .\test\check-code-quality.ps1 -Documentation # Documentation files only
@@ -41,6 +42,7 @@ param(
     [switch]$HTMLHint,
     [switch]$Knip,
     [switch]$MyPy,
+    [switch]$Vulture,
     [switch]$Instructions,
     [switch]$Documentation,
     [switch]$PurgeCSS
@@ -74,6 +76,7 @@ function Show-Usage {
     Write-Host "  -Black"
     Write-Host "  -Ruff"
     Write-Host "  -MyPy"
+    Write-Host "  -Vulture"
     Write-Host ""
     Write-Host "Infrastructure Checks:"
     Write-Host "  -Hadolint"
@@ -137,6 +140,7 @@ Get-Content -Path $PyQualityManifest | ForEach-Object {
 $BLACK_VERSION = $PyPins["black"]
 $RUFF_VERSION = $PyPins["ruff"]
 $MYPY_VERSION = $PyPins["mypy"]
+$VULTURE_VERSION = $PyPins["vulture"]
 $YAMLLINT_VERSION = $PyPins["yamllint"]
 $PythonQualityTargets = @("web", "test/report_endpoint_coverage.py", "test/zap_seed_targets.py")
 
@@ -157,6 +161,7 @@ foreach ($Required in @(
     @{ Name = "black"; Value = $BLACK_VERSION },
     @{ Name = "ruff"; Value = $RUFF_VERSION },
     @{ Name = "mypy"; Value = $MYPY_VERSION },
+    @{ Name = "vulture"; Value = $VULTURE_VERSION },
     @{ Name = "yamllint"; Value = $YAMLLINT_VERSION },
     @{ Name = "hadolint image"; Value = $HADOLINT_IMAGE },
     @{ Name = "actionlint image"; Value = $ACTIONLINT_IMAGE },
@@ -179,7 +184,7 @@ if ($Help) {
 }
 
 # Default to run all if no specific tool selected
-if (-not $ESLint -and -not $Black -and -not $Ruff -and -not $ActionLint -and -not $Hadolint -and -not $Compose -and -not $ShellCheck -and -not $Yamllint -and -not $Stylelint -and -not $HTMLHint -and -not $Knip -and -not $MyPy -and -not $Instructions -and -not $Documentation -and -not $PurgeCSS) {
+if (-not $ESLint -and -not $Black -and -not $Ruff -and -not $ActionLint -and -not $Hadolint -and -not $Compose -and -not $ShellCheck -and -not $Yamllint -and -not $Stylelint -and -not $HTMLHint -and -not $Knip -and -not $MyPy -and -not $Vulture -and -not $Instructions -and -not $Documentation -and -not $PurgeCSS) {
     $ESLint = $true
     $Stylelint = $true
     $HTMLHint = $true
@@ -192,6 +197,7 @@ if (-not $ESLint -and -not $Black -and -not $Ruff -and -not $ActionLint -and -no
     $ShellCheck = $true
     $Yamllint = $true
     $MyPy = $true
+    $Vulture = $true
     $Instructions = $true
     $Documentation = $true
     $PurgeCSS = $true
@@ -492,6 +498,26 @@ if ($MyPy) {
     }
 }
 
+# Vulture Check
+if ($Vulture) {
+    Write-Header "Vulture - Python Dead-Code Audit"
+
+    Write-Host "Running Vulture on Python quality targets using pyproject.toml..."
+
+    $output = & docker run --rm `
+        -v "${ProjectRoot}:/workspace" `
+        --workdir /workspace `
+        python:3.13-slim sh -lc "pip install --no-cache-dir -r test/requirements-quality.txt >/dev/null && vulture --config pyproject.toml" 2>&1
+
+    $exitCode = $LASTEXITCODE
+
+    if ($exitCode -eq 0) {
+        Write-Result "Vulture" 0
+    } else {
+        Write-Result "Vulture" 1 $output
+    }
+}
+
 # Hadolint Check
 if ($Hadolint) {
     Write-GroupHeader "Infrastructure Checks"
@@ -732,7 +758,13 @@ if ($Instructions) {
 
     try {
         node --version 2>$null | Out-Null
-        $output = & node (Join-Path $ProjectRoot "test/check-instructions.mjs") 2>&1
+        $previousProjectRoot = $env:PROJECT_ROOT
+        $env:PROJECT_ROOT = $ProjectRoot
+        try {
+            $output = & node (Join-Path $ProjectRoot "test/check-instructions.mjs") 2>&1
+        } finally {
+            $env:PROJECT_ROOT = $previousProjectRoot
+        }
         $exitCode = $LASTEXITCODE
     } catch {
         $output = & docker run --rm `
@@ -757,7 +789,13 @@ if ($Documentation) {
 
     try {
         node --version 2>$null | Out-Null
-        $output = & node (Join-Path $ProjectRoot "test/check-documentation.mjs") 2>&1
+        $previousProjectRoot = $env:PROJECT_ROOT
+        $env:PROJECT_ROOT = $ProjectRoot
+        try {
+            $output = & node (Join-Path $ProjectRoot "test/check-documentation.mjs") 2>&1
+        } finally {
+            $env:PROJECT_ROOT = $previousProjectRoot
+        }
         $exitCode = $LASTEXITCODE
     } catch {
         $output = & docker run --rm `

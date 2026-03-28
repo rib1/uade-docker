@@ -40,6 +40,7 @@ The quality suite covers:
 - Python formatting: `Black`
 - Python linting and formatting: `Ruff`
 - Python type checking: `mypy`
+- Python dead code: `Vulture`
 - Dockerfiles: `Hadolint`
 - Docker Compose files: compose validation
 - GitHub Actions workflows: `ActionLint`
@@ -68,7 +69,8 @@ The per-tool rules live in the normal project config files:
 - HTMLHint: [`.htmlhintrc`](../.htmlhintrc)
 - PurgeCSS: [`test/purgecss.config.js`](../test/purgecss.config.js)
 - knip: [`test/knip.config.js`](../test/knip.config.js)
-- Black, Ruff, mypy: [`pyproject.toml`](../pyproject.toml)
+- Black, Ruff, mypy, Vulture: [`pyproject.toml`](../pyproject.toml)
+  Vulture is configured conservatively there with explicit paths, `min_confidence = 100`, and decorator ignores for Flask-style runtime entrypoints so the dead-code audit stays stable.
 - Hadolint: [`.hadolint.yaml`](../.hadolint.yaml)
 - Yamllint: [`.yamllint.yml`](../.yamllint.yml)
 - GitHub Actions CI entrypoint: [`.github/workflows/code-quality.yml`](../.github/workflows/code-quality.yml)
