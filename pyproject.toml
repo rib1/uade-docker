@@ -24,8 +24,13 @@ multi_line_mode = 3
 [tool.ruff]
 line-length = 100
 target-version = "py313"
+preview = true
+
+[tool.ruff.format]
+preview = false
 
 [tool.ruff.lint]
+explicit-preview-rules = true
 select = [
     "E",   # pycodestyle errors
     "W",   # pycodestyle warnings
@@ -53,6 +58,9 @@ select = [
     "PLE", # pylint errors
     "PLW", # pylint warnings
     "PLR2004", # magic-value-comparison
+    "RUF050", # unnecessary-if
+    "RUF072", # useless-finally
+    "RUF073", # f-string-percent-format
 ]
 ignore = [
     "S101", # Ignore `assert` statements, which are used in test scripts

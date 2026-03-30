@@ -37,11 +37,7 @@ def allowlisted_urlopen(
         LOCAL_TEST_SERVER_URL,
         "http://uade-test-http-server:65534",
     )
-    full_url = (
-        request_or_url.full_url
-        if isinstance(request_or_url, urllib.request.Request)
-        else request_or_url
-    )
+    full_url = getattr(request_or_url, "full_url", request_or_url)
     if not full_url.startswith(allowed_prefixes):
         raise ValueError(f"Refusing to open non-allowlisted URL: {full_url}")
     return urllib.request.urlopen(request_or_url, timeout=timeout)  # noqa: S310
@@ -313,8 +309,7 @@ def main() -> None:
             json_body(
                 {
                     "url": (
-                        f"{LOCAL_TEST_SERVER_URL}/fixtures/modules/"
-                        f"{ZAP_SPACE_DEBRIS_FIXTURE};get-help"
+                        f"{LOCAL_TEST_SERVER_URL}/fixtures/modules/{ZAP_SPACE_DEBRIS_FIXTURE};get-help"
                     )
                 }
             ),
