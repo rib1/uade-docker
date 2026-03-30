@@ -9,6 +9,6 @@
     "knip": "6.1.0",
     "pa11y-ci": "4.1.0",
     "playwright-core": "1.58.2",
-    "purgecss": "7.0.2"
+    "purgecss": "8.0.0"
   }
 }
