@@ -20,6 +20,7 @@
 #   ./test/check-code-quality.sh --stylelint  # Stylelint only
 #   ./test/check-code-quality.sh --htmlhint   # HTMLHint only
 #   ./test/check-code-quality.sh --knip       # knip dead-code audit only
+#   ./test/check-code-quality.sh --playwright-sync # Playwright tooling version sync only
 #   ./test/check-code-quality.sh --mypy       # mypy only
 #   ./test/check-code-quality.sh --vulture    # Vulture dead-code audit only
 #   ./test/check-code-quality.sh --purgecss      # PurgeCSS unused CSS check only
@@ -158,6 +159,7 @@ CSS Checks:
 JavaScript Checks:
   --eslint
   --knip
+  --playwright-sync
 
 HTML Checks:
   --htmlhint
@@ -194,6 +196,7 @@ enable_only_check() {
     RUN_STYLELINT=false
     RUN_HTMLHINT=false
     RUN_KNIP=false
+    RUN_PLAYWRIGHT_SYNC=false
     RUN_MYPY=false
     RUN_VULTURE=false
     RUN_INSTRUCTIONS=false
@@ -212,6 +215,7 @@ enable_only_check() {
         stylelint) RUN_STYLELINT=true ;;
         htmlhint) RUN_HTMLHINT=true ;;
         knip) RUN_KNIP=true ;;
+        playwright-sync) RUN_PLAYWRIGHT_SYNC=true ;;
         mypy) RUN_MYPY=true ;;
         vulture) RUN_VULTURE=true ;;
         instructions) RUN_INSTRUCTIONS=true ;;
@@ -234,6 +238,7 @@ RUN_YAMLLINT=true
 RUN_STYLELINT=true
 RUN_HTMLHINT=true
 RUN_KNIP=true
+RUN_PLAYWRIGHT_SYNC=true
 RUN_PURGECSS=true
 RUN_MYPY=true
 RUN_VULTURE=true
@@ -292,6 +297,10 @@ for arg in "$@"; do
             ;;
         --knip)
             enable_only_check knip
+            shift
+            ;;
+        --playwright-sync)
+            enable_only_check playwright-sync
             shift
             ;;
         --mypy)
@@ -514,9 +523,37 @@ if [ "$RUN_KNIP" = true ]; then
     fi
 fi
 
+# Playwright tooling sync check
+if [ "$RUN_PLAYWRIGHT_SYNC" = true ]; then
+    if [ "$RUN_PURGECSS" != true ] && [ "$RUN_STYLELINT" != true ] && [ "$RUN_ESLINT" != true ]; then
+        print_group_header "Frontend Checks"
+        print_subgroup_header "JavaScript Checks"
+    fi
+    print_header "Playwright Tooling Sync"
+
+    echo "Checking Playwright package and image version alignment..."
+
+    if command -v node >/dev/null 2>&1; then
+        OUTPUT=$(cd "${PROJECT_ROOT}" && node test/check-playwright-version-sync.mjs 2>&1)
+        EXIT_CODE=$?
+    else
+        OUTPUT=$(docker run --rm \
+               -v "${PROJECT_ROOT}:/workspace" \
+               --workdir /workspace \
+               node:25-alpine node test/check-playwright-version-sync.mjs 2>&1)
+        EXIT_CODE=$?
+    fi
+
+    if [ $EXIT_CODE -eq 0 ]; then
+        print_result "Playwright Sync" 0
+    else
+        print_result "Playwright Sync" $EXIT_CODE "$OUTPUT"
+    fi
+fi
+
 # HTMLHint
 if [ "$RUN_HTMLHINT" = true ]; then
-    if [ "$RUN_PURGECSS" != true ] && [ "$RUN_STYLELINT" != true ] && [ "$RUN_ESLINT" != true ] && [ "$RUN_KNIP" != true ]; then
+    if [ "$RUN_PURGECSS" != true ] && [ "$RUN_STYLELINT" != true ] && [ "$RUN_ESLINT" != true ] && [ "$RUN_KNIP" != true ] && [ "$RUN_PLAYWRIGHT_SYNC" != true ]; then
         print_group_header "Frontend Checks"
     fi
     print_subgroup_header "HTML Checks"

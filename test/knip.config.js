@@ -5,6 +5,7 @@ const toolingEntries = [
   "./check-documentation.mjs",
   "./check-instructions.mjs",
   "./check-purgecss.mjs",
+  "./check-playwright-version-sync.mjs",
   "./purgecss.config.js",
 ];
 

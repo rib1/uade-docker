@@ -25,6 +25,10 @@ function readFile(relativePath) {
   return fs.readFileSync(path.join(projectRoot, relativePath), "utf8");
 }
 
+function readJson(relativePath) {
+  return JSON.parse(readFile(relativePath));
+}
+
 function stripFencedCodeBlocks(content) {
   return content.replace(/^```.*\n[\s\S]*?^```[ \t]*$/gm, "");
 }
@@ -220,6 +224,166 @@ function validateCoreDocsConsistency() {
   }
 }
 
+function readPinnedVersions() {
+  const packageJson = readJson("test/package.json");
+  const qualityPins = Object.fromEntries(
+    readFile("test/requirements-quality.txt")
+      .split("\n")
+      .map((line) => line.trim())
+      .filter(Boolean)
+      .map((line) => line.split("==", 2)),
+  );
+  const webPins = Object.fromEntries(
+    readFile("web/requirements.txt")
+      .split("\n")
+      .map((line) => line.trim())
+      .filter(Boolean)
+      .map((line) => line.split("==", 2)),
+  );
+  const toolingManifest = readFile("test/docker-compose.tooling.yml");
+
+  const toolingImageVersions = {
+    hadolint: toolingManifest.match(/^    image:\s*hadolint\/hadolint:v([^\s]+)$/m)?.[1],
+    actionlint: toolingManifest.match(/^    image:\s*rhysd\/actionlint:([^\s]+)$/m)?.[1],
+    shellcheck: toolingManifest.match(/^    image:\s*koalaman\/shellcheck:v([^\s]+)$/m)?.[1],
+    playwright: toolingManifest.match(
+      /^    image:\s*mcr\.microsoft\.com\/playwright:v([^\s-]+)-/m,
+    )?.[1],
+  };
+
+  return {
+    flask: webPins.flask,
+    gunicorn: webPins.gunicorn,
+    werkzeug: webPins.werkzeug,
+    requests: webPins.requests,
+    "flask-limiter": webPins["Flask-Limiter"],
+    black: qualityPins.black,
+    ruff: qualityPins.ruff,
+    mypy: qualityPins.mypy,
+    vulture: qualityPins.vulture,
+    "types-requests": qualityPins["types-requests"],
+    yamllint: qualityPins.yamllint,
+    eslint: packageJson.devDependencies.eslint,
+    stylelint: packageJson.devDependencies.stylelint,
+    htmlhint: packageJson.devDependencies.htmlhint,
+    knip: packageJson.devDependencies.knip,
+    "pa11y-ci": packageJson.devDependencies["pa11y-ci"],
+    "playwright-core": packageJson.devDependencies["playwright-core"],
+    purgecss: packageJson.devDependencies.purgecss,
+    hadolint: toolingImageVersions.hadolint,
+    actionlint: toolingImageVersions.actionlint,
+    shellcheck: toolingImageVersions.shellcheck,
+    playwright: toolingImageVersions.playwright,
+  };
+}
+
+function validatePinnedVersionMentions(relativePath, content, pinnedVersions) {
+  const contentWithoutCodeBlocks = stripFencedCodeBlocks(content);
+  const checks = [
+    { label: "Flask", expected: pinnedVersions.flask, regex: /\bFlask\s+(\d+(?:\.\d+){0,2})\b/g },
+    {
+      label: "Flask-Limiter",
+      expected: pinnedVersions["flask-limiter"],
+      regex: /\bFlask-Limiter\s+(\d+(?:\.\d+){0,2})\b/g,
+    },
+    {
+      label: "Gunicorn",
+      expected: pinnedVersions.gunicorn,
+      regex: /\bGunicorn\s+(\d+(?:\.\d+){0,2})\b/g,
+    },
+    {
+      label: "Werkzeug",
+      expected: pinnedVersions.werkzeug,
+      regex: /\bWerkzeug\s+(\d+(?:\.\d+){0,2})\b/g,
+    },
+    {
+      label: "requests",
+      expected: pinnedVersions.requests,
+      regex: /\brequests\s+(\d+(?:\.\d+){0,2})\b/g,
+    },
+    { label: "Black", expected: pinnedVersions.black, regex: /\bBlack\s+(\d+(?:\.\d+){0,2})\b/g },
+    { label: "Ruff", expected: pinnedVersions.ruff, regex: /\bRuff\s+(\d+(?:\.\d+){0,2})\b/g },
+    { label: "mypy", expected: pinnedVersions.mypy, regex: /\bmypy\s+(\d+(?:\.\d+){0,2})\b/g },
+    {
+      label: "Vulture",
+      expected: pinnedVersions.vulture,
+      regex: /\bVulture\s+(\d+(?:\.\d+){0,2})\b/g,
+    },
+    {
+      label: "ESLint",
+      expected: pinnedVersions.eslint,
+      regex: /\bESLint\s+(\d+(?:\.\d+){0,2})\b/g,
+    },
+    {
+      label: "Stylelint",
+      expected: pinnedVersions.stylelint,
+      regex: /\bStylelint\s+(\d+(?:\.\d+){0,2})\b/g,
+    },
+    {
+      label: "HTMLHint",
+      expected: pinnedVersions.htmlhint,
+      regex: /\bHTMLHint\s+(\d+(?:\.\d+){0,2})\b/g,
+    },
+    { label: "knip", expected: pinnedVersions.knip, regex: /\bknip\s+(\d+(?:\.\d+){0,2})\b/g },
+    {
+      label: "PurgeCSS",
+      expected: pinnedVersions.purgecss,
+      regex: /\bPurgeCSS\s+(\d+(?:\.\d+){0,2})\b/g,
+    },
+    {
+      label: "pa11y-ci",
+      expected: pinnedVersions["pa11y-ci"],
+      regex: /\bpa11y-ci\s+(\d+(?:\.\d+){0,2})\b/g,
+    },
+    {
+      label: "Playwright",
+      expected: pinnedVersions.playwright,
+      regex: /\bPlaywright\s+(\d+(?:\.\d+){0,2})\b/g,
+    },
+    {
+      label: "playwright-core",
+      expected: pinnedVersions["playwright-core"],
+      regex: /\bplaywright-core\s+(\d+(?:\.\d+){0,2})\b/g,
+    },
+    {
+      label: "Hadolint",
+      expected: pinnedVersions.hadolint,
+      regex: /\bHadolint\s+(\d+(?:\.\d+){0,2})\b/g,
+    },
+    {
+      label: "ActionLint",
+      expected: pinnedVersions.actionlint,
+      regex: /\bActionLint\s+(\d+(?:\.\d+){0,2})\b/g,
+    },
+    {
+      label: "ShellCheck",
+      expected: pinnedVersions.shellcheck,
+      regex: /\bShellCheck\s+(\d+(?:\.\d+){0,2})\b/g,
+    },
+    {
+      label: "Yamllint",
+      expected: pinnedVersions.yamllint,
+      regex: /\bYamllint\s+(\d+(?:\.\d+){0,2})\b/g,
+    },
+  ];
+
+  for (const check of checks) {
+    if (!check.expected) {
+      continue;
+    }
+
+    for (const match of contentWithoutCodeBlocks.matchAll(check.regex)) {
+      const mentionedVersion = match[1];
+      if (mentionedVersion !== check.expected) {
+        addFailure(
+          relativePath,
+          `${check.label} version mention "${mentionedVersion}" is stale; expected "${check.expected}" or omit the exact version`,
+        );
+      }
+    }
+  }
+}
+
 for (const requiredDoc of requiredDocs) {
   if (!fileExists(requiredDoc)) {
     addFailure(requiredDoc, "required documentation file is missing");
@@ -230,12 +394,15 @@ validateReadmeIntegrity();
 validateComponentDiagramIntegrity();
 validateCoreDocsConsistency();
 
+const pinnedVersions = readPinnedVersions();
+
 for (const relativePath of findMarkdownFiles()) {
   const content = readFile(relativePath);
   validateDuplicateHeadings(relativePath, content);
   validateFencedCodeLanguages(relativePath, content);
   validateRelativeLinks(relativePath, content);
   validateNoHardcodedWorkspacePaths(relativePath, content);
+  validatePinnedVersionMentions(relativePath, content, pinnedVersions);
 }
 
 if (failures.length > 0) {

@@ -18,6 +18,7 @@
 #   .\test\check-code-quality.ps1 -Stylelint   # Stylelint only
 #   .\test\check-code-quality.ps1 -HTMLHint    # HTMLHint only
 #   .\test\check-code-quality.ps1 -Knip        # knip dead-code audit only
+#   .\test\check-code-quality.ps1 -PlaywrightSync # Playwright tooling version sync only
 #   .\test\check-code-quality.ps1 -MyPy        # mypy only
 #   .\test\check-code-quality.ps1 -Vulture     # Vulture dead-code audit only
 #   .\test\check-code-quality.ps1 -PurgeCSS    # PurgeCSS unused CSS check only
@@ -41,6 +42,7 @@ param(
     [switch]$Stylelint,
     [switch]$HTMLHint,
     [switch]$Knip,
+    [switch]$PlaywrightSync,
     [switch]$MyPy,
     [switch]$Vulture,
     [switch]$Instructions,
@@ -68,6 +70,7 @@ function Show-Usage {
     Write-Host "JavaScript Checks:"
     Write-Host "  -ESLint"
     Write-Host "  -Knip"
+    Write-Host "  -PlaywrightSync"
     Write-Host ""
     Write-Host "HTML Checks:"
     Write-Host "  -HTMLHint"
@@ -184,11 +187,12 @@ if ($Help) {
 }
 
 # Default to run all if no specific tool selected
-if (-not $ESLint -and -not $Black -and -not $Ruff -and -not $ActionLint -and -not $Hadolint -and -not $Compose -and -not $ShellCheck -and -not $Yamllint -and -not $Stylelint -and -not $HTMLHint -and -not $Knip -and -not $MyPy -and -not $Vulture -and -not $Instructions -and -not $Documentation -and -not $PurgeCSS) {
+if (-not $ESLint -and -not $Black -and -not $Ruff -and -not $ActionLint -and -not $Hadolint -and -not $Compose -and -not $ShellCheck -and -not $Yamllint -and -not $Stylelint -and -not $HTMLHint -and -not $Knip -and -not $PlaywrightSync -and -not $MyPy -and -not $Vulture -and -not $Instructions -and -not $Documentation -and -not $PurgeCSS) {
     $ESLint = $true
     $Stylelint = $true
     $HTMLHint = $true
     $Knip = $true
+    $PlaywrightSync = $true
     $Black = $true
     $Ruff = $true
     $ActionLint = $true
@@ -377,9 +381,33 @@ if ($Knip) {
     }
 }
 
+# Playwright tooling sync check
+if ($PlaywrightSync) {
+    if (-not $PurgeCSS -and -not $Stylelint -and -not $ESLint) {
+        Write-GroupHeader "Frontend Checks"
+        Write-SubgroupHeader "JavaScript Checks"
+    }
+    Write-Header "Playwright Tooling Sync"
+
+    Write-Host "Checking Playwright package and image version alignment..."
+
+    $output = & docker run --rm `
+        -v "${ProjectRoot}:/workspace" `
+        --workdir /workspace `
+        node:25-alpine node test/check-playwright-version-sync.mjs 2>&1
+
+    $exitCode = $LASTEXITCODE
+
+    if ($exitCode -eq 0) {
+        Write-Result "Playwright Sync" 0
+    } else {
+        Write-Result "Playwright Sync" 1 $output
+    }
+}
+
 # HTMLHint Check
 if ($HTMLHint) {
-    if (-not $PurgeCSS -and -not $Stylelint -and -not $ESLint -and -not $Knip) {
+    if (-not $PurgeCSS -and -not $Stylelint -and -not $ESLint -and -not $Knip -and -not $PlaywrightSync) {
         Write-GroupHeader "Frontend Checks"
     }
     Write-SubgroupHeader "HTML Checks"

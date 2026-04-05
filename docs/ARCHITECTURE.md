@@ -222,7 +222,7 @@ This is why `/convert-probed` is documented as a best-effort optimization rather
 
 - **Language:** Python 3.13
 - **Framework:** Flask 3.1.3
-- **Server:** Gunicorn 25.1.0
+- **Server:** Gunicorn 25.3.0
 - **Audio Processing:** UADE player, FLAC encoder
 
 ### Frontend
