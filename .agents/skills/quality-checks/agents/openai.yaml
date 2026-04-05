@@ -1,0 +1,4 @@
+interface:
+  display_name: "Quality Checks"
+  short_description: "Prefer Docker Compose quality verification."
+  default_prompt: "Use $quality-checks to run or update repo quality verification with the preferred Docker Compose flow first."

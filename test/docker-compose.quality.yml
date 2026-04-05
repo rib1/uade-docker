@@ -16,10 +16,10 @@ services:
       # Mount project files for validation (read-only)
       - ./web:/workspace/web
       - ./.github:/workspace/.github:ro
+      - ./.agents:/workspace/.agents:ro
       - ./docs:/workspace/docs:ro
       - ./references:/workspace/references:ro
       - ./README.md:/workspace/README.md:ro
-      - ./SKILL.md:/workspace/SKILL.md:ro
       - ./test:/workspace/test:ro
       - ./pyproject.toml:/workspace/pyproject.toml:ro
       - ./.stylelintrc.json:/workspace/.stylelintrc.json:ro

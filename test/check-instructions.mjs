@@ -5,24 +5,24 @@ const projectRoot = process.env.PROJECT_ROOT || process.cwd();
 const cliArgs = new Set(process.argv.slice(2));
 const shouldListFoundReferences = cliArgs.has("--list-found-references");
 
-const instructionFiles = [
-  ".github/copilot-instructions.md",
-  "SKILL.md",
-  "references/project-lessons.md",
+const baseInstructionFiles = [
+  ".agents/AGENTS.md",
+  ".agents/README.md",
+  ".agents/project-lessons.md",
 ];
 
 const requiredReferencedFiles = {
-  ".github/copilot-instructions.md": [
+  ".agents/AGENTS.md": [
     "docs/ARCHITECTURE.md",
     "docs/DOCKER_VERSIONING.md",
     "docs/CODE-QUALITY.md",
     "docs/WEB-PLAYER.md",
   ],
-  "SKILL.md": [
-    ".github/copilot-instructions.md",
-    "references/project-lessons.md",
+  ".agents/README.md": [
+    ".agents/AGENTS.md",
+    ".agents/project-lessons.md",
   ],
-  "references/project-lessons.md": [
+  ".agents/project-lessons.md": [
     "test/accessibility-preflight.js",
     "test/accessibility-scenarios.js",
     "test/test_accessibility.sh",
@@ -49,6 +49,34 @@ const oneOffComposeServices = [
   "zap-scan-seeded",
   "zap-full-scan-seeded",
 ];
+
+function findSkillInstructionFiles() {
+  const skillsRoot = path.join(projectRoot, ".agents", "skills");
+  if (!fs.existsSync(skillsRoot)) {
+    return [];
+  }
+
+  const skillFiles = [];
+  const stack = [skillsRoot];
+
+  while (stack.length > 0) {
+    const currentDir = stack.pop();
+    for (const entry of fs.readdirSync(currentDir, { withFileTypes: true })) {
+      const absolutePath = path.join(currentDir, entry.name);
+      if (entry.isDirectory()) {
+        stack.push(absolutePath);
+        continue;
+      }
+      if (entry.isFile() && entry.name === "SKILL.md") {
+        skillFiles.push(path.relative(projectRoot, absolutePath).replace(/\\/g, "/"));
+      }
+    }
+  }
+
+  return skillFiles.sort();
+}
+
+const instructionFiles = [...baseInstructionFiles, ...findSkillInstructionFiles()];
 
 function addFailure(file, message) {
   failures.push(`${file}: ${message}`);
@@ -95,6 +123,7 @@ function validateRelativeLinks(relativePath, content) {
 
 function looksLikeRepoFilePath(value) {
   const repoPathPrefixes = [
+    ".agents/",
     ".github/",
     "docs/",
     "references/",
@@ -102,7 +131,6 @@ function looksLikeRepoFilePath(value) {
     "web/",
   ];
   const repoFileNames = [
-    "SKILL.md",
     "GEMINI.md",
     "Dockerfile",
     "Dockerfile.web",
@@ -262,12 +290,12 @@ function validateCopilotInstructions(relativePath, content) {
 function validateSkillInstructions(relativePath, content) {
   const requiredPatterns = [
     {
-      pattern: /Read \[?`?\.github\/copilot-instructions\.md`?\]?\([^)]+\) first/i,
-      message: "must direct agents to read .github/copilot-instructions.md first",
+      pattern: /Read \[?`?\.agents\/AGENTS\.md`?\]?\([^)]+\) first/i,
+      message: "must direct agents to read .agents/AGENTS.md first",
     },
     {
-      pattern: /references\/project-lessons\.md/i,
-      message: "must reference references/project-lessons.md for repo-specific learnings",
+      pattern: /\.agents\/project-lessons\.md/i,
+      message: "must reference .agents/project-lessons.md for repo-specific learnings",
     },
     {
       pattern: /Docker-first workflows|Docker Compose/i,
@@ -278,8 +306,8 @@ function validateSkillInstructions(relativePath, content) {
       message: "must require running relevant automated tests after a feature or fix is ready",
     },
     {
-      pattern: /update `references\/project-lessons\.md`/i,
-      message: "must tell contributors to record non-obvious lessons in references/project-lessons.md",
+      pattern: /update `\.agents\/project-lessons\.md`/i,
+      message: "must tell contributors to record non-obvious lessons in .agents/project-lessons.md",
     },
     {
       pattern: /update `test\/check-instructions\.mjs`/i,
@@ -464,11 +492,13 @@ for (const relativePath of instructionFiles) {
   validateInlineFileReferences(relativePath, content);
   validateRequiredReferencedFiles(relativePath);
 
-  if (relativePath === ".github/copilot-instructions.md") {
+  if (relativePath === ".agents/AGENTS.md") {
     validateCopilotInstructions(relativePath, content);
-  } else if (relativePath === "SKILL.md") {
+  } else if (relativePath === ".agents/README.md") {
     validateSkillInstructions(relativePath, content);
-  } else if (relativePath === "references/project-lessons.md") {
+  } else if (relativePath.startsWith(".agents/skills/") && relativePath.endsWith("/SKILL.md")) {
+    validateSkillInstructions(relativePath, content);
+  } else if (relativePath === ".agents/project-lessons.md") {
     validateProjectLessons(relativePath, content);
   }
 }

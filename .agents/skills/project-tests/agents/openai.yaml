@@ -1,0 +1,4 @@
+interface:
+  display_name: "Project Tests"
+  short_description: "Run Docker Compose test flows from source-of-truth comments."
+  default_prompt: "Use $project-tests to choose and run the right Docker Compose test flow for this repository."
