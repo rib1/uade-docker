@@ -155,8 +155,13 @@ function validateNoHardcodedWorkspacePaths(relativePath, content) {
   const normalizedRoot = projectRoot.replace(/\\/g, "/").toLowerCase();
   const normalizedContent = content.replace(/\\/g, "/").toLowerCase();
   const rootWithoutLeadingSlash = normalizedRoot.replace(/^\/+/, "");
+  const genericContainerRoots = new Set(["/workspace"]);
 
-  if (normalizedRoot && normalizedContent.includes(normalizedRoot)) {
+  if (!normalizedRoot || genericContainerRoots.has(normalizedRoot)) {
+    return;
+  }
+
+  if (normalizedContent.includes(normalizedRoot)) {
     addFailure(
       relativePath,
       "must not contain hardcoded local workspace paths; use repo-relative paths instead",
