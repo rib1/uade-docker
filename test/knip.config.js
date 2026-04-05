@@ -23,6 +23,5 @@ module.exports = {
     "stylelint",
     "htmlhint",
     "pa11y-ci",
-    "purgecss",
   ],
 };

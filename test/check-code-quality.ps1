@@ -266,30 +266,16 @@ if ($PurgeCSS) {
 
     Write-Host "Running PurgeCSS on web/static/style.css against all HTML and JS in web/..."
 
-    $purgeCssArgs = @("check-purgecss.mjs")
+    $purgeCssCommand = "npm install -g purgecss@$PURGECSS_VERSION >/dev/null && PROJECT_ROOT=/workspace node check-purgecss.mjs"
     if ($Fix) {
-        $purgeCssArgs += "--fix"
+        $purgeCssCommand += " --fix"
     }
 
-    $hasNode = $null -ne (Get-Command node -ErrorAction SilentlyContinue)
-    $hasPurgeCSS = $null -ne (Get-Command purgecss -ErrorAction SilentlyContinue)
-
-    if ($hasNode -and $hasPurgeCSS) {
-        Push-Location (Join-Path $ProjectRoot "test")
-        try {
-            $output = & node @purgeCssArgs 2>&1
-            $exitCode = $LASTEXITCODE
-        } finally {
-            Pop-Location
-        }
-    } else {
-        $purgeCssCommand = "npm install -g purgecss@$PURGECSS_VERSION >/dev/null && node " + ($purgeCssArgs -join " ")
-        $output = & docker run --rm `
-            -v "${ProjectRoot}:/workspace" `
-            --workdir /workspace/test `
-            node:24-alpine sh -lc $purgeCssCommand 2>&1
-        $exitCode = $LASTEXITCODE
-    }
+    $output = & docker run --rm `
+        -v "${ProjectRoot}:/workspace" `
+        --workdir /workspace/test `
+        node:24-alpine sh -lc $purgeCssCommand 2>&1
+    $exitCode = $LASTEXITCODE
 
     if ($exitCode -eq 0) {
         Write-Result "PurgeCSS" 0
@@ -756,23 +742,11 @@ if ($Instructions) {
 
     Write-Host "Running repo-specific checks on instruction files..."
 
-    try {
-        node --version 2>$null | Out-Null
-        $previousProjectRoot = $env:PROJECT_ROOT
-        $env:PROJECT_ROOT = $ProjectRoot
-        try {
-            $output = & node (Join-Path $ProjectRoot "test/check-instructions.mjs") 2>&1
-        } finally {
-            $env:PROJECT_ROOT = $previousProjectRoot
-        }
-        $exitCode = $LASTEXITCODE
-    } catch {
-        $output = & docker run --rm `
-            -v "${ProjectRoot}:/workspace" `
-            --workdir /workspace `
-            node:25-alpine node test/check-instructions.mjs 2>&1
-        $exitCode = $LASTEXITCODE
-    }
+    $output = & docker run --rm `
+        -v "${ProjectRoot}:/workspace" `
+        --workdir /workspace `
+        node:25-alpine node test/check-instructions.mjs 2>&1
+    $exitCode = $LASTEXITCODE
 
     if ($exitCode -eq 0) {
         Write-Result "Instruction Files" 0
@@ -787,23 +761,11 @@ if ($Documentation) {
 
     Write-Host "Running repo-specific checks on README.md and docs/*.md..."
 
-    try {
-        node --version 2>$null | Out-Null
-        $previousProjectRoot = $env:PROJECT_ROOT
-        $env:PROJECT_ROOT = $ProjectRoot
-        try {
-            $output = & node (Join-Path $ProjectRoot "test/check-documentation.mjs") 2>&1
-        } finally {
-            $env:PROJECT_ROOT = $previousProjectRoot
-        }
-        $exitCode = $LASTEXITCODE
-    } catch {
-        $output = & docker run --rm `
-            -v "${ProjectRoot}:/workspace" `
-            --workdir /workspace `
-            node:25-alpine node test/check-documentation.mjs 2>&1
-        $exitCode = $LASTEXITCODE
-    }
+    $output = & docker run --rm `
+        -v "${ProjectRoot}:/workspace" `
+        --workdir /workspace `
+        node:25-alpine node test/check-documentation.mjs 2>&1
+    $exitCode = $LASTEXITCODE
 
     if ($exitCode -eq 0) {
         Write-Result "Documentation Files" 0

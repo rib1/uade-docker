@@ -4,14 +4,36 @@ import { execSync } from "node:child_process";
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { createRequire } from "node:module";
+import { fileURLToPath } from "node:url";
 
 const require = createRequire(import.meta.url);
-const configPath = resolve("./purgecss.config.js");
+const scriptDir = dirname(fileURLToPath(import.meta.url));
+const projectRoot = process.env.PROJECT_ROOT
+  ? resolve(process.env.PROJECT_ROOT)
+  : resolve(scriptDir, "..");
+const configPath = resolve(projectRoot, "test", "purgecss.config.js");
 const configDir = dirname(configPath);
 const config = require(configPath);
 const shouldFix = process.argv.includes("--fix");
-const globalNodeModules = execSync("npm root -g", { encoding: "utf8" }).trim();
-const { PurgeCSS } = require(join(globalNodeModules, "purgecss"));
+
+function loadPurgeCSS() {
+  try {
+    return require("purgecss");
+  } catch {
+    try {
+      const globalNodeModules = execSync("npm root -g", { encoding: "utf8" }).trim();
+      return require(join(globalNodeModules, "purgecss"));
+    } catch {
+      console.error(
+        "Unable to resolve 'purgecss'. Install test/package.json dependencies or install purgecss globally.",
+      );
+      process.exit(1);
+      throw new Error("Unreachable after process exit");
+    }
+  }
+}
+
+const { PurgeCSS } = loadPurgeCSS();
 
 const cssFiles = (config.css ?? []).map((file) => resolve(configDir, file));
 const contentEntries = (config.content ?? []).map((entry) => {
