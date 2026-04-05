@@ -176,12 +176,35 @@ jobs:
           output-file: hadolint-${{ matrix.label }}.sarif
           no-fail: true
 
+      - name: Check Hadolint SARIF has results
+        id: hadolint-sarif
+        shell: bash
+        run: |
+          python - <<'PY'
+          import json
+          import os
+
+          sarif_path = "hadolint-${{ matrix.label }}.sarif"
+          with open(sarif_path, encoding="utf-8") as fh:
+              data = json.load(fh)
+
+          count = sum(len(run.get("results", [])) for run in data.get("runs", []))
+
+          with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as fh:
+              fh.write(f"count={count}\n")
+              fh.write(f"has_results={'true' if count > 0 else 'false'}\n")
+          PY
+
       - name: Upload Hadolint results
         uses: github/codeql-action/upload-sarif@v4
-        if: always()
+        if: always() && steps.hadolint-sarif.outputs.has_results == 'true'
         with:
           sarif_file: hadolint-${{ matrix.label }}.sarif
           category: hadolint-${{ matrix.label }}
+
+      - name: Skip empty Hadolint SARIF upload
+        if: always() && steps.hadolint-sarif.outputs.has_results != 'true'
+        run: echo "Skipping Hadolint SARIF upload because the scan produced 0 results."
 
   dependency-review:
     name: Dependency Review
