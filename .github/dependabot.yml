@@ -3,6 +3,7 @@ multi-ecosystem-groups:
   test-playwright:
     schedule:
       interval: "weekly"
+    open-pull-requests-limit: 5
 
 updates:
   # Monitor Docker dependencies
@@ -18,7 +19,6 @@ updates:
     multi-ecosystem-group: "test-playwright"
     schedule:
       interval: "weekly"
-    open-pull-requests-limit: 5
   - package-ecosystem: "docker"
     directory: "/test"
     ignore:
@@ -53,7 +53,6 @@ updates:
     multi-ecosystem-group: "test-playwright"
     schedule:
       interval: "weekly"
-    open-pull-requests-limit: 5
   - package-ecosystem: "npm"
     directory: "/test"
     ignore:
