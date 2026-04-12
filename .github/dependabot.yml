@@ -1,4 +1,9 @@
 version: 2
+multi-ecosystem-groups:
+  test-playwright:
+    schedule:
+      interval: "weekly"
+
 updates:
   # Monitor Docker dependencies
   - package-ecosystem: "docker"
@@ -8,6 +13,16 @@ updates:
     open-pull-requests-limit: 5
   - package-ecosystem: "docker"
     directory: "/test"
+    patterns:
+      - "mcr.microsoft.com/playwright"
+    multi-ecosystem-group: "test-playwright"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 5
+  - package-ecosystem: "docker"
+    directory: "/test"
+    ignore:
+      - dependency-name: "mcr.microsoft.com/playwright"
     schedule:
       interval: "weekly"
     open-pull-requests-limit: 5
@@ -33,6 +48,16 @@ updates:
   # Monitor Node.js quality tooling
   - package-ecosystem: "npm"
     directory: "/test"
+    patterns:
+      - "playwright-core"
+    multi-ecosystem-group: "test-playwright"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 5
+  - package-ecosystem: "npm"
+    directory: "/test"
+    ignore:
+      - dependency-name: "playwright-core"
     schedule:
       interval: "weekly"
     open-pull-requests-limit: 5

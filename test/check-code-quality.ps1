@@ -370,7 +370,7 @@ if ($Knip) {
     $output = & docker run --rm `
         -v "${ProjectRoot}:/workspace" `
         --workdir /workspace/test `
-        node:24-alpine sh -lc "npm install -g knip@$KNIP_VERSION >/dev/null && knip --config knip.config.js --no-progress --treat-config-hints-as-errors" 2>&1
+        node:24-alpine sh -lc "npm install -g knip@$KNIP_VERSION >/dev/null && knip --config knip.config.js --no-progress --treat-config-hints-as-errors --include-entry-exports" 2>&1
 
     $exitCode = $LASTEXITCODE
 

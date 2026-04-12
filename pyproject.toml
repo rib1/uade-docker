@@ -58,6 +58,7 @@ select = [
     "PLE", # pylint errors
     "PLW", # pylint warnings
     "PLR2004", # magic-value-comparison
+    "LOG004", # logging.exception outside exception handlers
     "RUF050", # unnecessary-if
     "RUF072", # useless-finally
     "RUF073", # f-string-percent-format

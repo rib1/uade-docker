@@ -506,13 +506,13 @@ if [ "$RUN_KNIP" = true ]; then
     echo "Running knip on /web/static and /test with repo-specific config..."
 
     if command -v knip >/dev/null 2>&1; then
-        OUTPUT=$(cd "${PROJECT_ROOT}/test" && knip --config knip.config.js --no-progress --treat-config-hints-as-errors 2>&1)
+        OUTPUT=$(cd "${PROJECT_ROOT}/test" && knip --config knip.config.js --no-progress --treat-config-hints-as-errors --include-entry-exports 2>&1)
         EXIT_CODE=$?
     else
         OUTPUT=$(docker run --rm \
                -v "${PROJECT_ROOT}:/workspace" \
                --workdir /workspace/test \
-               node:24-alpine sh -lc "npm install -g knip@${KNIP_VERSION} >/dev/null && knip --config knip.config.js --no-progress --treat-config-hints-as-errors" 2>&1)
+               node:24-alpine sh -lc "npm install -g knip@${KNIP_VERSION} >/dev/null && knip --config knip.config.js --no-progress --treat-config-hints-as-errors --include-entry-exports" 2>&1)
         EXIT_CODE=$?
     fi
 
