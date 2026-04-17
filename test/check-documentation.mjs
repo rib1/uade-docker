@@ -34,24 +34,38 @@ function stripFencedCodeBlocks(content) {
 }
 
 function findMarkdownFiles() {
-  const markdownFiles = [];
+  const markdownFiles = new Set();
 
   if (fileExists("README.md")) {
-    markdownFiles.push("README.md");
+    markdownFiles.add("README.md");
   }
 
-  const docsDir = path.join(projectRoot, "docs");
-  if (!fs.existsSync(docsDir)) {
-    return markdownFiles;
-  }
+  function addMarkdownFilesFromDir(relativeDir) {
+    const dirPath = path.join(projectRoot, relativeDir);
+    if (!fs.existsSync(dirPath)) {
+      return;
+    }
 
-  for (const entry of fs.readdirSync(docsDir, { withFileTypes: true })) {
-    if (entry.isFile() && entry.name.endsWith(".md")) {
-      markdownFiles.push(path.posix.join("docs", entry.name));
+    const pending = [dirPath];
+    while (pending.length > 0) {
+      const currentDir = pending.pop();
+      for (const entry of fs.readdirSync(currentDir, { withFileTypes: true })) {
+        const entryPath = path.join(currentDir, entry.name);
+        if (entry.isDirectory()) {
+          pending.push(entryPath);
+          continue;
+        }
+        if (!entry.isFile() || !entry.name.endsWith(".md")) {
+          continue;
+        }
+        markdownFiles.add(path.relative(projectRoot, entryPath).replace(/\\/g, "/"));
+      }
     }
   }
 
-  return markdownFiles.sort();
+  addMarkdownFilesFromDir("docs");
+
+  return [...markdownFiles].sort();
 }
 
 function normalizeHeadingText(value) {
@@ -220,6 +234,50 @@ function validateCoreDocsConsistency() {
     addFailure(
       webPlayerPath,
       "stale local queue wording found; converted local tracks keep localFile for upload fallback",
+    );
+  }
+}
+
+function validatePerformanceDocsConsistency() {
+  const docPath = "docs/PERFORMANCE.md";
+  if (!fileExists(docPath)) {
+    return;
+  }
+
+  const content = readFile(docPath);
+  const requiredBenchSuites = [
+    "test/bench/smoke.js",
+    "test/bench/conversion.js",
+    "test/bench/cache.js",
+    "test/bench/streaming.js",
+    "test/bench/dast-patterns.js",
+    "test/bench/semaphore-balance.js",
+  ];
+
+  for (const suitePath of requiredBenchSuites) {
+    if (!content.includes(suitePath)) {
+      addFailure(docPath, `must mention benchmark suite \`${suitePath}\``);
+    }
+  }
+
+  if (!content.includes("MAX_CONCURRENT_CONVERSIONS=2")) {
+    addFailure(
+      docPath,
+      "must document the current Cloud Run default `MAX_CONCURRENT_CONVERSIONS=2`",
+    );
+  }
+
+  if (!content.includes("Conversion semaphore wait")) {
+    addFailure(
+      docPath,
+      "must mention `Conversion semaphore wait` so queueing guidance stays documented",
+    );
+  }
+
+  if (!content.includes("Conversion lock wait")) {
+    addFailure(
+      docPath,
+      "must mention `Conversion lock wait` so same-hash contention guidance stays documented",
     );
   }
 }
@@ -393,6 +451,7 @@ for (const requiredDoc of requiredDocs) {
 validateReadmeIntegrity();
 validateComponentDiagramIntegrity();
 validateCoreDocsConsistency();
+validatePerformanceDocsConsistency();
 
 const pinnedVersions = readPinnedVersions();
 

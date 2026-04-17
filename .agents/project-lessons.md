@@ -18,6 +18,7 @@ This document contains project-specific learnings and regression-avoidance notes
 - [Docker Base Image (CLI) Release Lessons](#docker-base-image-cli-release-lessons)
 - [Security Scan Lessons](#security-scan-lessons)
 - [Local Cleanup Lessons](#local-cleanup-lessons)
+- [Performance Lessons](#performance-lessons)
 
 ---
 
@@ -119,8 +120,11 @@ This document contains project-specific learnings and regression-avoidance notes
 - **Test Environment:** Prefer the repo's Docker Compose flow for endpoint coverage over ad hoc local execution.
 - **Compose Exit Behavior:** Prefer `docker compose ... run --rm --build uade-test-runner` for the one-off endpoint test job. Using `up` for `uade-web`, `uade-test-runner`, and `test-http-server` stays attached because the helper services are long-lived.
 - **Compose Variant Switching:** When moving between Compose test variants that override the same `uade-web` service, bring the stack down first. Reusing a stale container can preserve the wrong env vars and make suites fail for configuration reasons instead of code regressions.
+- **Compose Variant Parallelism:** Do not run Compose test variants in parallel when they override the same `uade-web` service. In this repo, running the rate-limit and accessibility stacks at the same time can recreate `uade-web` with the wrong environment and produce false failures such as `rate_limiting_enabled: false` in the rate-limit suite.
 - **Runtime Config Contract:** If a static client limit is derived from backend config, expose it from the server and test the server-to-client contract directly. A tiny runtime config endpoint is easier to keep in sync than duplicated constants in backend code, frontend code, and docs.
 - **Fixture Downloads:** Treat `test/test_endpoints.sh` fixture downloads as a flake risk. It currently uses `curl -s --insecure -o ...` without checking HTTP status or content, which can silently save an error page or truncated file as a module fixture.
+- **Shared Fixtures:** Keep endpoint-test and benchmark fixture preparation in one script. In this repo, `test/prepare-endpoint-fixtures.sh` is the shared source of truth for the `test-tmp` fixture volume, which reduces drift between the end-to-end and performance stacks.
+- **Version Pins:** Keep benchmark-tool version pins in the same `/test` manifest surfaces used by the rest of the repo. In this repo, `test/docker-compose.tooling.yml` is the right home for the `k6` image tag, even when the benchmark runner installs the binary into its own custom image.
 - **Upload Debugging:** When `/convert-url` tests pass but `/upload` fails with `Unknown format`, inspect the uploaded fixture bytes first. That pattern points more strongly to a bad fixture payload than to a regression in upload handling.
 - **Regression Coverage:** When local queue behavior depends on server-resident probed files, add endpoint regressions for both `/convert-probed` recovery after cached-audio deletion and concurrent same-content `/probe-upload` requests.
 - **CI/CD:** A long-running attached `docker compose up` can hit agent timeouts. Check `docker compose ps` or rerun in detached mode before assuming failure.
@@ -253,3 +257,18 @@ This document contains project-specific learnings and regression-avoidance notes
 - **State Scope:** For this app, a lock is the real concurrency control. Extra cleanup state such as `in_progress` is optional observability, not a correctness requirement.
 - **Shared-Volume Test Helpers:** In Docker-based tests, cache artifacts may be owned by another container or an earlier run. Test-only helpers that mutate cache-file mtimes should handle `PermissionError` and can fall back to atomic rewrite plus `utime`.
 - **Docs Accuracy:** If cleanup moves from route-local calls to a gated request hook, update docs to say it is request-triggered and not a background hourly job.
+
+## Performance Lessons
+
+**Key Takeaways:** Benchmark semaphore limits against the deployed Cloud Run shape, not local intuition. For the current single-CPU service, `2` is the best default.
+
+- **Cloud Run Semaphore Default:** For the current Cloud Run shape (`1 CPU`, `8` request concurrency, Gunicorn `1` worker / `8` threads), the mixed `/play/*` plus cold-convert sweep showed `MAX_CONCURRENT_CONVERSIONS=2` as the best balance. `1` kept playback even lower-latency but introduced large conversion queueing, while `3` did not improve throughput enough to justify the extra contention risk.
+- **Decision Rule:** Treat `/play` latency as the primary guardrail and pick the highest semaphore value that still keeps stream latency comfortably inside the target SLO. In this repo's measured sweep, both `2` and `3` kept `/play` fast, but `2` slightly outperformed `3` on the conversion side and is the better default.
+
+**Key Takeaways:** Benchmark the local app, not third-party content sources. Keep performance fixtures pinned and local so results are comparable across runs.
+
+- **Fixture Stability:** Do not benchmark conversion or streaming through remote content hosts. Use a committed or otherwise pinned local module fixture so latency and throughput changes reflect this repo, not Modland or another third-party service.
+- **Compose Consistency:** Model benchmark runs as a dedicated Compose overlay and one-off runner, matching the repo's existing test-stack pattern. That keeps performance work aligned with the Docker-first workflow and avoids hidden host-tool differences.
+- **Rate-Limit Isolation:** Disable rate limiting in the benchmark overlay. Perf runs should measure application behavior, not limiter policy.
+- **Cold Convert-Probed:** A `probe-upload` followed by `convert-probed` is not automatically a cold conversion in this repo. Converted audio is cached independently from probed-file state, so a benchmark that wants a real reconvert must follow the same pattern as the endpoint and multi-instance tests: first convert once, call `/test/remove-cache-artifact`, then measure the next `convert-probed`.
+- **Race Tests:** Concurrency regressions that need `/test/*` helpers should target `uade-web-seeded`, not the default `uade-web` service. The plain app runs with `UADE_TEST_MODE=0`, so test-only cache reset or inspection endpoints will correctly return `404`.

@@ -33,12 +33,14 @@
 #    docker compose -f docker-compose.yml -f test/docker-compose.multiinstance.yml run --rm --build uade-test-multiinstance-runner
 #    To stop and clean up the multi-instance setup:
 #    docker compose -f docker-compose.yml -f test/docker-compose.multiinstance.yml down -v
-# 7. To run a DAST scan (UADE_TEST_MODE is OFF by default):
+# 7. To run the benchmark suite (rate limiting disabled, uses the same downloaded fixtures as the endpoint tests):
+#    docker compose -f docker-compose.yml -f test/docker-compose.benchmark.yml run --rm --build uade-benchmark-runner
+# 8. To run a DAST scan (UADE_TEST_MODE is OFF by default):
 #    docker compose run --rm --build zap-scan
 #    To run a DAST scan with local-only ZAP seed requests (UADE_TEST_MODE is ON):
 #    docker compose run --rm --build zap-scan-seeded
 #    The HTML report will be in the ./reports directory.
-# 8. To run a full DAST scan (UADE_TEST_MODE is OFF by default):
+# 9. To run a full DAST scan (UADE_TEST_MODE is OFF by default):
 #    docker compose run --rm --build zap-full-scan
 #    To run a full DAST scan with local-only ZAP seed requests (UADE_TEST_MODE is ON):
 #    docker compose run --rm --build zap-full-scan-seeded
@@ -55,8 +57,6 @@ services:
     ports:
       - "5000:5000"
     volumes:
-      # Mount source code (read-only for security)
-      - ./web:/app:ro
       # Persistent temp storage for uploads/conversions
       - uade-tmp:/tmp
     environment:
@@ -85,7 +85,6 @@ services:
         - GIT_COMMIT=${GIT_COMMIT:-unknown}
     container_name: uade-web-player-seeded
     volumes:
-      - ./web:/app:ro
       - uade-tmp:/tmp
     environment:
       - FLASK_ENV=production
@@ -120,10 +119,23 @@ services:
     networks:
       - uade-net
 
+  test-fixture-preparer:
+    build:
+      context: .
+      dockerfile: test/Dockerfile.test
+    command: ["./prepare-endpoint-fixtures.sh"]
+    volumes:
+      - test-tmp:/home/tester/app/fixtures
+    networks:
+      - uade-net
+
   test-http-server: # Service for serving test files
     image: python:3.13-alpine # A lightweight Python image
     container_name: uade-test-http-server
     command: python -m http.server 8000 # Serve on port 8000
+    depends_on:
+      test-fixture-preparer:
+        condition: service_completed_successfully
     volumes:
       - test-tmp:/app/fixtures # Mount test fixtures
     working_dir: /app # Serve from /app
@@ -152,7 +164,6 @@ services:
   zap-scan-seeded:
     extends:
       service: zap-scan
-    user: "0:0"
     command: >-
       sh -lc "python /zap/wrk/zap_seed_targets.py &&
       python /zap/zap-baseline.py -t http://uade-web-player-seeded:5000 -j -a -r report.html -w report.md"
@@ -180,9 +191,11 @@ services:
       context: .
       dockerfile: test/Dockerfile.test
     depends_on:
-      uade-web:
+      uade-web-seeded:
         condition: service_healthy
     command: ["./test_race_condition.sh"]
+    environment:
+      - BASE_URL=http://uade-web-player-seeded:5000
     networks:
       - uade-net
 

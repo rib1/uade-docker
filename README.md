@@ -70,6 +70,8 @@ For testing instructions, see the **[Development section in the Web Player docum
 
 For code quality instructions, see the **[Code Quality documentation](docs/CODE-QUALITY.md)**.
 
+For benchmark instructions, see the **[Performance documentation](docs/PERFORMANCE.md)**.
+
 ## License
 
 UADE is maintained by the UADE team. This project provides Docker packaging.

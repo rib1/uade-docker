@@ -2,6 +2,12 @@ const frontendEntries = ["../web/static/app.js"];
 
 const toolingEntries = [
   "./accessibility-preflight.js",
+  "./bench/conversion.js",
+  "./bench/cache.js",
+  "./bench/dast-patterns.js",
+  "./bench/semaphore-balance.js",
+  "./bench/smoke.js",
+  "./bench/streaming.js",
   "./check-documentation.mjs",
   "./check-instructions.mjs",
   "./check-purgecss.mjs",
@@ -17,6 +23,12 @@ module.exports = {
   project: [...frontendProjectFiles, ...toolingProjectFiles],
   ignore: [
     "../web/static/eslint.config.js",
+    "./bench/conversion.js",
+    "./bench/cache.js",
+    "./bench/dast-patterns.js",
+    "./bench/semaphore-balance.js",
+    "./bench/smoke.js",
+    "./bench/streaming.js",
     // Loaded via a dynamic require(configPath) in check-purgecss.mjs.
     "./purgecss.config.js",
   ],

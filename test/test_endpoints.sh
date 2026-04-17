@@ -11,29 +11,7 @@ LOCAL_TEST_SERVER_PORT=8000
 LOCAL_TEST_SERVER_URL="http://uade-test-http-server:$LOCAL_TEST_SERVER_PORT"
 SKIP_MODARCHIVE_TESTS="${SKIP_MODARCHIVE_TESTS:-0}"
 
-# Create test fixtures on the fly
-mkdir -p fixtures/invalid
-touch fixtures/invalid/empty.bin
-head -c 11534336 /dev/urandom > fixtures/invalid/too-large.bin
-
-# Download test files to fixtures directory
-mkdir -p fixtures/modules
-if [ ! -f "fixtures/modules/space_debris.mod" ]; then
-    echo "Downloading space_debris.mod..."
-    curl -s --insecure -o fixtures/modules/space_debris.mod "https://modland.com/pub/modules/Protracker/Captain/space%20debris.mod"
-fi
-if [ ! -f "fixtures/modules/gutenberg.txt" ]; then
-    echo "Downloading gutenberg.txt..."
-    curl -s --insecure -o fixtures/modules/gutenberg.txt "https://www.gutenberg.org/files/1342/1342-0.txt"
-fi
-if [ ! -f "fixtures/modules/mdat.turrican_2_level_0-intro" ]; then
-    echo "Downloading mdat.turrican_2_level_0-intro..."
-    curl -s --insecure -o fixtures/modules/mdat.turrican_2_level_0-intro "https://modland.com/pub/modules/TFMX/Chris%20Huelsbeck/mdat.turrican%202%20level%200-intro"
-fi
-if [ ! -f "fixtures/modules/smpl.turrican_2_level_0-intro" ]; then
-    echo "Downloading smpl.turrican_2_level_0-intro..."
-    curl -s --insecure -o fixtures/modules/smpl.turrican_2_level_0-intro "https://modland.com/pub/modules/TFMX/Chris%20Huelsbeck/smpl.turrican%202%20level%200-intro"
-fi
+./prepare-endpoint-fixtures.sh
 
 should_skip_modarchive_tests() {
     [ "$SKIP_MODARCHIVE_TESTS" = "1" ]
@@ -1930,6 +1908,18 @@ test_health_endpoint() {
     fi
     if [ "$MODE" = "production" ] && [[ "$WEB_SERVER_LOWER" != *"gunicorn"* ]]; then
         echo "ERROR: production mode should report a Gunicorn web_server, got: $WEB_SERVER"
+        exit 1
+    fi
+
+    MAX_CONCURRENT_CONVERSIONS=$(echo "$RESPONSE" | jq -r .config.max_concurrent_conversions)
+    if [[ ! "$MAX_CONCURRENT_CONVERSIONS" =~ ^[0-9]+$ ]]; then
+        echo "ERROR: config.max_concurrent_conversions is not numeric: $MAX_CONCURRENT_CONVERSIONS"
+        echo "Response: $RESPONSE"
+        exit 1
+    fi
+    if [ "$MAX_CONCURRENT_CONVERSIONS" -lt 1 ]; then
+        echo "ERROR: config.max_concurrent_conversions must be at least 1: $MAX_CONCURRENT_CONVERSIONS"
+        echo "Response: $RESPONSE"
         exit 1
     fi
 

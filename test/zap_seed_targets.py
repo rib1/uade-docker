@@ -16,16 +16,15 @@ LOCAL_TEST_SERVER_URL = os.environ.get(
     "ZAP_LOCAL_TEST_SERVER_URL", "http://uade-test-http-server:8000"
 )
 FIXTURE_ROOT = Path(os.environ.get("ZAP_FIXTURE_ROOT", "/zap/fixtures"))
-TOO_LARGE_BYTES = 11 * 1024 * 1024
 HTTP_SERVER_ERROR_MIN = 500
 HTTP_TIMEOUT_SECONDS = 20
 WAIT_TIMEOUT_SECONDS = 30
-ZAP_GUTENBERG_FIXTURE = "zap-placeholder-gutenberg.txt"
-ZAP_SPACE_DEBRIS_FIXTURE = "zap-placeholder-space-debris.mod"
-ZAP_MDAT_FIXTURE = "zap-placeholder-mdat.turrican_2_level_0-intro"
-ZAP_SMPL_FIXTURE = "zap-placeholder-smpl.turrican_2_level_0-intro"
-ZAP_TOO_LARGE_FIXTURE = "zap-placeholder-too-large.bin"
-ZAP_EMPTY_FIXTURE = "zap-placeholder-empty.bin"
+ZAP_GUTENBERG_FIXTURE = "gutenberg.txt"
+ZAP_SPACE_DEBRIS_FIXTURE = "space_debris.mod"
+ZAP_MDAT_FIXTURE = "mdat.turrican_2_level_0-intro"
+ZAP_SMPL_FIXTURE = "smpl.turrican_2_level_0-intro"
+ZAP_TOO_LARGE_FIXTURE = "too-large.bin"
+ZAP_EMPTY_FIXTURE = "empty.bin"
 
 
 def allowlisted_urlopen(
@@ -41,27 +40,6 @@ def allowlisted_urlopen(
     if not full_url.startswith(allowed_prefixes):
         raise ValueError(f"Refusing to open non-allowlisted URL: {full_url}")
     return urllib.request.urlopen(request_or_url, timeout=timeout)  # noqa: S310
-
-
-def ensure_local_fixtures() -> None:
-    """Create deterministic local fixtures for the shared test HTTP server."""
-    modules_dir = FIXTURE_ROOT / "modules"
-    invalid_dir = FIXTURE_ROOT / "invalid"
-    modules_dir.mkdir(parents=True, exist_ok=True)
-    invalid_dir.mkdir(parents=True, exist_ok=True)
-
-    (modules_dir / ZAP_GUTENBERG_FIXTURE).write_text(
-        "This is plain text, not an Amiga module.\n",
-        encoding="utf-8",
-    )
-    (modules_dir / ZAP_SPACE_DEBRIS_FIXTURE).write_bytes(b"placeholder module bytes\n")
-    (modules_dir / ZAP_MDAT_FIXTURE).write_bytes(b"placeholder mdat bytes\n")
-    (modules_dir / ZAP_SMPL_FIXTURE).write_bytes(b"placeholder smpl bytes\n")
-    (invalid_dir / ZAP_EMPTY_FIXTURE).write_bytes(b"")
-
-    too_large_file = invalid_dir / ZAP_TOO_LARGE_FIXTURE
-    if not too_large_file.exists() or too_large_file.stat().st_size != TOO_LARGE_BYTES:
-        too_large_file.write_bytes(b"0" * TOO_LARGE_BYTES)
 
 
 def wait_for_url(url: str, *, timeout_seconds: int = 30) -> None:
@@ -179,7 +157,6 @@ def seed_probe_upload_case(
 
 
 def main() -> None:
-    ensure_local_fixtures()
     modules_dir = FIXTURE_ROOT / "modules"
     invalid_dir = FIXTURE_ROOT / "invalid"
     wait_for_url(f"{BASE_URL}/health", timeout_seconds=WAIT_TIMEOUT_SECONDS)
