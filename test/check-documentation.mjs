@@ -454,8 +454,9 @@ validateCoreDocsConsistency();
 validatePerformanceDocsConsistency();
 
 const pinnedVersions = readPinnedVersions();
+const markdownFiles = findMarkdownFiles();
 
-for (const relativePath of findMarkdownFiles()) {
+for (const relativePath of markdownFiles) {
   const content = readFile(relativePath);
   validateDuplicateHeadings(relativePath, content);
   validateFencedCodeLanguages(relativePath, content);
@@ -473,7 +474,7 @@ if (failures.length > 0) {
 }
 
 console.log("Checked documentation files:");
-for (const relativePath of findMarkdownFiles()) {
+for (const relativePath of markdownFiles) {
   console.log(`- ${relativePath}`);
 }
 

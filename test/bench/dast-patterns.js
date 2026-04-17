@@ -63,9 +63,13 @@ export const options = {
   thresholds: {
     http_req_failed: ["rate<0.01"],
     "checks{endpoint:dast-same-hash-convert}": ["rate==1"],
+    "checks{endpoint:dast-same-hash-evict}": ["rate==1"],
     "checks{endpoint:dast-multi-hash-convert-url}": ["rate==1"],
+    "checks{endpoint:dast-multi-hash-url-evict}": ["rate==1"],
     "checks{endpoint:dast-multi-hash-convert-probed}": ["rate==1"],
+    "checks{endpoint:dast-multi-hash-probed-evict}": ["rate==1"],
     "checks{endpoint:dast-play-burst-convert}": ["rate==1"],
+    "checks{endpoint:dast-play-burst-evict}": ["rate==1"],
     "checks{endpoint:dast-play-burst-play}": ["rate==1"],
     "checks{endpoint:dast-play-burst-range}": ["rate==1"],
   },
@@ -184,6 +188,25 @@ export function setup() {
     `DAST setup convert-url failed with status ${warmConvertUrlResponse.status}`,
   );
 
+  const sameHashEvictResponse = removeArtifact(
+    warmConvertUrlPayload.file_id,
+    `.${warmConvertUrlPayload.audio_format}`,
+    "dast-setup-same-hash-evict",
+  );
+  if (
+    !check(
+      sameHashEvictResponse,
+      {
+        "dast setup same-hash eviction returned 200": (res) => res.status === 200,
+      },
+      { endpoint: "dast-same-hash-evict" },
+    )
+  ) {
+    fail(
+      `DAST setup same-hash eviction failed with status ${sameHashEvictResponse.status}`,
+    );
+  }
+
   return {
     probedModuleHash: probePayload.module_hash,
     probedFileId: warmConvertProbedPayload.file_id,
@@ -193,20 +216,7 @@ export function setup() {
   };
 }
 
-export function sameHashDuplicateWaiters(data) {
-  const removeResponse = removeArtifact(
-    data.tfmxFileId,
-    data.tfmxAudioExt,
-    "dast-same-hash-evict",
-  );
-  check(
-    removeResponse,
-    {
-      "dast same-hash eviction returned 200": (res) => res.status === 200,
-    },
-    { endpoint: "dast-same-hash-convert" },
-  );
-
+export function sameHashDuplicateWaiters() {
   const response = convertUrl("dast-same-hash-convert");
   const payload = parseJson(response);
   sameHashConvertDuration.add(response.timings.duration);
@@ -233,7 +243,7 @@ export function multiHashConvertUrl(data) {
     {
       "dast multi-hash url eviction returned 200": (res) => res.status === 200,
     },
-    { endpoint: "dast-multi-hash-convert-url" },
+    { endpoint: "dast-multi-hash-url-evict" },
   );
 
   const response = convertUrl("dast-multi-hash-convert-url");
@@ -262,7 +272,7 @@ export function multiHashConvertProbed(data) {
     {
       "dast multi-hash probed eviction returned 200": (res) => res.status === 200,
     },
-    { endpoint: "dast-multi-hash-convert-probed" },
+    { endpoint: "dast-multi-hash-probed-evict" },
   );
 
   const response = convertProbed(data.probedModuleHash, "dast-multi-hash-convert-probed");
@@ -291,7 +301,7 @@ export function coldToWarmPlaybackBurst(data) {
     {
       "dast play burst eviction returned 200": (res) => res.status === 200,
     },
-    { endpoint: "dast-play-burst-convert" },
+    { endpoint: "dast-play-burst-evict" },
   );
 
   const convertResponse = convertUrl("dast-play-burst-convert");

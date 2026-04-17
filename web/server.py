@@ -1315,7 +1315,7 @@ def _read_text_file(path, *, tail_bytes=None, encoding="latin1"):
     if not file_path.exists():
         return ""
 
-    with Path(file_path).open("rb") as handle:
+    with file_path.open("rb") as handle:
         if tail_bytes is not None:
             handle.seek(0, os.SEEK_END)
             file_size = handle.tell()
@@ -1391,12 +1391,75 @@ def wait_for_file(file_path, *, timeout_seconds, poll_seconds, description):
     """Wait for a file to appear locally."""
     poll_count = max(1, timeout_seconds // poll_seconds)
     for _ in range(poll_count):
-        time.sleep(poll_seconds)
         if file_path.exists():
             logger.info(f"{description} completed: {file_path.name}")
             return True
+        time.sleep(poll_seconds)
     logger.warning(f"Timeout waiting for {description}: {file_path.name}")
     return False
+
+
+def _write_lock_metadata(lock_path):
+    """Persist basic owner metadata for a file-based lock."""
+    try:
+        payload = {
+            "pid": os.getpid(),
+            "hostname": socket.gethostname(),
+            "created_at": time.time(),
+        }
+        lock_path.write_text(json.dumps(payload), encoding="utf-8")
+    except Exception:
+        logger.warning(f"Could not write lock metadata for {lock_path.name}", exc_info=True)
+
+
+def _read_lock_metadata(lock_path):
+    """Return parsed lock metadata when present."""
+    try:
+        return json.loads(lock_path.read_text(encoding="utf-8"))
+    except Exception:
+        return None
+
+
+def _pid_is_alive(pid):
+    """Best-effort same-host liveness check for a lock owner PID."""
+    try:
+        os.kill(pid, 0)
+    except OSError:
+        return False
+    return True
+
+
+def _clear_stale_flac_lock(lock_path):
+    """Remove a stale FLAC promotion lock if it has clearly expired."""
+    try:
+        age_seconds = time.time() - lock_path.stat().st_mtime
+    except FileNotFoundError:
+        return False
+
+    if age_seconds <= FLAC_PROMOTION_TIMEOUT_SECONDS:
+        return False
+
+    metadata = _read_lock_metadata(lock_path) or {}
+    lock_hostname = metadata.get("hostname")
+    lock_pid = metadata.get("pid")
+    local_hostname = socket.gethostname()
+
+    if lock_hostname == local_hostname and isinstance(lock_pid, int) and _pid_is_alive(lock_pid):
+        logger.info(
+            f"FLAC promotion lock exceeded timeout but owner pid {lock_pid} is still alive: "
+            f"{lock_path.name}"
+        )
+        return False
+
+    try:
+        lock_path.unlink(missing_ok=True)
+        logger.warning(
+            f"Removed stale FLAC promotion lock after {age_seconds:.1f}s: {lock_path.name}"
+        )
+        return True
+    except Exception:
+        logger.warning(f"Could not remove stale FLAC promotion lock: {lock_path.name}")
+        return False
 
 
 def ensure_cached_flac(cache_hash, wav_path):
@@ -1407,6 +1470,8 @@ def ensure_cached_flac(cache_hash, wav_path):
 
     flac_lock_path = CONVERTED_DIR / f"{cache_hash}.flac.lock"
     flac_lock_acquired = False
+    if flac_lock_path.exists():
+        _clear_stale_flac_lock(flac_lock_path)
     if flac_lock_path.exists():
         if wait_for_file(
             flac_path,
@@ -1420,6 +1485,7 @@ def ensure_cached_flac(cache_hash, wav_path):
     try:
         flac_lock_path.touch(exist_ok=False)
         flac_lock_acquired = True
+        _write_lock_metadata(flac_lock_path)
         if flac_path.exists():
             return flac_path
         if compress_to_flac(wav_path, flac_path):
@@ -1427,6 +1493,8 @@ def ensure_cached_flac(cache_hash, wav_path):
             return flac_path
         return None
     except FileExistsError:
+        if _clear_stale_flac_lock(flac_lock_path):
+            return ensure_cached_flac(cache_hash, wav_path)
         if wait_for_file(
             flac_path,
             timeout_seconds=FLAC_PROMOTION_TIMEOUT_SECONDS,
@@ -1494,8 +1562,10 @@ def process_audio_conversion(input_path, *, compress_flac=False, sample_files=No
     """
     Convert module to WAV using UADE with optional caching and FLAC compression.
 
-    This function includes a file-based locking mechanism to prevent race conditions
-    when multiple threads try to convert the same file simultaneously.
+    This function participates in both a global conversion semaphore and a
+    per-hash file lock. The semaphore caps heavy UADE/FLAC work at
+    MAX_CONCURRENT_CONVERSIONS across the current process, while the file lock
+    prevents duplicate work for the same module hash across threads/processes.
 
     Args:
         input_path (Path): Path to the module file to convert.
@@ -1515,6 +1585,12 @@ def process_audio_conversion(input_path, *, compress_flac=False, sample_files=No
         cached (bool): True if the audio was served from cache.
         cache_hash (str or None): The MD5 hash of the input file.
         duration_list (list[float]): Per-subsong durations (empty for single subsong or cache hits).
+
+    Failure modes:
+        Returns the same tuple shape on failure. If the global conversion slot
+        is not acquired within CONVERSION_TIMEOUT_SECONDS, the error element is
+        "Timeout waiting for global conversion slot." and the converted-file
+        element is None.
     """
     # Hold metadata to return to the caller, even if conversion fails.
     metadata_success, module_name, module_format, player_format, subsongs = (
@@ -1732,8 +1808,8 @@ def process_audio_conversion(input_path, *, compress_flac=False, sample_files=No
                     stdout=subprocess.DEVNULL,
                     stderr=stderr_log,
                     check=False,
-                    timeout=300,
-                )  # 5 minute timeout
+                    timeout=CONVERSION_TIMEOUT_SECONDS,
+                )
             _log_duration("UADE audio render", uade_started_at, input=input_path.name)
 
             if result.returncode != 0:
@@ -1881,7 +1957,7 @@ def process_audio_conversion(input_path, *, compress_flac=False, sample_files=No
     except subprocess.TimeoutExpired:
         return (
             False,
-            "Conversion timeout (5 minutes exceeded)",
+            f"Conversion timeout ({CONVERSION_TIMEOUT_SECONDS} seconds exceeded)",
             None,
             player_format,
             module_name,
@@ -2786,7 +2862,7 @@ def prepare_remote_module_source(url, sample_url=None):
 
     filename = extract_filename_from_url(url)
     url_hash = hashlib.md5(
-        sanitized_url(url, log=False).encode(), usedforsecurity=False
+        normalized_remote_cache_url(url).encode(), usedforsecurity=False
     ).hexdigest()
 
     filename, suffix, sample_filename, sample_suffix = get_dual_file_module_filenames(filename)
@@ -2848,7 +2924,7 @@ def prepare_remote_module_source(url, sample_url=None):
         if not sample_filename:
             sample_filename = extract_filename_from_url(sample_url)
         sample_url_hash = hashlib.md5(
-            sanitized_url(sample_url, log=False).encode(), usedforsecurity=False
+            normalized_remote_cache_url(sample_url).encode(), usedforsecurity=False
         ).hexdigest()
 
         sample_path = MODULES_DIR / f"{sample_filename}_{url_hash}{sample_suffix}"
@@ -3058,6 +3134,41 @@ def sanitized_url(url, *, log=True):
     if len(out) > SANITIZED_URL_LOG_MAX_LEN:
         out = out[:SANITIZED_URL_LOG_MAX_LEN] + "..."
     return out
+
+
+def normalized_remote_cache_url(url):
+    """Return a canonical URL string for remote-download cache keys only."""
+    normalized_url = sanitized_url(url, log=False)
+    parsed = urllib.parse.urlparse(normalized_url)
+
+    cache_buster_keys = {
+        "_",
+        "cache_bust",
+        "cachebust",
+        "test_id",
+    }
+    filtered_query_pairs = []
+    for key, value in urllib.parse.parse_qsl(parsed.query, keep_blank_values=True):
+        lowered_key = key.lower()
+        if lowered_key in cache_buster_keys or lowered_key.startswith("utm_"):
+            continue
+        filtered_query_pairs.append((key, value))
+
+    canonical_query = urllib.parse.urlencode(filtered_query_pairs, doseq=True)
+    canonical_fragment = ""
+    if "api.modarchive" in parsed.netloc.lower():
+        canonical_fragment = parsed.fragment
+
+    return urllib.parse.urlunparse(
+        (
+            parsed.scheme.lower(),
+            parsed.netloc.lower(),
+            parsed.path,
+            parsed.params,
+            canonical_query,
+            canonical_fragment,
+        )
+    )
 
 
 def download_and_limit_size(url, temp_file_path, error_context=""):

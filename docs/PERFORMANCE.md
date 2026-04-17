@@ -23,9 +23,9 @@ The runner writes benchmark summaries to `reports/benchmarks/`.
 - `test/bench/cache.js`: repeated `/convert-url` cache-hit benchmarking through the local fixture HTTP server
 - `test/bench/streaming.js`: full-file and byte-range playback benchmarking after converting the TFMX fixture pair served by the local fixture HTTP server
 - `test/bench/dast-patterns.js`: DAST-inspired contention and burst scenarios using local fixtures
-- `test/bench/semaphore-balance.js`: Cloud Run-shaped mixed workload for `/play/*` plus cold conversion contention
+- `test/bench/semaphore-balance.js`: Cloud Run sweep-only mixed workload for `/play/*` plus cold conversion contention
 
-The runner executes the suites in this order: smoke, conversion, cache, streaming, DAST-patterns.
+The default benchmark runner executes the suites in this order: smoke, conversion, cache, streaming, DAST-patterns. `test/bench/semaphore-balance.js` runs only through the Cloud Run sweep wrapper.
 
 `test/bench/dast-patterns.js` currently covers:
 

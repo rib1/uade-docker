@@ -951,7 +951,7 @@ test_probe_oversized_remote_file() {
     TEST_NAME=$1
     URL_BASE=$2
     UNIQUE_ID=$(date +%s%N)
-    URL="${URL_BASE}?test_id=${UNIQUE_ID}"
+    URL="${URL_BASE}?oversize_probe_id=${UNIQUE_ID}"
 
     echo "--- Testing Probe Error: $TEST_NAME ---"
 
@@ -1158,7 +1158,7 @@ test_url_cache_logic() {
 
     # Generate a unique URL for this test run
     UNIQUE_ID=$(date +%s%N)
-    UNIQUE_URL="${BASE_URL_TO_TEST}?test_id=${UNIQUE_ID}"
+    UNIQUE_URL="${BASE_URL_TO_TEST}?cache_probe_id=${UNIQUE_ID}"
     echo "Using unique URL: $UNIQUE_URL"
 
     # 1. First call (should be a URL cache miss)
@@ -1204,6 +1204,56 @@ test_url_cache_logic() {
     echo ""
 }
 
+test_url_cache_normalizes_cache_busters() {
+    TEST_NAME=$1
+    BASE_URL_TO_TEST=$2
+
+    echo "--- Testing URL Cache Normalization: $TEST_NAME ---"
+
+    SCENARIO_ID="$(date +%s%N)"
+    CACHE_BUSTER_A="${SCENARIO_ID}"
+    CACHE_BUSTER_B="$((SCENARIO_ID + 1))"
+    URL_A="${BASE_URL_TO_TEST}?scenario_id=${SCENARIO_ID}&test_id=${CACHE_BUSTER_A}"
+    URL_B="${BASE_URL_TO_TEST}?scenario_id=${SCENARIO_ID}&test_id=${CACHE_BUSTER_B}"
+
+    echo "Making first request with cache-buster A (expecting url_cached: false)..."
+    HTTP_CODE_BODY_1=$(_perform_convert_url_call "$URL_A")
+    HTTP_CODE_1=$(echo "$HTTP_CODE_BODY_1" | head -n1)
+    RESPONSE_1=$(echo "$HTTP_CODE_BODY_1" | tail -n1)
+
+    if [ "$HTTP_CODE_1" -ne 200 ]; then
+        echo "ERROR: First normalized-cache request failed with HTTP $HTTP_CODE_1"
+        exit 1
+    fi
+
+    URL_CACHED_1=$(echo "$RESPONSE_1" | jq -r .url_cached)
+    if [ "$URL_CACHED_1" != "false" ]; then
+        echo "ERROR: First normalized-cache request reported url_cached: $URL_CACHED_1, expected false."
+        echo "Response: $RESPONSE_1"
+        exit 1
+    fi
+
+    echo "Making second request with cache-buster B (expecting url_cached: true)..."
+    HTTP_CODE_BODY_2=$(_perform_convert_url_call "$URL_B")
+    HTTP_CODE_2=$(echo "$HTTP_CODE_BODY_2" | head -n1)
+    RESPONSE_2=$(echo "$HTTP_CODE_BODY_2" | tail -n1)
+
+    if [ "$HTTP_CODE_2" -ne 200 ]; then
+        echo "ERROR: Second normalized-cache request failed with HTTP $HTTP_CODE_2"
+        exit 1
+    fi
+
+    URL_CACHED_2=$(echo "$RESPONSE_2" | jq -r .url_cached)
+    if [ "$URL_CACHED_2" != "true" ]; then
+        echo "ERROR: Second normalized-cache request reported url_cached: $URL_CACHED_2, expected true."
+        echo "Response: $RESPONSE_2"
+        exit 1
+    fi
+
+    echo "SUCCESS: Different cache-buster IDs reused the same URL download cache entry."
+    echo ""
+}
+
 test_upload_error() {
     TEST_NAME=$1
     FILE_PATH=$2
@@ -1240,7 +1290,7 @@ test_external_download_flow_with_oversized_file() {
     URL_BASE=$2
     # Generate a unique URL for this test run to ensure it's a fresh download attempt
     UNIQUE_ID=$(date +%s%N)
-    URL="${URL_BASE}?test_id=${UNIQUE_ID}"
+    URL="${URL_BASE}?oversize_download_id=${UNIQUE_ID}"
 
     EXPECTED_STATUS_FIRST_CALL=413
     EXPECTED_ERROR_MESSAGE_FIRST_CALL="External module file size exceeds the maximum allowed limit of 10MB"
@@ -2633,6 +2683,7 @@ test_queue_probe_uses_status_instead_of_queue_button_label
 test_cleanup_status_and_timestamp_transitions
 test_cache_hit_url "Server-side cache hit for convert-url" "https://modland.com/pub/modules/Protracker/Lizardking/l.k%27s%20doskpop.mod"
 test_url_cache_logic "URL download cache" "https://modland.com/pub/modules/Protracker/Lizardking/l.k%27s%20doskpop.mod"
+test_url_cache_normalizes_cache_busters "URL cache ignores known cache-buster params" "$LOCAL_TEST_SERVER_URL/fixtures/modules/space_debris.mod"
 test_remote_cache_access_record_refresh "Sidecar access record refresh" "https://modland.com/pub/modules/Protracker/Captain/space%20debris.mod"
 test_no_orphaned_cache_access_temp_files_under_parallel_hits "No orphaned sidecar temp files" "https://modland.com/pub/modules/Protracker/Captain/space%20debris.mod"
 test_flac_request_promotes_cached_wav_locally "FLAC promotion keeps WAV sibling" "https://modland.com/pub/modules/Protracker/4-Mat/agony-beginning.mod"

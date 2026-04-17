@@ -98,13 +98,13 @@ function uploadFixtureForProbe() {
   );
 }
 
-function convertProbed(moduleHash) {
+function convertProbed(moduleHash, tags = { endpoint: "cold-convert-probed" }) {
   return http.post(
     `${baseUrl}/convert-probed`,
     JSON.stringify({ module_hash: moduleHash, filename: modFixtureName }),
     {
       headers: jsonHeaders(),
-      tags: { endpoint: "cold-convert-probed" },
+      tags,
       timeout: "310s",
     },
   );
@@ -176,7 +176,9 @@ export function setup() {
 
   const moduleHash = probePayload.module_hash;
 
-  const warmConvertProbedResponse = convertProbed(moduleHash);
+  const warmConvertProbedResponse = convertProbed(moduleHash, {
+    endpoint: "setup-convert-probed",
+  });
   const warmConvertProbedPayload = parseJson(warmConvertProbedResponse);
 
   requireCheck(
@@ -298,7 +300,9 @@ export function coldConvertProbed(data) {
     { endpoint: "cold-convert-probed" },
   );
 
-  const response = convertProbed(data.probedModuleHash);
+  const response = convertProbed(data.probedModuleHash, {
+    endpoint: "cold-convert-probed",
+  });
   const payload = parseJson(response);
   coldConvertProbedDuration.add(response.timings.duration);
   coldConvertProbedRequests.add(1);

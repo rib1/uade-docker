@@ -1,3 +1,5 @@
+#requires -Version 7.0
+
 # Cloud Run-shaped semaphore sweep for mixed playback + conversion load.
 #
 # Usage:
@@ -25,6 +27,7 @@ $ProjectRoot = Split-Path -Parent $ScriptDir
 $ComposeArgs = @("-f", "docker-compose.yml", "-f", "test/docker-compose.benchmark.yml")
 $RunnerService = "uade-benchmark-runner"
 $Results = @()
+$CreatedGitCommit = $false
 
 function Get-K6MetricValue {
     param(
@@ -170,6 +173,7 @@ try {
         $env:MAX_CONCURRENT_CONVERSIONS = "$limit"
         if (-not $env:GIT_COMMIT) {
             $env:GIT_COMMIT = (git rev-parse HEAD).Trim()
+            $CreatedGitCommit = $true
         }
 
         Invoke-Compose -Arguments @("up", "-d", "--build", "uade-web", "test-http-server")
@@ -201,7 +205,7 @@ try {
 
     $combinedJson = Join-Path $OutputDir "summary.json"
     $combinedMd = Join-Path $OutputDir "summary.md"
-    $Results | ConvertTo-Json -Depth 8 | Set-Content -Path $combinedJson
+    @($Results) | ConvertTo-Json -Depth 8 | Set-Content -Path $combinedJson
     Write-MarkdownSummary -RunResults $Results -DestinationPath $combinedMd
 
     Write-Host ""
@@ -217,5 +221,8 @@ finally {
     }
 
     Remove-Item Env:MAX_CONCURRENT_CONVERSIONS -ErrorAction SilentlyContinue
+    if ($CreatedGitCommit) {
+        Remove-Item Env:GIT_COMMIT -ErrorAction SilentlyContinue
+    }
     Pop-Location
 }
