@@ -1,16 +1,19 @@
-FROM alpine:latest
+FROM alpine:3.22
 
-RUN apk add --no-cache curl=~8.17 bash=~5.3
+RUN apk add --no-cache curl=8.14.1-r2 bash=5.2.37-r0
 
 # Install k6 from the shared tooling manifest so Dependabot tracks the
 # benchmark runner the same way it tracks the other test/quality tool images.
 COPY test/docker-compose.tooling.yml /tmp/benchmark/docker-compose.tooling.yml
 RUN K6_TAG="$(sed -n 's|^    image: grafana/k6:||p' /tmp/benchmark/docker-compose.tooling.yml)" \
+    && K6_SHA256="84d26fc1f7bc03e02f2e016b3b1b20c032e05dfe461fca82de4e3a6ebe72ddbd" \
     && curl --retry 5 --retry-delay 2 --retry-all-errors -fsSL "https://github.com/grafana/k6/releases/download/v${K6_TAG}/k6-v${K6_TAG}-linux-amd64.tar.gz" -o /tmp/k6.tar.gz \
+    && printf '%s  %s\n' "$K6_SHA256" "/tmp/k6.tar.gz" > /tmp/k6.tar.gz.sha256 \
+    && sha256sum -c /tmp/k6.tar.gz.sha256 \
     && tar xzf /tmp/k6.tar.gz -C /tmp \
     && mv "/tmp/k6-v${K6_TAG}-linux-amd64/k6" /usr/bin/k6 \
     && chmod +x /usr/bin/k6 \
-    && rm -rf /tmp/k6.tar.gz "/tmp/k6-v${K6_TAG}-linux-amd64"
+    && rm -rf /tmp/k6.tar.gz /tmp/k6.tar.gz.sha256 "/tmp/k6-v${K6_TAG}-linux-amd64" /tmp/benchmark/docker-compose.tooling.yml
 
 RUN addgroup -S benchmarker && adduser -S benchmarker -G benchmarker
 

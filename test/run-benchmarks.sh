@@ -13,6 +13,26 @@ REMOTE_FIXTURE_URL="${BENCH_REMOTE_FIXTURE_URL:-${LOCAL_TEST_SERVER_URL}/fixture
 
 mkdir -p "$REPORT_DIR"
 
+suite_failures=0
+
+run_suite() {
+  suite_name="$1"
+  shift
+
+  echo ""
+  echo "--- Running ${suite_name} benchmark suite ---"
+
+  set +e
+  "$@"
+  status=$?
+  set -e
+
+  if [ "$status" -ne 0 ]; then
+    echo "Benchmark suite failed: ${suite_name}" >&2
+    suite_failures=1
+  fi
+}
+
 if [ "${BENCH_SUITE:-default}" = "cloudrun-semaphore" ]; then
   exec ./run-cloudrun-semaphore-balance.sh
 fi
@@ -33,42 +53,32 @@ do
   fi
 done
 
-echo ""
-echo "--- Running smoke benchmark suite ---"
-k6 run \
+run_suite "smoke" k6 run \
   --env BASE_URL="$BASE_URL" \
   --summary-export "$REPORT_DIR/smoke-summary.json" \
   ./bench/smoke.js
 
-echo ""
-echo "--- Running conversion benchmark suite ---"
-k6 run \
+run_suite "conversion" k6 run \
   --env BASE_URL="$BASE_URL" \
   --env BENCH_FIXTURE_PATH="$UPLOAD_FIXTURE_PATH" \
   --env BENCH_FIXTURE_NAME="space_debris.mod" \
   --summary-export "$REPORT_DIR/conversion-summary.json" \
   ./bench/conversion.js
 
-echo ""
-echo "--- Running cache benchmark suite ---"
-k6 run \
+run_suite "cache" k6 run \
   --env BASE_URL="$BASE_URL" \
   --env BENCH_REMOTE_FIXTURE_URL="$REMOTE_FIXTURE_URL" \
   --summary-export "$REPORT_DIR/cache-summary.json" \
   ./bench/cache.js
 
-echo ""
-echo "--- Running streaming benchmark suite ---"
-k6 run \
+run_suite "streaming" k6 run \
   --env BASE_URL="$BASE_URL" \
   --env BENCH_REMOTE_FIXTURE_URL="$TFMX_FIXTURE_URL" \
   --env BENCH_REMOTE_SAMPLE_URL="$TFMX_SAMPLE_URL" \
   --summary-export "$REPORT_DIR/streaming-summary.json" \
   ./bench/streaming.js
 
-echo ""
-echo "--- Running DAST-pattern benchmark suite ---"
-k6 run \
+run_suite "DAST-pattern" k6 run \
   --env BASE_URL="$BASE_URL" \
   --env BENCH_UPLOAD_FIXTURE_PATH="$UPLOAD_FIXTURE_PATH" \
   --env BENCH_UPLOAD_FIXTURE_NAME="space_debris.mod" \
@@ -76,3 +86,7 @@ k6 run \
   --env BENCH_TFMX_SAMPLE_URL="$TFMX_SAMPLE_URL" \
   --summary-export "$REPORT_DIR/dast-patterns-summary.json" \
   ./bench/dast-patterns.js
+
+if [ "$suite_failures" -ne 0 ]; then
+  exit 1
+fi

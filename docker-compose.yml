@@ -193,9 +193,12 @@ services:
     depends_on:
       uade-web-seeded:
         condition: service_healthy
+      test-http-server:
+        condition: service_started
     command: ["./test_race_condition.sh"]
     environment:
       - BASE_URL=http://uade-web-player-seeded:5000
+      - URL_TO_TEST=http://uade-test-http-server:8000/fixtures/modules/space_debris.mod
     networks:
       - uade-net
 

@@ -3,7 +3,8 @@ set -euo pipefail
 
 BASE_URL="${BASE_URL:-http://uade-web-player-seeded:5000}"
 PLAY_USER_AGENT="Mozilla/5.0 (X11; Linux x86_64; rv:140.0) Gecko/20100101 Firefox/140.0"
-URL_TO_TEST="https://modland.com/pub/modules/AHX/Pink/stormlord.ahx"
+URL_TO_TEST="${URL_TO_TEST:-http://uade-test-http-server:8000/fixtures/modules/space_debris.mod}"
+SERVICE_READY_TIMEOUT_SECONDS="${SERVICE_READY_TIMEOUT_SECONDS:-60}"
 
 echo "--- Testing race condition: parallel FLAC promotion for one cached WAV artifact ---"
 
@@ -87,7 +88,14 @@ perform_play_request() {
 
 wait_for_service() {
     echo "Waiting for uade-web-player to be available..."
+    start_time=$(date +%s)
     while ! curl -s "$BASE_URL/health" > /dev/null; do
+        current_time=$(date +%s)
+        elapsed_seconds=$((current_time - start_time))
+        if [ "$elapsed_seconds" -ge "$SERVICE_READY_TIMEOUT_SECONDS" ]; then
+            echo "ERROR: uade-web-player did not become ready at $BASE_URL/health within ${SERVICE_READY_TIMEOUT_SECONDS}s"
+            exit 1
+        fi
         sleep 1
     done
     echo "Service is up!"
