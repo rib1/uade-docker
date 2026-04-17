@@ -7,6 +7,8 @@ services:
     image: rhysd/actionlint:1.7.11
   shellcheck:
     image: koalaman/shellcheck:v0.11.0
+  k6:
+    image: grafana/k6:1.3.0
   playwright:
     # Keep this Playwright image version aligned with
     # test/package.json devDependencies.playwright-core.

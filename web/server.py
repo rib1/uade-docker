@@ -48,6 +48,8 @@ CLEANUP_TIMESTAMPS: dict[str, datetime | None] = {"local": None, "cache": None}
 CLEANUP_STATUSES: dict[str, str] = {"local": "not_run_yet", "cache": "not_run_yet"}
 LOCAL_CLEANUP_STATE = {"last_check_monotonic": 0.0}
 LOCAL_CLEANUP_LOCK = threading.Lock()
+FLAC_COMPRESSION_COUNTS: dict[str, int] = {}
+FLAC_COMPRESSION_COUNTS_LOCK = threading.Lock()
 UADE_VERSION_TOKEN_PARTS_MIN: Final = 2
 MEMINFO_LINE_PARTS_EXPECTED: Final = 2
 LHA_HEADER_MIN_BYTES: Final = 7
@@ -220,6 +222,11 @@ CACHE_CLEANUP_INTERVAL: Final = int(os.getenv("CACHE_CLEANUP_INTERVAL", "86400")
 RATE_LIMIT: Final = int(os.getenv("RATE_LIMIT", "200"))  # requests per hour
 DOWNLOAD_RATE_LIMIT: Final = int(os.getenv("DOWNLOAD_RATE_LIMIT", "6"))  # downloads per minute
 CONVERSION_RATE_LIMIT_PER_MINUTE: Final = int(os.getenv("CONVERSION_RATE_LIMIT_PER_MINUTE", "10"))
+CONVERSION_TIMEOUT_SECONDS: Final = int(os.getenv("CONVERSION_TIMEOUT_SECONDS", "300"))
+CONVERSION_LOCK_POLL_SECONDS: Final = 5
+MAX_CONCURRENT_CONVERSIONS: Final = max(1, int(os.getenv("MAX_CONCURRENT_CONVERSIONS", "2")))
+FLAC_PROMOTION_TIMEOUT_SECONDS: Final = int(os.getenv("FLAC_PROMOTION_TIMEOUT_SECONDS", "90"))
+FLAC_PROMOTION_POLL_SECONDS: Final = 1
 PROBE_UPLOAD_RATE_LIMIT_PER_MINUTE: Final = int(
     os.getenv("PROBE_UPLOAD_RATE_LIMIT_PER_MINUTE", "40")
 )
@@ -238,6 +245,8 @@ CONVERTED_DIR: Final = Path(TEMP_BASE) / "converted"
 # Ensure local directories exist
 for directory in [MODULES_DIR, CONVERTED_DIR]:
     directory.mkdir(parents=True, exist_ok=True)
+
+GLOBAL_CONVERSION_SEMAPHORE = threading.BoundedSemaphore(MAX_CONCURRENT_CONVERSIONS)
 
 
 def get_fs_and_root(uri, fs_kwargs=None):
@@ -559,6 +568,14 @@ EXAMPLES: Final = [
         "type": "mod",
     },
 ]
+
+
+def _log_duration(operation, started_at, **fields):
+    """Log elapsed wall time for a conversion stage."""
+    duration_ms = (time.perf_counter() - started_at) * 1000
+    details = ", ".join(f"{key}={value}" for key, value in fields.items() if value is not None)
+    suffix = f" ({details})" if details else ""
+    logger.info(f"{operation} took {duration_ms:.2f}ms{suffix}")
 
 
 def json_response(data, status=200):
@@ -934,6 +951,7 @@ def compress_to_flac(wav_path, flac_path):
     """Compress WAV to FLAC format"""
     # Use a temporary file for UADE output to ensure atomic write
     temp_flac_output_path = flac_path.with_name(f"{flac_path.name}.{uuid.uuid4()!s}.tmp")
+    flac_started_at = time.perf_counter()
     try:
         # Prevent division by zero if wav file is empty
         if wav_path.stat().st_size == 0:
@@ -960,6 +978,11 @@ def compress_to_flac(wav_path, flac_path):
                 f"Compressed to FLAC: {wav_path} -> {flac_path} "
                 f"({flac_path.stat().st_size / wav_path.stat().st_size:.1%} of original)"
             )
+            with FLAC_COMPRESSION_COUNTS_LOCK:
+                FLAC_COMPRESSION_COUNTS[flac_path.stem] = (
+                    FLAC_COMPRESSION_COUNTS.get(flac_path.stem, 0) + 1
+                )
+            _log_duration("FLAC compression", flac_started_at, output=flac_path.name)
             return True
         logger.error(f"FLAC compression failed: {result.stderr}")
         return False
@@ -1130,11 +1153,8 @@ def fetch_cached_file(cache_hash, *, prefer_flac=False):
                 # Load metadata including subsong durations
                 metadata = load_metadata_cache(cache_hash)
                 if prefer_flac and ext == ".wav":
-                    flac_cache_file_local = CONVERTED_DIR / f"{cache_hash}.flac"
-                    if flac_cache_file_local.exists() or compress_to_flac(
-                        cache_file_local, flac_cache_file_local
-                    ):
-                        save_to_cache(cache_hash, flac_cache_file_local, ".flac")
+                    flac_cache_file_local = ensure_cached_flac(cache_hash, cache_file_local)
+                    if flac_cache_file_local and flac_cache_file_local.exists():
                         return flac_cache_file_local, metadata
                 return cache_file_local, metadata
             # Ensure local cache directory exists
@@ -1154,11 +1174,8 @@ def fetch_cached_file(cache_hash, *, prefer_flac=False):
             # Load metadata including subsong durations
             metadata = load_metadata_cache(cache_hash)
             if prefer_flac and ext == ".wav":
-                flac_cache_file_local = CONVERTED_DIR / f"{cache_hash}.flac"
-                if flac_cache_file_local.exists() or compress_to_flac(
-                    cache_file_local, flac_cache_file_local
-                ):
-                    save_to_cache(cache_hash, flac_cache_file_local, ".flac")
+                flac_cache_file_local = ensure_cached_flac(cache_hash, cache_file_local)
+                if flac_cache_file_local and flac_cache_file_local.exists():
                     return flac_cache_file_local, metadata
             return cache_file_local, metadata
     return None, None
@@ -1170,6 +1187,7 @@ def detect_module_metadata(input_path):
 
     Returns: (metadata_success, module_name, module_format, player_format, subsongs)
     """
+    metadata_started_at = time.perf_counter()
     try:
         cmd = [UADE123_BIN, "-g", str(input_path)]
         # Use encoding='latin1' to avoid decode errors with non-UTF-8 bytes in output
@@ -1236,6 +1254,12 @@ def detect_module_metadata(input_path):
             f"Detected: metadata_success={metadata_success}, modulename={module_name}, "
             f"moduleformat={module_format}, player={player_format}, subsongs={subsongs}"
         )
+        _log_duration(
+            "UADE metadata detection",
+            metadata_started_at,
+            input=input_path.name,
+            subsongs=subsongs,
+        )
         return metadata_success, module_name, module_format, player_format, subsongs
 
     except subprocess.TimeoutExpired:
@@ -1283,6 +1307,20 @@ def parse_subsong_durations(uade_output, subsong_count):
         return [], f"Subsong count mismatch: expected {subsong_count}, got {len(duration_list)}"
 
     return duration_list, None
+
+
+def _read_text_file(path, *, tail_bytes=None, encoding="latin1"):
+    """Read a text file with optional tail truncation for large subprocess logs."""
+    file_path = Path(path)
+    if not file_path.exists():
+        return ""
+
+    with Path(file_path).open("rb") as handle:
+        if tail_bytes is not None:
+            handle.seek(0, os.SEEK_END)
+            file_size = handle.tell()
+            handle.seek(max(0, file_size - tail_bytes))
+        return handle.read().decode(encoding, errors="replace")
 
 
 def save_metadata(cache_hash, metadata):
@@ -1349,17 +1387,84 @@ def load_metadata_cache(cache_hash):
     return None
 
 
+def wait_for_file(file_path, *, timeout_seconds, poll_seconds, description):
+    """Wait for a file to appear locally."""
+    poll_count = max(1, timeout_seconds // poll_seconds)
+    for _ in range(poll_count):
+        time.sleep(poll_seconds)
+        if file_path.exists():
+            logger.info(f"{description} completed: {file_path.name}")
+            return True
+    logger.warning(f"Timeout waiting for {description}: {file_path.name}")
+    return False
+
+
+def ensure_cached_flac(cache_hash, wav_path):
+    """Promote a cached WAV artifact to FLAC with a per-hash lock."""
+    flac_path = CONVERTED_DIR / f"{cache_hash}.flac"
+    if flac_path.exists():
+        return flac_path
+
+    flac_lock_path = CONVERTED_DIR / f"{cache_hash}.flac.lock"
+    flac_lock_acquired = False
+    if flac_lock_path.exists():
+        if wait_for_file(
+            flac_path,
+            timeout_seconds=FLAC_PROMOTION_TIMEOUT_SECONDS,
+            poll_seconds=FLAC_PROMOTION_POLL_SECONDS,
+            description="FLAC promotion",
+        ):
+            return flac_path
+        return None
+
+    try:
+        flac_lock_path.touch(exist_ok=False)
+        flac_lock_acquired = True
+        if flac_path.exists():
+            return flac_path
+        if compress_to_flac(wav_path, flac_path):
+            save_to_cache(cache_hash, flac_path, ".flac")
+            return flac_path
+        return None
+    except FileExistsError:
+        if wait_for_file(
+            flac_path,
+            timeout_seconds=FLAC_PROMOTION_TIMEOUT_SECONDS,
+            poll_seconds=FLAC_PROMOTION_POLL_SECONDS,
+            description="FLAC promotion after lock contention",
+        ):
+            return flac_path
+        return None
+    finally:
+        if flac_lock_acquired:
+            flac_lock_path.unlink(missing_ok=True)
+
+
 def wait_for_conversion(
-    cache_hash, prefer_flac, player_format, module_name, module_format, subsongs
+    cache_hash,
+    prefer_flac,
+    player_format,
+    module_name,
+    module_format,
+    subsongs,
+    *,
+    wait_started_at=None,
 ):
     """Wait for a file conversion to complete and return the result."""
     logger.info(f"Conversion for {cache_hash} is in progress, waiting...")
-    # Wait for up to 300 seconds (5 minutes), matching the conversion timeout.
-    for _ in range(60):
-        time.sleep(5)
+    poll_count = max(1, CONVERSION_TIMEOUT_SECONDS // CONVERSION_LOCK_POLL_SECONDS)
+    for _ in range(poll_count):
+        time.sleep(CONVERSION_LOCK_POLL_SECONDS)
         cached_file, metadata = fetch_cached_file(cache_hash, prefer_flac=prefer_flac)
         if cached_file and cached_file.exists():
             logger.info(f"Conversion for {cache_hash} completed by another thread.")
+            if wait_started_at is not None:
+                _log_duration(
+                    "Conversion lock wait",
+                    wait_started_at,
+                    cache_hash=cache_hash,
+                    status="completed",
+                )
             # Extract duration_list from metadata
             duration_list = metadata.get("subsong_durations", []) if metadata else []
             return (
@@ -1375,6 +1480,13 @@ def wait_for_conversion(
                 duration_list,
             )
     logger.warning(f"Timeout waiting for conversion of {cache_hash}.")
+    if wait_started_at is not None:
+        _log_duration(
+            "Conversion lock wait",
+            wait_started_at,
+            cache_hash=cache_hash,
+            status="timeout",
+        )
     return None
 
 
@@ -1414,6 +1526,7 @@ def process_audio_conversion(input_path, *, compress_flac=False, sample_files=No
     )
     cache_hash = None
 
+    overall_started_at = time.perf_counter()
     try:
         # Defensive: Restrict input_path to MODULES_DIR
         input_resolved = Path(input_path).resolve()
@@ -1511,6 +1624,9 @@ def process_audio_conversion(input_path, *, compress_flac=False, sample_files=No
         lock_path = CONVERTED_DIR / f"{cache_hash}.lock"
         # Use a temporary file for UADE output to ensure atomic write
         temp_uade_output_path = output_path.with_name(f"{output_path.name}.{uuid.uuid4()!s}.tmp")
+        stderr_log_path = temp_uade_output_path.with_suffix(
+            f"{temp_uade_output_path.suffix}.stderr"
+        )
 
         # Check remote cache first (before acquiring lock)
         cached_file, metadata = fetch_cached_file(cache_hash, prefer_flac=compress_flac)
@@ -1532,8 +1648,15 @@ def process_audio_conversion(input_path, *, compress_flac=False, sample_files=No
 
         # If lock exists, another thread is already converting this file
         if lock_path.exists():
+            lock_wait_started_at = time.perf_counter()
             result = wait_for_conversion(
-                cache_hash, compress_flac, player_format, module_name, module_format, subsongs
+                cache_hash,
+                compress_flac,
+                player_format,
+                module_name,
+                module_format,
+                subsongs,
+                wait_started_at=lock_wait_started_at,
             )
             if result:
                 return result
@@ -1542,8 +1665,11 @@ def process_audio_conversion(input_path, *, compress_flac=False, sample_files=No
                 "Proceeding with conversion ourselves."
             )
 
+        semaphore_acquired = False
+        conversion_lock_acquired = False
         try:
             lock_path.touch(exist_ok=False)
+            conversion_lock_acquired = True
 
             cached_file, metadata = fetch_cached_file(cache_hash, prefer_flac=compress_flac)
             if cached_file and cached_file.exists():
@@ -1562,6 +1688,30 @@ def process_audio_conversion(input_path, *, compress_flac=False, sample_files=No
                     duration_list,
                 )
 
+            semaphore_wait_started_at = time.perf_counter()
+            semaphore_acquired = GLOBAL_CONVERSION_SEMAPHORE.acquire(
+                timeout=CONVERSION_TIMEOUT_SECONDS
+            )
+            _log_duration(
+                "Conversion semaphore wait",
+                semaphore_wait_started_at,
+                cache_hash=cache_hash,
+                acquired=semaphore_acquired,
+            )
+            if not semaphore_acquired:
+                return (
+                    False,
+                    "Timeout waiting for global conversion slot.",
+                    None,
+                    player_format,
+                    module_name,
+                    module_format,
+                    subsongs,
+                    False,
+                    cache_hash,
+                    [],
+                )
+
             cmd = [
                 UADE123_BIN,
                 "-c",
@@ -1575,20 +1725,23 @@ def process_audio_conversion(input_path, *, compress_flac=False, sample_files=No
             # This is thread-safe and avoids Python's deprecated preexec_fn.
             full_cmd = [SH_BIN, "-c", 'umask 0002; exec "$@"', "--", *cmd]
 
-            result = subprocess.run(  # noqa: S603
-                full_cmd,
-                capture_output=True,
-                text=True,
-                check=False,
-                timeout=300,
-                encoding="latin1",
-            )  # 5 minute timeout
+            uade_started_at = time.perf_counter()
+            with Path(stderr_log_path).open("wb") as stderr_log:
+                result = subprocess.run(  # noqa: S603
+                    full_cmd,
+                    stdout=subprocess.DEVNULL,
+                    stderr=stderr_log,
+                    check=False,
+                    timeout=300,
+                )  # 5 minute timeout
+            _log_duration("UADE audio render", uade_started_at, input=input_path.name)
 
             if result.returncode != 0:
-                logger.error(f"UADE error: {result.stderr}")
+                stderr_output = _read_text_file(stderr_log_path, tail_bytes=8192)
+                logger.error(f"UADE error: {stderr_output}")
                 return (
                     False,
-                    f"Conversion failed: {result.stderr}",
+                    f"Conversion failed: {stderr_output}",
                     None,
                     player_format,
                     module_name,
@@ -1616,8 +1769,12 @@ def process_audio_conversion(input_path, *, compress_flac=False, sample_files=No
                     [],
                 )
 
-            # Parse subsong durations from conversion output
-            duration_list, duration_error = parse_subsong_durations(result.stderr, subsongs)
+            # Multi-subsong parsing still needs the UADE timing lines, but we can
+            # avoid loading the render log at all for the common single-subsong case.
+            render_log_output = ""
+            if subsongs > 1:
+                render_log_output = _read_text_file(stderr_log_path)
+            duration_list, duration_error = parse_subsong_durations(render_log_output, subsongs)
             if duration_error:
                 logger.warning(f"Duration parsing error: {duration_error}")
 
@@ -1628,6 +1785,11 @@ def process_audio_conversion(input_path, *, compress_flac=False, sample_files=No
                 flac_output = output_path.with_suffix(".flac")
                 if compress_to_flac(output_path, flac_output):
                     final_output = flac_output
+
+            if semaphore_acquired:
+                GLOBAL_CONVERSION_SEMAPHORE.release()
+                semaphore_acquired = False
+
             # Save metadata to local disk first (includes detected metadata and subsong durations)
             metadata = {
                 "subsongs": subsongs,
@@ -1640,7 +1802,20 @@ def process_audio_conversion(input_path, *, compress_flac=False, sample_files=No
 
             # Save audio to remote cache (will also copy metadata to remote)
             ext, file_to_save = (".flac", final_output) if compress_flac else (".wav", output_path)
+            cache_save_started_at = time.perf_counter()
             save_to_cache(cache_hash, file_to_save, ext)
+            _log_duration(
+                "Converted audio cache save",
+                cache_save_started_at,
+                ext=ext,
+                cache_hash=cache_hash,
+            )
+            _log_duration(
+                "Full audio conversion pipeline",
+                overall_started_at,
+                cache_hash=cache_hash,
+                flac=compress_flac,
+            )
             logger.info(f"Successfully converted: {input_path} -> {final_output}")
             return (
                 True,
@@ -1656,8 +1831,15 @@ def process_audio_conversion(input_path, *, compress_flac=False, sample_files=No
             )
 
         except FileExistsError:
+            lock_wait_started_at = time.perf_counter()
             result = wait_for_conversion(
-                cache_hash, compress_flac, player_format, module_name, module_format, subsongs
+                cache_hash,
+                compress_flac,
+                player_format,
+                module_name,
+                module_format,
+                subsongs,
+                wait_started_at=lock_wait_started_at,
             )
             if result:
                 return result
@@ -1674,8 +1856,12 @@ def process_audio_conversion(input_path, *, compress_flac=False, sample_files=No
                 [],
             )
         finally:
-            lock_path.unlink(missing_ok=True)
+            if semaphore_acquired:
+                GLOBAL_CONVERSION_SEMAPHORE.release()
+            if conversion_lock_acquired:
+                lock_path.unlink(missing_ok=True)
             temp_uade_output_path.unlink(missing_ok=True)  # Clean up temp file
+            stderr_log_path.unlink(missing_ok=True)
 
     except FileNotFoundError:
         logger.error(f"File not found for processing: {input_path}")
@@ -1823,6 +2009,7 @@ def health():
             "config": {
                 "max_upload_size_mb": MAX_UPLOAD_SIZE / (1024 * 1024),
                 "max_download_size_mb": MAX_DOWNLOAD_SIZE / (1024 * 1024),
+                "max_concurrent_conversions": MAX_CONCURRENT_CONVERSIONS,
                 "rate_limiting_enabled": rate_limit_enabled,
                 "cleanup_interval_seconds": CLEANUP_INTERVAL,
                 "queue_drop_file_limit": QUEUE_DROP_FILE_LIMIT,
@@ -1961,6 +2148,28 @@ def test_remove_cache_artifact():
             "remote_removed": remote_removed,
         }
     )
+
+
+@app.route("/test/flac-compression-count", methods=["GET", "POST"])
+@limiter.exempt
+def test_flac_compression_count():
+    """Inspect or reset FLAC compression counts in test mode."""
+    if os.getenv("UADE_TEST_MODE") != "1":
+        return json_response({"error": "Not found"}, 404)
+
+    if request.method == "POST":
+        with FLAC_COMPRESSION_COUNTS_LOCK:
+            FLAC_COMPRESSION_COUNTS.clear()
+        return json_response({"reset": True})
+
+    file_id = request.args.get("file_id")
+    if not isinstance(file_id, str) or not re.fullmatch(r"[a-zA-Z0-9_-]+", file_id):
+        return json_response({"error": "Invalid file_id"}, 400)
+
+    with FLAC_COMPRESSION_COUNTS_LOCK:
+        count = FLAC_COMPRESSION_COUNTS.get(secure_filename(file_id), 0)
+
+    return json_response({"file_id": secure_filename(file_id), "count": count})
 
 
 @app.route("/test/remove-probed-module", methods=["POST"])
@@ -2567,6 +2776,7 @@ def get_dual_file_module_filenames(filename):
 
 def prepare_remote_module_source(url, sample_url=None):
     """Validate, download, and resolve a remote module source for probe/convert routes."""
+    remote_prepare_started_at = time.perf_counter()
     try:
         url = ensure_safe_remote_url(url, context="module URL")
         if sample_url:
@@ -2582,6 +2792,7 @@ def prepare_remote_module_source(url, sample_url=None):
     filename, suffix, sample_filename, sample_suffix = get_dual_file_module_filenames(filename)
     module_path = MODULES_DIR / f"{filename}_{url_hash}{suffix}"
     lock_path = module_path.with_suffix(f"{module_path.suffix}.lock")
+    module_download_lock_acquired = False
 
     url_cache_hit = False
     if module_path.exists():
@@ -2591,9 +2802,11 @@ def prepare_remote_module_source(url, sample_url=None):
     else:
         try:
             lock_path.touch(exist_ok=False)
+            module_download_lock_acquired = True
             try:
                 if not module_path.exists():
                     logger.info(f"Downloading: {sanitized_url(url)}")
+                    download_started_at = time.perf_counter()
                     temp_path = module_path.with_suffix(f"{module_path.suffix}.tmp")
                     success, error_response = download_and_limit_size(
                         url, temp_path, "External module"
@@ -2601,10 +2814,16 @@ def prepare_remote_module_source(url, sample_url=None):
                     if temp_path.exists():
                         Path.replace(temp_path, module_path)
                         logger.info(f"Moved partial/complete download to: {module_path}")
+                    _log_duration(
+                        "Remote module download",
+                        download_started_at,
+                        filename=module_path.name,
+                    )
                     if not success:
                         return None, error_response
             finally:
-                lock_path.unlink(missing_ok=True)
+                if module_download_lock_acquired:
+                    lock_path.unlink(missing_ok=True)
         except FileExistsError:
             logger.info(f"Download for {sanitized_url(url)} is already in progress, waiting...")
             for _ in range(20):
@@ -2635,6 +2854,7 @@ def prepare_remote_module_source(url, sample_url=None):
         sample_path = MODULES_DIR / f"{sample_filename}_{url_hash}{sample_suffix}"
         cached_sample_path = MODULES_DIR / f"{sample_filename}_{sample_url_hash}{sample_suffix}"
         sample_lock_path = cached_sample_path.with_suffix(f"{cached_sample_path.suffix}.lock")
+        sample_download_lock_acquired = False
         sample_files = [sample_path, cached_sample_path]
 
         if cached_sample_path.exists():
@@ -2649,6 +2869,8 @@ def prepare_remote_module_source(url, sample_url=None):
         else:
             try:
                 sample_lock_path.touch(exist_ok=False)
+                sample_download_lock_acquired = True
+                sample_download_started_at = time.perf_counter()
                 temp_path = module_path.with_suffix(f"{cached_sample_path.suffix}.tmp")
                 success, error_response = download_and_limit_size(
                     sample_url, temp_path, "External sample"
@@ -2656,6 +2878,11 @@ def prepare_remote_module_source(url, sample_url=None):
                 if temp_path.exists():
                     Path.replace(temp_path, cached_sample_path)
                     logger.info(f"Moved partial/complete sample download to: {cached_sample_path}")
+                _log_duration(
+                    "Remote sample download",
+                    sample_download_started_at,
+                    filename=cached_sample_path.name,
+                )
                 if not success:
                     return None, error_response
 
@@ -2687,8 +2914,16 @@ def prepare_remote_module_source(url, sample_url=None):
                     )
                     return None, json_response({"error": "Timeout waiting for file download."}, 500)
             finally:
-                sample_lock_path.unlink(missing_ok=True)
+                if sample_download_lock_acquired:
+                    sample_lock_path.unlink(missing_ok=True)
 
+    _log_duration(
+        "Remote module source preparation",
+        remote_prepare_started_at,
+        filename=module_path.name,
+        sample_count=len(sample_files),
+        url_cache_hit=url_cache_hit,
+    )
     return {
         "module_path": module_path,
         "filename": filename,
@@ -2699,6 +2934,7 @@ def prepare_remote_module_source(url, sample_url=None):
 
 def convert_url_payload(data):
     """Shared logic for URL-backed module conversion requests."""
+    convert_url_started_at = time.perf_counter()
     if not isinstance(data, dict):
         return json_response({"error": "Invalid JSON body"}, 400)
     if "url" not in data:
@@ -2731,6 +2967,8 @@ def convert_url_payload(data):
             },
             500,
         )
+    finally:
+        _log_duration("convert-url request", convert_url_started_at)
 
 
 @app.route("/convert-url", methods=["POST"])
@@ -3223,6 +3461,7 @@ logger.info(
 logger.info(f"Max upload size: {MAX_UPLOAD_SIZE / 1024 / 1024}MB")
 logger.info(f"Max download size: {MAX_DOWNLOAD_SIZE / 1024 / 1024}MB")
 logger.info(f"Rate limit: {RATE_LIMIT}/hour (enabled: {rate_limit_enabled})")
+logger.info(f"Max concurrent conversions: {MAX_CONCURRENT_CONVERSIONS}")
 logger.info(f"Queue drop file limit: {QUEUE_DROP_FILE_LIMIT}")
 logger.info(f"Probe upload rate limit: {PROBE_UPLOAD_RATE_LIMIT_PER_MINUTE}/minute")
 logger.info(f"Cache URI: {CACHE_URI}")

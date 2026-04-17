@@ -88,4 +88,4 @@ HEALTHCHECK --interval=30s --timeout=3s --retries=3 \
 # Use 8 threads to handle a mix of CPU-bound (conversion) and I/O-bound (streaming)
 # requests concurrently. Python's GIL is released during I/O, allowing other threads to run.
 # Since most requests serve cached files (I/O-bound), this configuration enables greater concurrency for simultaneous streams.
-CMD ["gunicorn", "--bind", "0.0.0.0:5000", "--workers", "1", "--threads", "8", "--timeout", "300", "--graceful-timeout", "300", "--keep-alive", "5", "--worker-class", "gthread", "--access-logfile", "-", "--error-logfile", "-", "server:app", "--worker-tmp-dir", "/tmp", "--no-control-socket", "--pid", "/tmp/gunicorn.pid"]
+CMD ["gunicorn", "--bind", "0.0.0.0:5000", "--workers", "1", "--threads", "8", "--timeout", "300", "--graceful-timeout", "300", "--keep-alive", "5", "--worker-class", "gthread", "--access-logfile", "-", "--error-logfile", "-", "server:app", "--worker-tmp-dir", "/dev/shm", "--no-control-socket", "--pid", "/tmp/gunicorn.pid"]

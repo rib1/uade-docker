@@ -970,7 +970,7 @@ fi
 if [ "$RUN_DOCUMENTATION" = true ]; then
     print_header "Documentation Files - Markdown Integrity Validation"
 
-    echo "Running repo-specific checks on README.md and docs/*.md..."
+    echo "Running repo-specific checks on README.md and docs/**/*.md..."
 
     if command -v node >/dev/null 2>&1; then
         OUTPUT=$(cd "${PROJECT_ROOT}" && node test/check-documentation.mjs 2>&1)

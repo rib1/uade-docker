@@ -787,7 +787,7 @@ if ($Instructions) {
 if ($Documentation) {
     Write-Header "Documentation Files - Markdown Integrity Validation"
 
-    Write-Host "Running repo-specific checks on README.md and docs/*.md..."
+    Write-Host "Running repo-specific checks on README.md and docs/**/*.md..."
 
     $output = & docker run --rm `
         -v "${ProjectRoot}:/workspace" `
