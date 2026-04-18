@@ -40,7 +40,7 @@ export const options = {
       vus: 1,
       iterations: 1,
       exec: "multiHashConvertUrl",
-      startTime: "20s",
+      startTime: "2m",
       maxDuration: "2m",
     },
     multi_hash_convert_probed: {
@@ -48,7 +48,7 @@ export const options = {
       vus: 1,
       iterations: 1,
       exec: "multiHashConvertProbed",
-      startTime: "20s",
+      startTime: "4m",
       maxDuration: "2m",
     },
     cold_to_warm_playback_burst: {
@@ -56,7 +56,7 @@ export const options = {
       vus: 1,
       iterations: 1,
       exec: "coldToWarmPlaybackBurst",
-      startTime: "45s",
+      startTime: "6m",
       maxDuration: "3m",
     },
   },

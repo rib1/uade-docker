@@ -28,6 +28,7 @@ $ComposeArgs = @("-f", "docker-compose.yml", "-f", "test/docker-compose.benchmar
 $RunnerService = "uade-benchmark-runner"
 $Results = @()
 $CreatedGitCommit = $false
+$OriginalMaxConcurrentConversions = $env:MAX_CONCURRENT_CONVERSIONS
 
 function Get-K6MetricValue {
     param(
@@ -178,6 +179,7 @@ try {
 
         Invoke-Compose -Arguments @("up", "-d", "--build", "uade-web", "test-http-server")
 
+        $runLogSince = (Get-Date).ToUniversalTime().ToString("o")
         Invoke-Compose -Arguments @(
             "run",
             "--rm",
@@ -193,7 +195,7 @@ try {
             $RunnerService
         )
 
-        $logLines = & docker compose @ComposeArgs logs --no-color uade-web 2>&1
+        $logLines = & docker compose @ComposeArgs logs --no-color --since $runLogSince uade-web 2>&1
         if ($LASTEXITCODE -ne 0) {
             throw "docker compose logs failed for uade-web"
         }
@@ -220,7 +222,11 @@ finally {
         Write-Warning "Could not stop benchmark stack cleanly."
     }
 
-    Remove-Item Env:MAX_CONCURRENT_CONVERSIONS -ErrorAction SilentlyContinue
+    if ($null -ne $OriginalMaxConcurrentConversions) {
+        $env:MAX_CONCURRENT_CONVERSIONS = $OriginalMaxConcurrentConversions
+    } else {
+        Remove-Item Env:MAX_CONCURRENT_CONVERSIONS -ErrorAction SilentlyContinue
+    }
     if ($CreatedGitCommit) {
         Remove-Item Env:GIT_COMMIT -ErrorAction SilentlyContinue
     }

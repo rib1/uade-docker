@@ -56,8 +56,10 @@ Default sweep:
 
 Current measured recommendation for this Cloud Run shape:
 
-- set `MAX_CONCURRENT_CONVERSIONS=2`
-- reason: it removed conversion queueing seen at `1` while keeping `/play` latency effectively unchanged versus `3`
+- current deployed Cloud Run default remains `MAX_CONCURRENT_CONVERSIONS=2`
+- `2` and `3` are now near-parity on the latest sweep
+- `1` is still clearly too conservative because it reintroduces heavy conversion queueing
+- latest measured edge is slightly in favor of `3`, but not by a large enough margin to treat `2` as invalid
 
 Latest 8-minute sweep result:
 
@@ -79,6 +81,47 @@ Latest 8-minute sweep result:
   - cold `convert-probed` p95: `4.69s`
   - cold `convert-url` p95: `15.39s`
   - semaphore wait p95: `0.01ms`
+
+Most recent 8-minute rerun after the FLAC and waiter-path updates:
+
+- `1`
+  - play full p95: `1.54ms`
+  - play range p95: `1.68ms`
+  - cold `convert-probed` p95: `16.31s`
+  - cold `convert-url` p95: `16.13s`
+  - semaphore wait p95: `12.22s`
+- `2`
+  - play full p95: `3.07ms`
+  - play range p95: `2.96ms`
+  - cold `convert-probed` p95: `4.21s`
+  - cold `convert-url` p95: `13.64s`
+  - semaphore wait p95: `0.02ms`
+- `3`
+  - play full p95: `2.76ms`
+  - play range p95: `3.05ms`
+  - cold `convert-probed` p95: `4.07s`
+  - cold `convert-url` p95: `13.37s`
+  - semaphore wait p95: `0.01ms`
+
+Interpretation of the latest rerun:
+
+- `2` and `3` are effectively tied for playback latency
+- `3` has a slight measured edge on cold conversion latency and request rate
+- keep treating `2` as a safe default, but the latest data no longer shows a clear reason to avoid `3`
+
+Additional 8-minute comparison for `MAX_CONCURRENT_CONVERSIONS=4`:
+
+- `4`
+  - play full p95: `2.57ms`
+  - play range p95: `2.89ms`
+  - cold `convert-probed` p95: `4.17s`
+  - cold `convert-url` p95: `14.70s`
+
+Interpretation of the `4` run:
+
+- `4` does not meaningfully improve playback over `2` or `3`
+- `4` is slightly worse than `3` on both cold conversion metrics
+- so `4` is not a better choice than the current `2`/`3` near-parity range
 
 Artifacts:
 
@@ -181,11 +224,10 @@ Implemented fixes and outcomes:
 
 Cloud Run recommendation:
 
-- for the current Cloud Run shape (`1 CPU`, `8` request concurrency, Gunicorn `1` worker / `8` threads), set `MAX_CONCURRENT_CONVERSIONS=2`
-- measured 8-minute mixed-load sweep result:
-  - `1`: best raw `/play` latency, but heavy conversion queueing (`semaphore wait p95 11.76s`)
-  - `2`: best overall balance
-  - `3`: no meaningful playback improvement over `2`, slightly worse conversion-side result
+- for the current Cloud Run shape (`1 CPU`, `8` request concurrency, Gunicorn `1` worker / `8` threads), `2` remains a safe default
+- latest measurement no longer shows a decisive winner between `2` and `3`
+- the newest sweep gives `3` a slight edge, while still showing that `1` is too restrictive because it reintroduces queueing
+- an additional `4` run did not beat `3`, so the useful tuning range is still `2` to `3`
 
 Remaining dominant spikes:
 
