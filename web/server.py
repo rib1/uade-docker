@@ -223,7 +223,7 @@ RATE_LIMIT: Final = int(os.getenv("RATE_LIMIT", "200"))  # requests per hour
 DOWNLOAD_RATE_LIMIT: Final = int(os.getenv("DOWNLOAD_RATE_LIMIT", "6"))  # downloads per minute
 CONVERSION_RATE_LIMIT_PER_MINUTE: Final = int(os.getenv("CONVERSION_RATE_LIMIT_PER_MINUTE", "10"))
 CONVERSION_TIMEOUT_SECONDS: Final = int(os.getenv("CONVERSION_TIMEOUT_SECONDS", "300"))
-CONVERSION_LOCK_POLL_SECONDS: Final = 5
+CONVERSION_LOCK_POLL_SECONDS: Final = 1
 MAX_CONCURRENT_CONVERSIONS: Final = max(1, int(os.getenv("MAX_CONCURRENT_CONVERSIONS", "2")))
 FLAC_PROMOTION_TIMEOUT_SECONDS: Final = int(os.getenv("FLAC_PROMOTION_TIMEOUT_SECONDS", "90"))
 FLAC_PROMOTION_POLL_SECONDS: Final = 1
@@ -960,7 +960,7 @@ def compress_to_flac(wav_path, flac_path):
 
         cmd = [
             FLAC_BIN,
-            "--best",
+            "-5",
             "--silent",
             "-f",
             "-o",
@@ -1510,6 +1510,7 @@ def ensure_cached_flac(cache_hash, wav_path):
 
 def wait_for_conversion(
     cache_hash,
+    lock_path,
     prefer_flac,
     player_format,
     module_name,
@@ -1522,31 +1523,36 @@ def wait_for_conversion(
     logger.info(f"Conversion for {cache_hash} is in progress, waiting...")
     poll_count = max(1, CONVERSION_TIMEOUT_SECONDS // CONVERSION_LOCK_POLL_SECONDS)
     for _ in range(poll_count):
-        time.sleep(CONVERSION_LOCK_POLL_SECONDS)
-        cached_file, metadata = fetch_cached_file(cache_hash, prefer_flac=prefer_flac)
-        if cached_file and cached_file.exists():
-            logger.info(f"Conversion for {cache_hash} completed by another thread.")
-            if wait_started_at is not None:
-                _log_duration(
-                    "Conversion lock wait",
-                    wait_started_at,
-                    cache_hash=cache_hash,
-                    status="completed",
+        if not lock_path.exists():
+            cached_file, metadata = fetch_cached_file(cache_hash, prefer_flac=prefer_flac)
+            if cached_file and cached_file.exists():
+                logger.info(f"Conversion for {cache_hash} completed by another thread.")
+                if wait_started_at is not None:
+                    _log_duration(
+                        "Conversion lock wait",
+                        wait_started_at,
+                        cache_hash=cache_hash,
+                        status="completed",
+                    )
+                # Extract duration_list from metadata
+                duration_list = metadata.get("subsong_durations", []) if metadata else []
+                return (
+                    True,
+                    None,
+                    cached_file,
+                    player_format,
+                    module_name,
+                    module_format,
+                    subsongs,
+                    True,  # cached
+                    cache_hash,
+                    duration_list,
                 )
-            # Extract duration_list from metadata
-            duration_list = metadata.get("subsong_durations", []) if metadata else []
-            return (
-                True,
-                None,
-                cached_file,
-                player_format,
-                module_name,
-                module_format,
-                subsongs,
-                True,  # cached
-                cache_hash,
-                duration_list,
+            logger.warning(
+                f"Conversion lock for {cache_hash} cleared but no cached artifact was found."
             )
+            break
+        time.sleep(CONVERSION_LOCK_POLL_SECONDS)
     logger.warning(f"Timeout waiting for conversion of {cache_hash}.")
     if wait_started_at is not None:
         _log_duration(
@@ -1727,6 +1733,7 @@ def process_audio_conversion(input_path, *, compress_flac=False, sample_files=No
             lock_wait_started_at = time.perf_counter()
             result = wait_for_conversion(
                 cache_hash,
+                lock_path,
                 compress_flac,
                 player_format,
                 module_name,
@@ -1910,6 +1917,7 @@ def process_audio_conversion(input_path, *, compress_flac=False, sample_files=No
             lock_wait_started_at = time.perf_counter()
             result = wait_for_conversion(
                 cache_hash,
+                lock_path,
                 compress_flac,
                 player_format,
                 module_name,
