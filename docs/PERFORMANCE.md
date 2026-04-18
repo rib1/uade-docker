@@ -163,6 +163,21 @@ Implemented fixes and outcomes:
 - WAV-to-FLAC promotion race fix
   - parallel requests for the same cached WAV no longer trigger duplicate FLAC compression work
   - the race-condition regression now verifies one FLAC compression per same-hash promotion
+- Faster request-time FLAC compression
+  - `compress_to_flac()` now uses `flac -5` instead of `--best`
+  - this keeps compression broadly effective while cutting CPU cost on heavy artifacts
+- Targeted `led-storm` FLAC-heavy cold-path recheck
+  - earlier baseline on `571dca...` (`L_E_D_Storm`) was:
+    - UADE render: `44038.08ms`
+    - FLAC: `21807.33ms`
+    - full pipeline: `66947.04ms`
+  - targeted rerun after the `flac -5` change measured:
+    - UADE render: `24179.37ms`
+    - FLAC: `3908.71ms`
+    - full pipeline: `28512.54ms`
+  - net gain on the FLAC stage: about `17.90s` faster, or `~82.1%`
+  - net gain on the full pipeline: about `38.43s` faster, or `~57.4%`
+  - caveat: the FLAC-stage reduction is attributable to the compression-level change; the full-pipeline gain also includes run-to-run UADE variance on this very heavy module
 
 Cloud Run recommendation:
 
