@@ -1449,30 +1449,40 @@ def _lock_name(lock_path):
 def _validated_conversion_lock_path(lock_path):
     """Validate and normalize a conversion lock reference before filesystem use."""
     if isinstance(lock_path, Path):
+        local_lock_path = lock_path
         if CONVERSION_LOCKS_ROOT_LOCAL is None:
             raise ValueError("Local conversion locks are not enabled")
-        resolved_path = lock_path.resolve(strict=False)
-        resolved_root = CONVERSION_LOCKS_ROOT_LOCAL.resolve(strict=False)
+        normalized_path_text = os.path.normpath(os.fspath(local_lock_path))
+        normalized_root_text = os.path.normpath(os.fspath(CONVERSION_LOCKS_ROOT_LOCAL))
+        normalized_path_for_compare = os.path.normcase(normalized_path_text)
+        normalized_root_for_compare = os.path.normcase(normalized_root_text)
+        if not Path(normalized_path_text).is_absolute():
+            raise ValueError("Invalid conversion lock path")
         try:
-            resolved_path.relative_to(resolved_root)
+            common_root = os.path.commonpath(
+                [normalized_root_for_compare, normalized_path_for_compare]
+            )
         except ValueError as exc:
             raise ValueError("Invalid conversion lock path") from exc
-        if resolved_path.suffix != ".lock" or not _MD5_HEX_RE.fullmatch(resolved_path.stem):
+        if common_root != normalized_root_for_compare:
+            raise ValueError("Invalid conversion lock path")
+        normalized_path = Path(normalized_path_text)
+        if normalized_path.suffix != ".lock" or not _MD5_HEX_RE.fullmatch(normalized_path.stem):
             raise ValueError("Invalid conversion lock filename")
-        return resolved_path
+        return normalized_path
 
     if not isinstance(lock_path, str):
         raise ValueError("Invalid conversion lock path type")
 
-    normalized_path = posixpath.normpath(lock_path)
+    normalized_remote_path = posixpath.normpath(lock_path)
     expected_prefix = f"{CONVERSION_LOCKS_ROOT_REMOTE}/"
-    if not normalized_path.startswith(expected_prefix):
+    if not normalized_remote_path.startswith(expected_prefix):
         raise ValueError("Invalid conversion lock path")
-    filename = posixpath.basename(normalized_path)
+    filename = posixpath.basename(normalized_remote_path)
     stem, suffix = posixpath.splitext(filename)
     if suffix != ".lock" or not _MD5_HEX_RE.fullmatch(stem):
         raise ValueError("Invalid conversion lock filename")
-    return normalized_path
+    return normalized_remote_path
 
 
 def _lock_exists(lock_path):
