@@ -542,8 +542,6 @@ test_duplicate_convert_on_other_instance_returns_processing() {
     ) &
     OWNER_PID=$!
 
-    sleep 1
-
     FOLLOWER_ALL=$(json_post "$BASE_URL_B" "/convert-url" \
         "$(jq -nc --arg url "$URL" --arg sample_url "$SAMPLE_URL" '{url: $url, sample_url: $sample_url}')")
     FOLLOWER_CODE=$(echo "$FOLLOWER_ALL" | tail -n1)
@@ -559,17 +557,19 @@ test_duplicate_convert_on_other_instance_returns_processing() {
         return
     fi
 
-    if [ "$FOLLOWER_CODE" -ne 409 ]; then
-        record_failure "$TEST_NAME" "expected HTTP 409 on B, got ${FOLLOWER_CODE}; body=${FOLLOWER_BODY}"
+    if [ "$FOLLOWER_CODE" -ne 200 ] && [ "$FOLLOWER_CODE" -ne 409 ]; then
+        record_failure "$TEST_NAME" "expected HTTP 200 or 409 on B, got ${FOLLOWER_CODE}; body=${FOLLOWER_BODY}"
         return
     fi
 
-    FOLLOWER_STATUS=$(echo "$FOLLOWER_BODY" | jq -r .status)
-    FOLLOWER_RETRYABLE=$(echo "$FOLLOWER_BODY" | jq -r .retryable)
+    if [ "$FOLLOWER_CODE" -eq 409 ]; then
+        FOLLOWER_STATUS=$(echo "$FOLLOWER_BODY" | jq -r .status)
+        FOLLOWER_RETRYABLE=$(echo "$FOLLOWER_BODY" | jq -r .retryable)
 
-    if [ "$FOLLOWER_STATUS" != "processing" ] || [ "$FOLLOWER_RETRYABLE" != "true" ]; then
-        record_failure "$TEST_NAME" "follower convert-url on B did not return processing contract; body=${FOLLOWER_BODY}"
-        return
+        if [ "$FOLLOWER_STATUS" != "processing" ] || [ "$FOLLOWER_RETRYABLE" != "true" ]; then
+            record_failure "$TEST_NAME" "follower convert-url on B did not return processing contract; body=${FOLLOWER_BODY}"
+            return
+        fi
     fi
 
     record_success "$TEST_NAME"

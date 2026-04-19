@@ -7,6 +7,7 @@
 #   .\test\run-cloudrun-semaphore-sweep.ps1 -SemaphoreLimits 1,2,3 -Duration 5m
 
 param(
+    [ValidateRange(1, [int]::MaxValue)]
     [int[]]$SemaphoreLimits = @(1, 2, 3),
     [string]$Duration = "8m",
     [int]$PlayFullVus = 4,
@@ -218,8 +219,11 @@ try {
 finally {
     try {
         & docker compose @ComposeArgs down | Out-Null
+        if ($LASTEXITCODE -ne 0) {
+            throw "docker compose down failed with exit code $LASTEXITCODE"
+        }
     } catch {
-        Write-Warning "Could not stop benchmark stack cleanly."
+        Write-Warning "Could not stop benchmark stack cleanly: $_"
     }
 
     if ($null -ne $OriginalMaxConcurrentConversions) {

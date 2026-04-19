@@ -137,7 +137,6 @@ The Web Player Container is built using multi-stage Docker build with `FROM uade
 - **Responsibilities**:
   - Serve main player interface (`/`)
   - Serve static assets and browser configuration (`/client-config.js`)
-  - Expose lightweight informational endpoints (`/health`, `/examples`, `/supported-extensions`)
 
 #### API Routes
 
@@ -145,7 +144,7 @@ The Web Player Container is built using multi-stage Docker build with `FROM uade
 - **Responsibilities**:
   - Conversion endpoints (`/upload`, `/probe-upload`, `/convert-probed`, `/convert-url`, `/probe-url`)
   - Playback endpoints (`/play/{file_id}`, `/download/{file_id}`)
-  - Metadata and health endpoints (`/health`, `/examples`, `/supported-extensions`)
+  - Informational and metadata endpoints (`/health`, `/examples`, `/supported-extensions`)
   - JSON response formatting
 
 #### Player Service

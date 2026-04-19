@@ -158,6 +158,17 @@ function removeArtifact(baseUrl, fileId, ext, endpointTag) {
   );
 }
 
+function evictArtifactForColdIteration(baseUrl, fileId, ext, endpointTag, failureMessage) {
+  const response = removeArtifact(baseUrl, fileId, ext, endpointTag);
+  requireCheck(
+    response,
+    {
+      "artifact eviction returned 200": (res) => res.status === 200,
+    },
+    failureMessage,
+  );
+}
+
 export function setup() {
   const probeResponse = uploadFixtureForProbe(baseUrlA);
   const probePayload = parseJson(probeResponse);
@@ -244,6 +255,10 @@ export function setup() {
 
   return {
     probedModuleHash: moduleHash,
+    probedFileIdOnA: warmConvertProbedPayload.file_id,
+    probedAudioFormatOnA: warmConvertProbedPayload.audio_format,
+    convertUrlFileIdOnA: warmConvertUrlPayload.file_id,
+    convertUrlAudioFormatOnA: warmConvertUrlPayload.audio_format,
     playUrlOnB: warmStreamingPayload.play_url,
   };
 }
@@ -278,6 +293,13 @@ export function streamRangeRequestOnB(data) {
 }
 
 export function coldConvertProbedOnA(data) {
+  evictArtifactForColdIteration(
+    baseUrlA,
+    data.probedFileIdOnA,
+    `.${data.probedAudioFormatOnA}`,
+    "cross-evict-convert-probed-a",
+    "artifact eviction before cold convert-probed on A failed",
+  );
   const response = convertProbed(baseUrlA, data.probedModuleHash, "cross-convert-probed-a");
   const payload = parseJson(response);
 
@@ -296,7 +318,14 @@ export function coldConvertProbedOnA(data) {
   );
 }
 
-export function coldConvertUrlOnA() {
+export function coldConvertUrlOnA(data) {
+  evictArtifactForColdIteration(
+    baseUrlA,
+    data.convertUrlFileIdOnA,
+    `.${data.convertUrlAudioFormatOnA}`,
+    "cross-evict-convert-url-a",
+    "artifact eviction before cold convert-url on A failed",
+  );
   const response = convertTfmx(baseUrlA, "cross-convert-url-a");
   const payload = parseJson(response);
 
