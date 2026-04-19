@@ -487,6 +487,36 @@ async function parseJsonResponse(response, fallbackMessage) {
   return response.json();
 }
 
+async function fetchConversionResponseWithRetry(
+  endpoint,
+  options,
+  {
+    nonJsonMessage = "Conversion returned a non-JSON response",
+    processingStatusMessage = "Still converting, retrying...",
+  } = {},
+) {
+  let response;
+  let data;
+  for (let attempt = 0; ; attempt += 1) {
+    response = await fetch(endpoint, options);
+    data = await parseJsonResponse(response, nonJsonMessage);
+
+    if (
+      response.status !== 409 ||
+      data?.status !== "processing" ||
+      !data?.retryable ||
+      attempt >= PROCESSING_RETRY_DELAYS_MS.length
+    ) {
+      return { response, data };
+    }
+
+    showStatus(processingStatusMessage, "info");
+    await new Promise((resolve) => {
+      window.setTimeout(resolve, PROCESSING_RETRY_DELAYS_MS[attempt]);
+    });
+  }
+}
+
 // Perform a conversion (upload, URL, or example)
 async function performConversion(
   endpoint,
@@ -516,26 +546,7 @@ async function performConversion(
   }
 
   try {
-    let response;
-    let data;
-    for (let attempt = 0; ; attempt += 1) {
-      response = await fetch(endpoint, options);
-      data = await parseJsonResponse(response, "Conversion returned a non-JSON response");
-
-      if (
-        response.status !== 409 ||
-        data?.status !== "processing" ||
-        !data?.retryable ||
-        attempt >= PROCESSING_RETRY_DELAYS_MS.length
-      ) {
-        break;
-      }
-
-      showStatus("Still converting, retrying...", "info");
-      await new Promise((resolve) => {
-        window.setTimeout(resolve, PROCESSING_RETRY_DELAYS_MS[attempt]);
-      });
-    }
+    const { response, data } = await fetchConversionResponseWithRetry(endpoint, options);
 
     if (response.ok) {
       const moduleName = moduleNameOverride || data.module_name || data.filename;
@@ -1947,14 +1958,13 @@ async function playDeferredLocalTrack(
     hasShownConversionStatus = true;
 
     try {
-      const response = await fetch("/convert-probed", {
+      const { response, data } = await fetchConversionResponseWithRetry("/convert-probed", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ module_hash: track.moduleHash, filename: track.name }),
       });
 
       if (response.ok) {
-        const data = await response.json();
         const moduleName = track.name || data.module_name || data.filename;
         const statusMessage = getCacheStatusMessage(
           data, moduleName, `✓ ${moduleName} converted and ready to play`,
@@ -1975,8 +1985,7 @@ async function playDeferredLocalTrack(
       }
 
       if (response.status !== 404 && !track.localFile) {
-        const errorData = await response.json().catch(() => ({}));
-        showStatus(`✗ Error: ${errorData.error || "Conversion failed"}`, "error");
+        showStatus(`✗ Error: ${data?.error || "Conversion failed"}`, "error");
         restoreUiState();
         return;
       }

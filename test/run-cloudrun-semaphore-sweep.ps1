@@ -43,8 +43,18 @@ function Get-K6MetricValue {
     }
 
     $metric = $Metrics[$MetricName]
-    if ($metric -is [hashtable] -and $metric.ContainsKey($FieldName)) {
-        return [double]$metric[$FieldName]
+    if ($metric -is [hashtable]) {
+        if (
+            $metric.ContainsKey('values') -and
+            $metric['values'] -is [hashtable] -and
+            $metric['values'].ContainsKey($FieldName)
+        ) {
+            return [double]$metric['values'][$FieldName]
+        }
+
+        if ($metric.ContainsKey($FieldName)) {
+            return [double]$metric[$FieldName]
+        }
     }
 
     return $null

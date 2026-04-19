@@ -500,7 +500,7 @@ Key protections:
 
 - File size limits and filename sanitization
 - Subprocess calls without shell injection
-- Read-only source mount in local Docker Compose
+- Image-backed, read-only app filesystem in local Docker Compose by default
 - Per-endpoint and global rate limiting
 
 For CI security automation, DAST workflow, and deployment-level security notes, see [`CODE-QUALITY.md`](CODE-QUALITY.md) and [`ARCHITECTURE.md`](ARCHITECTURE.md).

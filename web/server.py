@@ -1157,7 +1157,7 @@ def fetch_cached_file(cache_hash, *, prefer_flac=False, allow_wav_fallback=True)
     """
     # Try FLAC first if preferred
     extensions = [".flac"] if prefer_flac else []
-    if not prefer_flac or allow_wav_fallback:
+    if not prefer_flac and allow_wav_fallback:
         extensions.append(".wav")
 
     for ext in extensions:
@@ -1978,12 +1978,14 @@ def process_audio_conversion(input_path, *, compress_flac=False, sample_files=No
                 logger.warning(f"Duration parsing error: {duration_error}")
 
             final_output = output_path
+            flac_success = False
 
             # Compress to FLAC if requested
             if compress_flac:
                 flac_output = output_path.with_suffix(".flac")
                 if compress_to_flac(output_path, flac_output):
                     final_output = flac_output
+                    flac_success = True
                     output_path.unlink(missing_ok=True)
 
             if semaphore_acquired:
@@ -2001,7 +2003,10 @@ def process_audio_conversion(input_path, *, compress_flac=False, sample_files=No
             save_metadata(cache_hash, metadata)
 
             # Save audio to remote cache (will also copy metadata to remote)
-            ext, file_to_save = (".flac", final_output) if compress_flac else (".wav", output_path)
+            if flac_success:
+                ext, file_to_save = (".flac", final_output)
+            else:
+                ext, file_to_save = (".wav", output_path)
             cache_save_started_at = time.perf_counter()
             save_to_cache(cache_hash, file_to_save, ext)
             _log_duration(
@@ -3329,10 +3334,18 @@ def normalized_remote_cache_url(url):
         "cachebust",
         "test_id",
     }
+    strip_cache_busters = (parsed.hostname or "").lower() in {
+        "uade-test-http-server",
+        "localhost",
+        "127.0.0.1",
+        "::1",
+    }
     filtered_query_pairs = []
     for key, value in urllib.parse.parse_qsl(parsed.query, keep_blank_values=True):
         lowered_key = key.lower()
-        if lowered_key in cache_buster_keys or lowered_key.startswith("utm_"):
+        if strip_cache_busters and (
+            lowered_key in cache_buster_keys or lowered_key.startswith("utm_")
+        ):
             continue
         filtered_query_pairs.append((key, value))
 
