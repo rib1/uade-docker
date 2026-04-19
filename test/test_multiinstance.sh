@@ -69,6 +69,36 @@ json_post() {
         "${BASE_URL}${PATH_SUFFIX}"
 }
 
+json_post_until_ready() {
+    BASE_URL=$1
+    PATH_SUFFIX=$2
+    PAYLOAD=$3
+    ATTEMPTS=${4:-12}
+    SLEEP_SECONDS=${5:-1}
+
+    attempt=1
+    while [ "$attempt" -le "$ATTEMPTS" ]; do
+        RESPONSE_ALL=$(json_post "$BASE_URL" "$PATH_SUFFIX" "$PAYLOAD")
+        HTTP_CODE=$(echo "$RESPONSE_ALL" | tail -n1)
+        BODY=$(echo "$RESPONSE_ALL" | sed '$d')
+        STATUS=$(echo "$BODY" | jq -r '.status // empty' 2>/dev/null || true)
+        RETRYABLE=$(echo "$BODY" | jq -r '.retryable // empty' 2>/dev/null || true)
+
+        if [ "$HTTP_CODE" -ne 409 ] || [ "$STATUS" != "processing" ] || [ "$RETRYABLE" != "true" ]; then
+            printf "%s" "$RESPONSE_ALL"
+            return 0
+        fi
+
+        if [ "$attempt" -lt "$ATTEMPTS" ]; then
+            sleep "$SLEEP_SECONDS"
+        fi
+        attempt=$((attempt + 1))
+    done
+
+    printf "%s" "$RESPONSE_ALL"
+    return 0
+}
+
 upload_probe() {
     BASE_URL=$1
     FILE_PATH=$2
@@ -76,6 +106,37 @@ upload_probe() {
     curl -sS -w "\n%{http_code}" -X POST \
         -F "file=@${FILE_PATH}" \
         "${BASE_URL}/probe-upload"
+}
+
+upload_file_until_ready() {
+    BASE_URL=$1
+    FILE_PATH=$2
+    ATTEMPTS=${3:-12}
+    SLEEP_SECONDS=${4:-1}
+
+    attempt=1
+    while [ "$attempt" -le "$ATTEMPTS" ]; do
+        RESPONSE_ALL=$(curl -sS -w "\n%{http_code}" -X POST \
+            -F "file=@${FILE_PATH}" \
+            "${BASE_URL}/upload")
+        HTTP_CODE=$(echo "$RESPONSE_ALL" | tail -n1)
+        BODY=$(echo "$RESPONSE_ALL" | sed '$d')
+        STATUS=$(echo "$BODY" | jq -r '.status // empty' 2>/dev/null || true)
+        RETRYABLE=$(echo "$BODY" | jq -r '.retryable // empty' 2>/dev/null || true)
+
+        if [ "$HTTP_CODE" -ne 409 ] || [ "$STATUS" != "processing" ] || [ "$RETRYABLE" != "true" ]; then
+            printf "%s" "$RESPONSE_ALL"
+            return 0
+        fi
+
+        if [ "$attempt" -lt "$ATTEMPTS" ]; then
+            sleep "$SLEEP_SECONDS"
+        fi
+        attempt=$((attempt + 1))
+    done
+
+    printf "%s" "$RESPONSE_ALL"
+    return 0
 }
 
 probe_url() {
@@ -257,7 +318,7 @@ test_probe_url_on_a_convert_on_b_play_on_a() {
         return
     fi
 
-    CONVERT_ALL=$(json_post "$BASE_URL_B" "/convert-url" "$(jq -nc --arg url "$URL" '{url: $url}')")
+    CONVERT_ALL=$(json_post_until_ready "$BASE_URL_B" "/convert-url" "$(jq -nc --arg url "$URL" '{url: $url}')")
     CONVERT_CODE=$(echo "$CONVERT_ALL" | tail -n1)
     CONVERT_BODY=$(echo "$CONVERT_ALL" | sed '$d')
 
@@ -436,9 +497,7 @@ test_queue_hop_probe_convert_play() {
     CONVERT_BODY=$(echo "$CONVERT_ALL" | sed '$d')
 
     if [ "$CONVERT_CODE" -eq 404 ] && echo "$CONVERT_BODY" | grep -q "Module not found"; then
-        UPLOAD_ALL=$(curl -sS -w "\n%{http_code}" -X POST \
-            -F "file=@fixtures/modules/space_debris.mod" \
-            "${BASE_URL_A}/upload")
+        UPLOAD_ALL=$(upload_file_until_ready "$BASE_URL_A" "fixtures/modules/space_debris.mod")
         UPLOAD_CODE=$(echo "$UPLOAD_ALL" | tail -n1)
         UPLOAD_BODY=$(echo "$UPLOAD_ALL" | sed '$d')
 
@@ -469,7 +528,7 @@ test_convert_url_cache_hit_across_instances() {
     TEST_NAME="convert-url on A -> convert-url on B shared-cache hit"
     URL="${LOCAL_TEST_SERVER_URL}/fixtures/modules/space_debris.mod?case=cache-hit-cross-instance"
 
-    FIRST_ALL=$(json_post "$BASE_URL_A" "/convert-url" "$(jq -nc --arg url "$URL" '{url: $url}')")
+    FIRST_ALL=$(json_post_until_ready "$BASE_URL_A" "/convert-url" "$(jq -nc --arg url "$URL" '{url: $url}')")
     FIRST_CODE=$(echo "$FIRST_ALL" | tail -n1)
     FIRST_BODY=$(echo "$FIRST_ALL" | sed '$d')
 
@@ -478,7 +537,7 @@ test_convert_url_cache_hit_across_instances() {
         return
     fi
 
-    SECOND_ALL=$(json_post "$BASE_URL_B" "/convert-url" "$(jq -nc --arg url "$URL" '{url: $url}')")
+    SECOND_ALL=$(json_post_until_ready "$BASE_URL_B" "/convert-url" "$(jq -nc --arg url "$URL" '{url: $url}')")
     SECOND_CODE=$(echo "$SECOND_ALL" | tail -n1)
     SECOND_BODY=$(echo "$SECOND_ALL" | sed '$d')
 
@@ -506,7 +565,7 @@ test_duplicate_convert_on_other_instance_returns_processing() {
     # Warm once to learn the stable file_id for this fixture content, then remove
     # the shared artifact so the next convert is genuinely cold and slow enough
     # to exercise the duplicate-convert contract across instances.
-    WARM_ALL=$(json_post "$BASE_URL_A" "/convert-url" \
+    WARM_ALL=$(json_post_until_ready "$BASE_URL_A" "/convert-url" \
         "$(jq -nc --arg url "$URL" --arg sample_url "$SAMPLE_URL" '{url: $url, sample_url: $sample_url}')")
     WARM_CODE=$(echo "$WARM_ALL" | tail -n1)
     WARM_BODY=$(echo "$WARM_ALL" | sed '$d')
@@ -588,7 +647,7 @@ test_convert_probed_after_remote_cache_removal_same_instance() {
     fi
 
     MODULE_HASH=$(echo "$PROBE_BODY" | jq -r .module_hash)
-    FIRST_CONVERT_ALL=$(json_post "$BASE_URL_A" "/convert-probed" \
+    FIRST_CONVERT_ALL=$(json_post_until_ready "$BASE_URL_A" "/convert-probed" \
         "$(jq -nc --arg module_hash "$MODULE_HASH" --arg filename "space_debris.mod" '{module_hash: $module_hash, filename: $filename}')")
     FIRST_CONVERT_CODE=$(echo "$FIRST_CONVERT_ALL" | tail -n1)
     FIRST_CONVERT_BODY=$(echo "$FIRST_CONVERT_ALL" | sed '$d')
@@ -610,7 +669,7 @@ test_convert_probed_after_remote_cache_removal_same_instance() {
         return
     fi
 
-    SECOND_CONVERT_ALL=$(json_post "$BASE_URL_A" "/convert-probed" \
+    SECOND_CONVERT_ALL=$(json_post_until_ready "$BASE_URL_A" "/convert-probed" \
         "$(jq -nc --arg module_hash "$MODULE_HASH" --arg filename "space_debris.mod" '{module_hash: $module_hash, filename: $filename}')")
     SECOND_CONVERT_CODE=$(echo "$SECOND_CONVERT_ALL" | tail -n1)
     SECOND_CONVERT_BODY=$(echo "$SECOND_CONVERT_ALL" | sed '$d')
@@ -627,7 +686,7 @@ test_cross_instance_play_after_remote_cache_removal_still_serves() {
     TEST_NAME="play on B still serves after A removes one shared cache artifact"
     URL="${LOCAL_TEST_SERVER_URL}/fixtures/modules/space_debris.mod?case=remote-removal-cross-play"
 
-    CONVERT_ALL=$(json_post "$BASE_URL_A" "/convert-url" "$(jq -nc --arg url "$URL" '{url: $url}')")
+    CONVERT_ALL=$(json_post_until_ready "$BASE_URL_A" "/convert-url" "$(jq -nc --arg url "$URL" '{url: $url}')")
     CONVERT_CODE=$(echo "$CONVERT_ALL" | tail -n1)
     CONVERT_BODY=$(echo "$CONVERT_ALL" | sed '$d')
 
@@ -676,7 +735,7 @@ test_shared_cache_access_sidecar_across_instances() {
     TEST_NAME="shared cache sidecar refresh across A and B"
     URL="${LOCAL_TEST_SERVER_URL}/fixtures/modules/space_debris.mod?case=sidecar-cross-instance"
 
-    FIRST_ALL=$(json_post "$BASE_URL_A" "/convert-url" "$(jq -nc --arg url "$URL" '{url: $url}')")
+    FIRST_ALL=$(json_post_until_ready "$BASE_URL_A" "/convert-url" "$(jq -nc --arg url "$URL" '{url: $url}')")
     FIRST_CODE=$(echo "$FIRST_ALL" | tail -n1)
     FIRST_BODY=$(echo "$FIRST_ALL" | sed '$d')
 
@@ -696,7 +755,7 @@ test_shared_cache_access_sidecar_across_instances() {
     BEFORE_TS=$(stat -c %Y "$ACCESS_RECORD")
     sleep 2
 
-    SECOND_ALL=$(json_post "$BASE_URL_B" "/convert-url" "$(jq -nc --arg url "$URL" '{url: $url}')")
+    SECOND_ALL=$(json_post_until_ready "$BASE_URL_B" "/convert-url" "$(jq -nc --arg url "$URL" '{url: $url}')")
     SECOND_CODE=$(echo "$SECOND_ALL" | tail -n1)
     SECOND_BODY=$(echo "$SECOND_ALL" | sed '$d')
 
@@ -780,21 +839,58 @@ test_parallel_convert_url_both_instances() {
     CODE_B=$(tail -n1 "${TMP_DIR}/b.txt")
     rm -rf "$TMP_DIR"
 
-    if [ "$CODE_A" -ne 200 ] || [ "$CODE_B" -ne 200 ]; then
-        record_failure "$TEST_NAME" "parallel calls returned HTTP ${CODE_A} and ${CODE_B}; body_a=${BODY_A}; body_b=${BODY_B}"
+    if [ "$CODE_A" -ne 200 ] && [ "$CODE_A" -ne 409 ]; then
+        record_failure "$TEST_NAME" "parallel call on A returned unexpected HTTP ${CODE_A}; body=${BODY_A}"
         return
     fi
 
-    FILE_ID_A=$(echo "$BODY_A" | jq -r .file_id)
-    FILE_ID_B=$(echo "$BODY_B" | jq -r .file_id)
-    if [ "$FILE_ID_A" != "$FILE_ID_B" ]; then
-        record_failure "$TEST_NAME" "parallel calls produced different file_ids (${FILE_ID_A} vs ${FILE_ID_B})"
+    if [ "$CODE_B" -ne 200 ] && [ "$CODE_B" -ne 409 ]; then
+        record_failure "$TEST_NAME" "parallel call on B returned unexpected HTTP ${CODE_B}; body=${BODY_B}"
         return
     fi
 
-    TMP_COUNT=$(find /uade-cache-shared -maxdepth 1 -name "${FILE_ID_A}.cache-access.json.*.tmp" | wc -l)
+    if [ "$CODE_A" -eq 409 ] && ! echo "$BODY_A" | jq -e '.status == "processing" and .retryable == true' > /dev/null; then
+        record_failure "$TEST_NAME" "parallel call on A returned 409 without processing contract; body=${BODY_A}"
+        return
+    fi
+
+    if [ "$CODE_B" -eq 409 ] && ! echo "$BODY_B" | jq -e '.status == "processing" and .retryable == true' > /dev/null; then
+        record_failure "$TEST_NAME" "parallel call on B returned 409 without processing contract; body=${BODY_B}"
+        return
+    fi
+
+    if [ "$CODE_A" -eq 200 ]; then
+        FILE_ID=$(echo "$BODY_A" | jq -r .file_id)
+    elif [ "$CODE_B" -eq 200 ]; then
+        FILE_ID=$(echo "$BODY_B" | jq -r .file_id)
+    else
+        READY_ALL=$(json_post_until_ready "$BASE_URL_A" "/convert-url" "$(jq -nc --arg url "$URL" '{url: $url}')")
+        READY_CODE=$(echo "$READY_ALL" | tail -n1)
+        READY_BODY=$(echo "$READY_ALL" | sed '$d')
+        if [ "$READY_CODE" -ne 200 ]; then
+            record_failure "$TEST_NAME" "ready retry after dual-409 returned HTTP ${READY_CODE}; body=${READY_BODY}"
+            return
+        fi
+        FILE_ID=$(echo "$READY_BODY" | jq -r .file_id)
+    fi
+
+    if [ -z "$FILE_ID" ] || [ "$FILE_ID" = "null" ]; then
+        record_failure "$TEST_NAME" "could not resolve file_id after parallel convert; body_a=${BODY_A}; body_b=${BODY_B}"
+        return
+    fi
+
+    if [ "$CODE_A" -eq 200 ] && [ "$CODE_B" -eq 200 ]; then
+        FILE_ID_A=$(echo "$BODY_A" | jq -r .file_id)
+        FILE_ID_B=$(echo "$BODY_B" | jq -r .file_id)
+        if [ "$FILE_ID_A" != "$FILE_ID_B" ]; then
+            record_failure "$TEST_NAME" "parallel calls produced different file_ids (${FILE_ID_A} vs ${FILE_ID_B})"
+            return
+        fi
+    fi
+
+    TMP_COUNT=$(find /uade-cache-shared -maxdepth 1 -name "${FILE_ID}.cache-access.json.*.tmp" | wc -l)
     if [ "$TMP_COUNT" -ne 0 ]; then
-        record_failure "$TEST_NAME" "found ${TMP_COUNT} orphaned shared-cache sidecar temp files for ${FILE_ID_A}"
+        record_failure "$TEST_NAME" "found ${TMP_COUNT} orphaned shared-cache sidecar temp files for ${FILE_ID}"
         return
     fi
 

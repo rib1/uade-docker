@@ -31,6 +31,7 @@ const playRangeOnBRequests = new Counter("cross_instance_play_range_b_requests")
 const coldConvertProbedOnARequests = new Counter("cross_instance_convert_probed_a_requests");
 const coldConvertUrlOnARequests = new Counter("cross_instance_convert_url_a_requests");
 const coldConvertProbedOnAProcessing = new Counter("cross_instance_convert_probed_a_processing");
+const coldConvertUrlOnAProcessing = new Counter("cross_instance_convert_url_a_processing");
 const convertResponseCallback = http.expectedStatuses(200, 409);
 
 export const options = {
@@ -334,8 +335,12 @@ export function coldConvertUrlOnA(data) {
   const response = convertTfmx(baseUrlA, "cross-convert-url-a");
   const payload = parseJson(response);
 
-  coldConvertUrlOnADuration.add(response.timings.duration);
   coldConvertUrlOnARequests.add(1);
+  if (response.status === 200) {
+    coldConvertUrlOnADuration.add(response.timings.duration);
+  } else if (response.status === 409) {
+    coldConvertUrlOnAProcessing.add(1);
+  }
 
   requireCheck(
     response,
