@@ -11,16 +11,16 @@ export const options = {
     cold_convert_probed: {
       executor: "shared-iterations",
       vus: 1,
-      iterations: 1,
+      iterations: 5,
       exec: "coldConvertProbed",
-      maxDuration: "2m",
+      maxDuration: "3m",
     },
     warm_convert_probed: {
       executor: "shared-iterations",
       vus: 1,
       iterations: 5,
       exec: "warmConvertProbed",
-      startTime: "8s",
+      startTime: "40s",
       maxDuration: "2m",
     },
     warm_upload: {
@@ -28,7 +28,7 @@ export const options = {
       vus: 1,
       iterations: 5,
       exec: "warmUpload",
-      startTime: "14s",
+      startTime: "46s",
       maxDuration: "2m",
     },
   },
@@ -118,7 +118,25 @@ export function setup() {
     fail(`setup remove-cache-artifact failed with status ${removeResponse.status}`);
   }
 
-  return { moduleHash };
+  return { moduleHash, fileId, audioFormat };
+}
+
+function removeArtifact(fileId, audioFormat, endpointTag) {
+  const removeResponse = http.post(
+    `${baseUrl}/test/remove-cache-artifact`,
+    JSON.stringify({ file_id: fileId, ext: `.${audioFormat}` }),
+    {
+      headers: { "Content-Type": "application/json" },
+      tags: { endpoint: endpointTag },
+      timeout: "60s",
+    },
+  );
+
+  if (!check(removeResponse, {
+    "remove-cache-artifact returned 200": (res) => res.status === 200,
+  })) {
+    fail(`remove-cache-artifact failed with status ${removeResponse.status}`);
+  }
 }
 
 function runConvertProbed(data, endpointTag) {
@@ -143,6 +161,7 @@ function runConvertProbed(data, endpointTag) {
 }
 
 export function coldConvertProbed(data) {
+  removeArtifact(data.fileId, data.audioFormat, "cold-convert-probed-evict");
   runConvertProbed(data, "cold-convert-probed");
   sleep(1);
 }

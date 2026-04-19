@@ -2220,6 +2220,9 @@ def health():
                 "max_upload_size_mb": MAX_UPLOAD_SIZE / (1024 * 1024),
                 "max_download_size_mb": MAX_DOWNLOAD_SIZE / (1024 * 1024),
                 "max_concurrent_conversions": MAX_CONCURRENT_CONVERSIONS,
+                "conversion_timeout_seconds": CONVERSION_TIMEOUT_SECONDS,
+                "duplicate_conversion_wait_seconds": DUPLICATE_CONVERSION_WAIT_SECONDS,
+                "conversion_lock_poll_seconds": CONVERSION_LOCK_POLL_SECONDS,
                 "rate_limiting_enabled": rate_limit_enabled,
                 "cleanup_interval_seconds": CLEANUP_INTERVAL,
                 "queue_drop_file_limit": QUEUE_DROP_FILE_LIMIT,
@@ -3328,24 +3331,23 @@ def normalized_remote_cache_url(url):
     normalized_url = sanitized_url(url, log=False)
     parsed = urllib.parse.urlparse(normalized_url)
 
-    cache_buster_keys = {
+    test_only_cache_buster_keys = {
         "_",
         "cache_bust",
         "cachebust",
         "test_id",
     }
-    strip_cache_busters = (parsed.hostname or "").lower() in {
-        "uade-test-http-server",
-        "localhost",
-        "127.0.0.1",
-        "::1",
-    }
+    hostname = (parsed.hostname or "").lower()
     filtered_query_pairs = []
     for key, value in urllib.parse.parse_qsl(parsed.query, keep_blank_values=True):
         lowered_key = key.lower()
-        if strip_cache_busters and (
-            lowered_key in cache_buster_keys or lowered_key.startswith("utm_")
-        ):
+        is_tracking_param = lowered_key.startswith("utm_")
+        is_test_cache_buster = (
+            os.getenv("UADE_TEST_MODE") == "1"
+            and hostname == "uade-test-http-server"
+            and lowered_key in test_only_cache_buster_keys
+        )
+        if is_tracking_param or is_test_cache_buster:
             continue
         filtered_query_pairs.append((key, value))
 
@@ -3752,6 +3754,9 @@ logger.info(f"Max upload size: {MAX_UPLOAD_SIZE / 1024 / 1024}MB")
 logger.info(f"Max download size: {MAX_DOWNLOAD_SIZE / 1024 / 1024}MB")
 logger.info(f"Rate limit: {RATE_LIMIT}/hour (enabled: {rate_limit_enabled})")
 logger.info(f"Max concurrent conversions: {MAX_CONCURRENT_CONVERSIONS}")
+logger.info(f"Conversion timeout: {CONVERSION_TIMEOUT_SECONDS}s")
+logger.info(f"Duplicate conversion wait: {DUPLICATE_CONVERSION_WAIT_SECONDS}s")
+logger.info(f"Conversion lock poll interval: {CONVERSION_LOCK_POLL_SECONDS}s")
 logger.info(f"Queue drop file limit: {QUEUE_DROP_FILE_LIMIT}")
 logger.info(f"Probe upload rate limit: {PROBE_UPLOAD_RATE_LIMIT_PER_MINUTE}/minute")
 logger.info(f"Cache URI: {CACHE_URI}")

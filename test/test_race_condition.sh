@@ -89,7 +89,7 @@ perform_play_request() {
 wait_for_service() {
     echo "Waiting for uade-web-player to be available..."
     start_time=$(date +%s)
-    while ! curl -s "$BASE_URL/health" > /dev/null; do
+    while ! curl -fsS "$BASE_URL/health" > /dev/null; do
         current_time=$(date +%s)
         elapsed_seconds=$((current_time - start_time))
         if [ "$elapsed_seconds" -ge "$SERVICE_READY_TIMEOUT_SECONDS" ]; then
