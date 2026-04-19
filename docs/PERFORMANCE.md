@@ -260,7 +260,8 @@ Implemented fixes and outcomes:
     - it reduces architectural duplication by keeping example selection in the frontend and conversion in the conversion endpoint
 - Short duplicate-convert wait contract
   - same-hash follower requests now wait up to `2s` for the owner conversion and then return HTTP `409` with `status: "processing"` and `retryable: true`
-  - the frontend treats that as a short retryable state instead of surfacing a hard conversion error immediately
+  - the frontend treats that as a retryable state instead of surfacing a hard conversion error immediately
+  - the frontend retry window now totals `63s` (`1s + 2s + 4s + 8s + 16s + 32s`), which covers the current worst known heavy owner conversion class
   - the per-hash conversion lock now lives in the shared cache backend, so the same `409 processing` contract applies across instances when they share the same cache storage
   - the local multi-instance stack uses `/tmp/cache/conversion-locks` for this shared lock path
   - reasoning:

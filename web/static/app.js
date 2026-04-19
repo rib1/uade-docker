@@ -477,7 +477,9 @@ async function handleFileUpload(file) {
   );
 }
 
-const PROCESSING_RETRY_DELAYS_MS = [750, 1500, 2500];
+// Same-hash followers should keep retrying long enough to outlast the worst
+// known heavy owner conversion on the current Cloud Run-shaped workload.
+const PROCESSING_RETRY_DELAYS_MS = [1000, 2000, 4000, 8000, 16000, 32000];
 
 async function parseJsonResponse(response, fallbackMessage) {
   const contentType = response.headers.get("content-type") || "";
