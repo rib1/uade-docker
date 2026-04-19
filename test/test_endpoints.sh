@@ -138,36 +138,6 @@ test_url() {
     echo ""
 }
 
-# Function to test a play-example endpoint
-# Arguments:
-# 1. Test name (string)
-# 2. Example ID (string)
-test_play_example() {
-    # covers: /play-example/<example_id>
-    TEST_NAME=$1
-    EXAMPLE_ID=$2
-
-    echo "--- Testing $TEST_NAME: $EXAMPLE_ID ---"
-
-    RESPONSE=$(curl -s -w "\n%{http_code}" -X POST \
-        -H "Content-Type: application/json" \
-        -d '{}' \
-        "$BASE_URL/play-example/$EXAMPLE_ID")
-
-    HTTP_CODE=$(echo "$RESPONSE" | tail -n1)
-    BODY=$(echo "$RESPONSE" | sed '$d')
-
-    if [ "$HTTP_CODE" -eq 200 ]; then
-        echo "SUCCESS: Received HTTP 200"
-        echo "Response body: $BODY"
-    else
-        echo "ERROR: Received HTTP $HTTP_CODE for test '$TEST_NAME'"
-        echo "Response body: $BODY"
-        exit 1
-    fi
-    echo ""
-}
-
 # Function to test security-related URL rejections
 # Arguments:
 # 1. Test name (string)
@@ -2264,19 +2234,18 @@ test_no_orphaned_cache_access_temp_files_under_parallel_hits() {
     echo ""
 }
 
-test_flac_request_promotes_cached_wav_locally() {
+test_convert_url_uses_canonical_flac() {
     TEST_NAME=$1
     URL=$2
-    CHROME_UA="Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 Chrome/120.0.0.0"
 
-    echo "--- Testing FLAC Promotion From Cached WAV: $TEST_NAME ---"
+    echo "--- Testing Canonical FLAC Conversion: $TEST_NAME ---"
 
     HTTP_CODE_BODY=$(_perform_convert_url_call "$URL")
     HTTP_CODE=$(echo "$HTTP_CODE_BODY" | head -n1)
     BODY=$(echo "$HTTP_CODE_BODY" | tail -n1)
 
     if [ "$HTTP_CODE" -ne 200 ]; then
-        echo "ERROR: Initial WAV convert-url call failed with HTTP $HTTP_CODE for '$TEST_NAME'"
+        echo "ERROR: Initial convert-url call failed with HTTP $HTTP_CODE for '$TEST_NAME'"
         echo "Response body: $BODY"
         exit 1
     fi
@@ -2292,53 +2261,62 @@ test_flac_request_promotes_cached_wav_locally() {
         exit 1
     fi
 
-    if [ "$AUDIO_FORMAT" != "wav" ]; then
-        echo "ERROR: Initial request did not return WAV for '$TEST_NAME'"
+    if [ "$AUDIO_FORMAT" != "flac" ]; then
+        echo "ERROR: Initial request did not return FLAC for '$TEST_NAME'"
         echo "Response body: $BODY"
         exit 1
     fi
 
-    if [ ! -f "$LOCAL_WAV" ]; then
-        echo "ERROR: Expected local WAV cache file not found for '$TEST_NAME'"
-        echo "Expected path: $LOCAL_WAV"
+    if [ ! -f "$LOCAL_FLAC" ]; then
+        echo "ERROR: Expected local FLAC cache file not found for '$TEST_NAME'"
+        echo "Expected path: $LOCAL_FLAC"
         exit 1
     fi
 
-    HTTP_CODE_BODY=$(_perform_convert_url_call_with_agent_header "$URL" "$CHROME_UA")
+    if [ -f "$LOCAL_WAV" ]; then
+        _remove_cache_artifact "$FILE_ID" ".wav" > /dev/null
+    fi
+
+    if [ -f "$LOCAL_WAV" ]; then
+        echo "ERROR: Failed to clear legacy local WAV cache file for '$TEST_NAME'"
+        echo "Unexpected path: $LOCAL_WAV"
+        exit 1
+    fi
+
+    HTTP_CODE_BODY=$(_perform_convert_url_call "$URL")
     HTTP_CODE=$(echo "$HTTP_CODE_BODY" | head -n1)
     BODY=$(echo "$HTTP_CODE_BODY" | tail -n1)
     AUDIO_FORMAT=$(echo "$BODY" | jq -r .audio_format)
 
     if [ "$HTTP_CODE" -ne 200 ] || [ "$AUDIO_FORMAT" != "flac" ]; then
-        echo "ERROR: FLAC follow-up request did not return FLAC for '$TEST_NAME'"
+        echo "ERROR: Follow-up request did not return canonical FLAC for '$TEST_NAME'"
         echo "Response body: $BODY"
         exit 1
     fi
 
-    if [ ! -f "$LOCAL_WAV" ] || [ ! -f "$LOCAL_FLAC" ]; then
-        echo "ERROR: Expected both local WAV and FLAC cache files after promotion for '$TEST_NAME'"
+    if [ -f "$LOCAL_WAV" ] || [ ! -f "$LOCAL_FLAC" ]; then
+        echo "ERROR: Expected FLAC-only local cache files after follow-up for '$TEST_NAME'"
         echo "WAV exists: $( [ -f "$LOCAL_WAV" ] && echo yes || echo no )"
         echo "FLAC exists: $( [ -f "$LOCAL_FLAC" ] && echo yes || echo no )"
         exit 1
     fi
 
-    echo "SUCCESS: FLAC request promoted cached WAV and kept both local variants."
+    echo "SUCCESS: convert-url returned canonical FLAC without creating a WAV sibling."
     echo ""
 }
 
-test_local_cleanup_removes_stale_wav_after_flac_hits() {
+test_local_cleanup_preserves_refreshed_flac() {
     TEST_NAME=$1
     URL=$2
-    CHROME_UA="Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 Chrome/120.0.0.0"
 
-    echo "--- Testing Local Cleanup Removes Stale WAV After FLAC Hits: $TEST_NAME ---"
+    echo "--- Testing Local Cleanup Preserves Refreshed FLAC: $TEST_NAME ---"
 
     HTTP_CODE_BODY=$(_perform_convert_url_call "$URL")
     HTTP_CODE=$(echo "$HTTP_CODE_BODY" | head -n1)
     BODY=$(echo "$HTTP_CODE_BODY" | tail -n1)
 
     if [ "$HTTP_CODE" -ne 200 ]; then
-        echo "ERROR: Initial WAV convert-url call failed with HTTP $HTTP_CODE for '$TEST_NAME'"
+        echo "ERROR: Initial convert-url call failed with HTTP $HTTP_CODE for '$TEST_NAME'"
         echo "Response body: $BODY"
         exit 1
     fi
@@ -2346,6 +2324,7 @@ test_local_cleanup_removes_stale_wav_after_flac_hits() {
     FILE_ID=$(echo "$BODY" | jq -r .file_id)
     LOCAL_WAV="/uade-tmp/converted/${FILE_ID}.wav"
     LOCAL_FLAC="/uade-tmp/converted/${FILE_ID}.flac"
+    AUDIO_FORMAT=$(echo "$BODY" | jq -r .audio_format)
 
     if [ -z "$FILE_ID" ] || [ "$FILE_ID" = "null" ]; then
         echo "ERROR: file_id missing from initial response for '$TEST_NAME'"
@@ -2353,26 +2332,25 @@ test_local_cleanup_removes_stale_wav_after_flac_hits() {
         exit 1
     fi
 
-    HTTP_CODE_BODY=$(_perform_convert_url_call_with_agent_header "$URL" "$CHROME_UA")
-    HTTP_CODE=$(echo "$HTTP_CODE_BODY" | head -n1)
-    BODY=$(echo "$HTTP_CODE_BODY" | tail -n1)
-    AUDIO_FORMAT=$(echo "$BODY" | jq -r .audio_format)
-
-    if [ "$HTTP_CODE" -ne 200 ] || [ "$AUDIO_FORMAT" != "flac" ]; then
-        echo "ERROR: FLAC promotion request failed for '$TEST_NAME'"
+    if [ "$AUDIO_FORMAT" != "flac" ] || [ ! -f "$LOCAL_FLAC" ]; then
+        echo "ERROR: Initial request did not establish a FLAC-only starting point for '$TEST_NAME'"
         echo "Response body: $BODY"
         exit 1
     fi
 
-    if [ ! -f "$LOCAL_WAV" ] || [ ! -f "$LOCAL_FLAC" ]; then
-        echo "ERROR: Expected both local WAV and FLAC cache files before cleanup for '$TEST_NAME'"
+    if [ -f "$LOCAL_WAV" ]; then
+        _remove_cache_artifact "$FILE_ID" ".wav" > /dev/null
+    fi
+
+    if [ -f "$LOCAL_WAV" ]; then
+        echo "ERROR: Failed to clear legacy local WAV cache file for '$TEST_NAME'"
         exit 1
     fi
 
-    _set_local_file_mtime "$FILE_ID" ".wav" 1577840460 > /dev/null
     _set_local_file_mtime "$FILE_ID" ".flac" 1577840460 > /dev/null
+    FLAC_TS_OLD=$(stat -c %Y "$LOCAL_FLAC")
 
-    HTTP_CODE_BODY=$(_perform_convert_url_call_with_agent_header "$URL" "$CHROME_UA")
+    HTTP_CODE_BODY=$(_perform_convert_url_call "$URL")
     HTTP_CODE=$(echo "$HTTP_CODE_BODY" | head -n1)
     BODY=$(echo "$HTTP_CODE_BODY" | tail -n1)
     AUDIO_FORMAT=$(echo "$BODY" | jq -r .audio_format)
@@ -2383,51 +2361,50 @@ test_local_cleanup_removes_stale_wav_after_flac_hits() {
         exit 1
     fi
 
-    WAV_TS_BEFORE_CLEANUP=$(stat -c %Y "$LOCAL_WAV")
     FLAC_TS_BEFORE_CLEANUP=$(stat -c %Y "$LOCAL_FLAC")
 
-    if [ "$FLAC_TS_BEFORE_CLEANUP" -le "$WAV_TS_BEFORE_CLEANUP" ]; then
-        echo "ERROR: Expected FLAC cache hit to refresh local FLAC more recently than WAV for '$TEST_NAME'"
-        echo "WAV timestamp: $WAV_TS_BEFORE_CLEANUP"
-        echo "FLAC timestamp: $FLAC_TS_BEFORE_CLEANUP"
+    if [ "$FLAC_TS_BEFORE_CLEANUP" -le "$FLAC_TS_OLD" ]; then
+        echo "ERROR: Expected FLAC cache hit to refresh local FLAC for '$TEST_NAME'"
+        echo "Old FLAC timestamp: $FLAC_TS_OLD"
+        echo "New FLAC timestamp: $FLAC_TS_BEFORE_CLEANUP"
         exit 1
     fi
 
     LOCAL_RESPONSE=$(_run_cleanup_scope "local")
     LOCAL_STATUS=$(echo "$LOCAL_RESPONSE" | jq -r .local.cleanup_status)
 
-    if [ "$LOCAL_STATUS" != "old_entries_removed" ]; then
-        echo "ERROR: Expected local cleanup to remove the stale WAV for '$TEST_NAME', got '$LOCAL_STATUS'"
+    if [ "$LOCAL_STATUS" != "healthy" ] && [ "$LOCAL_STATUS" != "old_entries_removed" ] && [ "$LOCAL_STATUS" != "no_old_entries_found" ]; then
+        echo "ERROR: Unexpected local cleanup status for '$TEST_NAME': '$LOCAL_STATUS'"
         echo "Response body: $LOCAL_RESPONSE"
         exit 1
     fi
 
     if [ -f "$LOCAL_WAV" ]; then
-        echo "ERROR: Stale WAV still exists after local cleanup for '$TEST_NAME'"
+        echo "ERROR: Unexpected WAV exists after local cleanup for '$TEST_NAME'"
         exit 1
     fi
 
     if [ ! -f "$LOCAL_FLAC" ]; then
-        echo "ERROR: Fresh FLAC was removed unexpectedly during local cleanup for '$TEST_NAME'"
+        echo "ERROR: Refreshed FLAC was removed unexpectedly during local cleanup for '$TEST_NAME'"
         exit 1
     fi
 
-    echo "SUCCESS: Local cleanup removed the stale WAV while preserving the refreshed FLAC."
+    echo "SUCCESS: Local cleanup preserved the refreshed canonical FLAC artifact."
     echo ""
 }
 
-test_play_endpoint_promotes_cached_wav_to_flac() {
+test_play_endpoint_serves_existing_flac() {
     TEST_NAME=$1
     URL=$2
 
-    echo "--- Testing Play Endpoint FLAC Promotion: $TEST_NAME ---"
+    echo "--- Testing Play Endpoint Serves Existing FLAC: $TEST_NAME ---"
 
     HTTP_CODE_BODY=$(_perform_convert_url_call "$URL")
     HTTP_CODE=$(echo "$HTTP_CODE_BODY" | head -n1)
     BODY=$(echo "$HTTP_CODE_BODY" | tail -n1)
 
     if [ "$HTTP_CODE" -ne 200 ]; then
-        echo "ERROR: Initial WAV convert-url call failed with HTTP $HTTP_CODE for '$TEST_NAME'"
+        echo "ERROR: Initial convert-url call failed with HTTP $HTTP_CODE for '$TEST_NAME'"
         echo "Response body: $BODY"
         exit 1
     fi
@@ -2436,7 +2413,6 @@ test_play_endpoint_promotes_cached_wav_to_flac() {
     AUDIO_FORMAT=$(echo "$BODY" | jq -r .audio_format)
     LOCAL_WAV="/uade-tmp/converted/${FILE_ID}.wav"
     LOCAL_FLAC="/uade-tmp/converted/${FILE_ID}.flac"
-    REMOTE_FLAC="/uade-tmp/cache/${FILE_ID}.flac"
 
     if [ -z "$FILE_ID" ] || [ "$FILE_ID" = "null" ]; then
         echo "ERROR: file_id missing from initial response for '$TEST_NAME'"
@@ -2444,18 +2420,18 @@ test_play_endpoint_promotes_cached_wav_to_flac() {
         exit 1
     fi
 
-    if [ "$AUDIO_FORMAT" != "wav" ] || [ ! -f "$LOCAL_WAV" ]; then
-        echo "ERROR: Initial request did not establish a local WAV-only starting point for '$TEST_NAME'"
+    if [ "$AUDIO_FORMAT" != "flac" ] || [ ! -f "$LOCAL_FLAC" ]; then
+        echo "ERROR: Initial request did not establish a FLAC-only starting point for '$TEST_NAME'"
         echo "Response body: $BODY"
         exit 1
     fi
 
-    _remove_cache_artifact "$FILE_ID" ".flac" > /dev/null
+    if [ -f "$LOCAL_WAV" ]; then
+        _remove_cache_artifact "$FILE_ID" ".wav" > /dev/null
+    fi
 
-    if [ -f "$LOCAL_FLAC" ] || [ -f "$REMOTE_FLAC" ]; then
-        echo "ERROR: FLAC artifact still exists after reset for '$TEST_NAME'"
-        echo "Local FLAC exists: $( [ -f "$LOCAL_FLAC" ] && echo yes || echo no )"
-        echo "Remote FLAC exists: $( [ -f "$REMOTE_FLAC" ] && echo yes || echo no )"
+    if [ -f "$LOCAL_WAV" ]; then
+        echo "ERROR: Failed to clear legacy local WAV cache file for '$TEST_NAME'"
         exit 1
     fi
 
@@ -2475,14 +2451,14 @@ test_play_endpoint_promotes_cached_wav_to_flac() {
         exit 1
     fi
 
-    if [ ! -f "$LOCAL_FLAC" ] || [ ! -f "$REMOTE_FLAC" ]; then
-        echo "ERROR: Expected play endpoint promotion to recreate local and remote FLAC for '$TEST_NAME'"
+    if [ ! -f "$LOCAL_FLAC" ] || [ -f "$LOCAL_WAV" ]; then
+        echo "ERROR: Expected play endpoint to keep serving the existing FLAC only for '$TEST_NAME'"
         echo "Local FLAC exists: $( [ -f "$LOCAL_FLAC" ] && echo yes || echo no )"
-        echo "Remote FLAC exists: $( [ -f "$REMOTE_FLAC" ] && echo yes || echo no )"
+        echo "Local WAV exists: $( [ -f "$LOCAL_WAV" ] && echo yes || echo no )"
         exit 1
     fi
 
-    echo "SUCCESS: Play endpoint promoted cached WAV to FLAC and served the FLAC variant."
+    echo "SUCCESS: Play endpoint served the existing FLAC without creating a WAV sibling."
     echo ""
 }
 
@@ -2686,9 +2662,94 @@ test_url_cache_logic "URL download cache" "https://modland.com/pub/modules/Protr
 test_url_cache_normalizes_cache_busters "URL cache ignores known cache-buster params" "$LOCAL_TEST_SERVER_URL/fixtures/modules/space_debris.mod"
 test_remote_cache_access_record_refresh "Sidecar access record refresh" "https://modland.com/pub/modules/Protracker/Captain/space%20debris.mod"
 test_no_orphaned_cache_access_temp_files_under_parallel_hits "No orphaned sidecar temp files" "https://modland.com/pub/modules/Protracker/Captain/space%20debris.mod"
-test_flac_request_promotes_cached_wav_locally "FLAC promotion keeps WAV sibling" "https://modland.com/pub/modules/Protracker/4-Mat/agony-beginning.mod"
-test_play_endpoint_promotes_cached_wav_to_flac "Play endpoint FLAC promotion" "https://modland.com/pub/modules/Protracker/Captain/space%20debris.mod"
-test_local_cleanup_removes_stale_wav_after_flac_hits "Local cleanup ages out stale WAV after FLAC hits" "https://modland.com/pub/modules/Protracker/Captain/beyond%20music.mod"
+test_convert_url_uses_canonical_flac "Canonical FLAC conversion has no WAV sibling" "https://modland.com/pub/modules/Protracker/4-Mat/agony-beginning.mod"
+test_play_endpoint_serves_existing_flac "Play endpoint serves existing FLAC" "https://modland.com/pub/modules/Protracker/Captain/space%20debris.mod"
+test_local_cleanup_preserves_refreshed_flac "Local cleanup preserves refreshed canonical FLAC" "https://modland.com/pub/modules/Protracker/Captain/beyond%20music.mod"
+
+_create_stale_conversion_lock() {
+    LOCAL_CACHE_HASH=$1
+
+    RESPONSE_ALL=$(curl -s -w "\n%{http_code}" -X POST \
+        -H "Content-Type: application/json" \
+        -d "{\"cache_hash\":\"$LOCAL_CACHE_HASH\"}" \
+        "$BASE_URL/test/create-stale-conversion-lock")
+
+    HTTP_CODE=$(echo "$RESPONSE_ALL" | tail -n1)
+    BODY=$(echo "$RESPONSE_ALL" | sed '$d')
+
+    if [ "$HTTP_CODE" -ne 200 ]; then
+        echo "ERROR: Failed to create stale lock for $LOCAL_CACHE_HASH"
+        echo "Response body: $BODY"
+        exit 1
+    fi
+
+    echo "$BODY"
+}
+
+test_stale_conversion_lock_reclamation() {
+    TEST_NAME=$1
+    URL=$2
+
+    echo "--- Testing Stale Conversion Lock Reclamation: $TEST_NAME ---"
+
+    # Step 1: Warm once so we learn the actual stable content hash/file_id.
+    HTTP_CODE_BODY=$(_perform_convert_url_call "$URL")
+    HTTP_CODE=$(echo "$HTTP_CODE_BODY" | head -n1)
+    BODY=$(echo "$HTTP_CODE_BODY" | tail -n1)
+
+    if [ "$HTTP_CODE" -ne 200 ]; then
+        echo "ERROR: Warm-up convert-url call failed with HTTP $HTTP_CODE for '$TEST_NAME'"
+        echo "Response body: $BODY"
+        exit 1
+    fi
+
+    FILE_ID=$(echo "$BODY" | jq -r .file_id)
+    AUDIO_FORMAT=$(echo "$BODY" | jq -r .audio_format)
+
+    if [ -z "$FILE_ID" ] || [ "$FILE_ID" = "null" ]; then
+        echo "ERROR: Warm-up response missing file_id for '$TEST_NAME'"
+        echo "Response body: $BODY"
+        exit 1
+    fi
+
+    if [ "$AUDIO_FORMAT" != "flac" ]; then
+        echo "ERROR: Warm-up response did not establish canonical FLAC for '$TEST_NAME'"
+        echo "Response body: $BODY"
+        exit 1
+    fi
+
+    # Step 2: Remove the exact cached artifact so the next request cannot
+    # short-circuit on a remote/local cache hit before checking the lock.
+    _remove_cache_artifact "$FILE_ID" ".flac" > /dev/null
+
+    # Step 3: Create a stale lock for the exact content hash this URL uses.
+    _create_stale_conversion_lock "$FILE_ID" > /dev/null
+
+    # Step 4: Trigger conversion. It should hit the lock, see it's stale,
+    # clear it, and successfully convert.
+    HTTP_CODE_BODY=$(_perform_convert_url_call "$URL")
+    HTTP_CODE=$(echo "$HTTP_CODE_BODY" | head -n1)
+    BODY=$(echo "$HTTP_CODE_BODY" | tail -n1)
+
+    if [ "$HTTP_CODE" -ne 200 ]; then
+        echo "ERROR: convert-url failed when encountering a stale lock for '$TEST_NAME'"
+        echo "HTTP Code: $HTTP_CODE"
+        echo "Response body: $BODY"
+        exit 1
+    fi
+
+    FILE_ID=$(echo "$BODY" | jq -r .file_id)
+    if [ -z "$FILE_ID" ] || [ "$FILE_ID" = "null" ]; then
+        echo "ERROR: file_id missing from response for '$TEST_NAME'"
+        echo "Response body: $BODY"
+        exit 1
+    fi
+
+    echo "SUCCESS: Stale conversion lock was reclaimed and conversion succeeded."
+    echo ""
+}
+
+test_stale_conversion_lock_reclamation "Stale lock is reclaimed" "${LOCAL_TEST_SERVER_URL}/fixtures/modules/stormlord.ahx?case=stale-lock-reclaimed"
 
 test_probe_url "Probe Protracker module" "https://modland.com/pub/modules/Protracker/Captain/space%20debris.mod"
 test_probe_url "Probe TFMX module" "https://modland.com/pub/modules/TFMX/Chris%20Huelsbeck/mdat.turrican%202%20level%200-intro" "https://modland.com/pub/modules/TFMX/Chris%20Huelsbeck/smpl.turrican%202%20level%200-intro"
@@ -2712,9 +2773,6 @@ test_url "ZIP archive" "https://files.scene.org/get:fi-https/music/artists/4-mat
 test_url "RJP module" "https://modland.com/pub/modules/Richard%20Joseph/Richard%20Joseph/cannon%20fodder%20(intro).sng" "https://modland.com/pub/modules/Richard%20Joseph/Richard%20Joseph/cannon%20fodder%20(intro).ins"
 test_url "Negative case (non-module)" "$LOCAL_TEST_SERVER_URL/fixtures/modules/gutenberg.txt"
 test_download_filename_sanitization "Sanitize hostile download filename" "https://modland.com/pub/modules/Protracker/Lizardking/l.k%27s%20doskpop.mod" "" "%3Cimg%20src%3Dx%20onerror%3Dalert(1)%3E" "filename=\"uade_img_srcx_onerroralert1"
-
-test_play_example "Play Example (Romeo Knight)" "romeo-knight-beat"
-test_play_example "Play Example (Turrican 2)" "huelsbeck-turrican2"
 
 # Security tests
 # Keep validation-only reject cases on external-looking URLs when the app fails fast
@@ -2747,9 +2805,9 @@ test_convert_url_wrong_content_type
 # XSS in filename/module name (should not be reflected unsanitized)
 test_xss_filename "https://example.com/<script>alert('xss')</script>.mod"
 
-# Note: The FLAC test file must be unique in test cases to avoid being cached as WAV
-# and must not be returned by the example modules endpoint (app.route("/examples")) to ensure a fresh conversion.
-test_url_with_ua "FLAC compression with Chrome UA"  "https://modland.com/pub/modules/Protracker/Lizardking/l.k%27s%20doskpop.mod" "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 Chrome/120.0.0.0" "flac"
+# Note: The FLAC test file must be unique in test cases and must not be returned by the
+# example modules endpoint (app.route("/examples")) to ensure a fresh conversion.
+test_url_with_ua "Canonical FLAC conversion with Chrome UA"  "https://modland.com/pub/modules/Protracker/Lizardking/l.k%27s%20doskpop.mod" "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 Chrome/120.0.0.0" "flac"
 
 test_range_request "Range request for large TFMX module" "https://modland.com/pub/modules/TFMX/Chris%20Huelsbeck/mdat.turrican%202%20level%200-intro" "https://modland.com/pub/modules/TFMX/Chris%20Huelsbeck/smpl.turrican%202%20level%200-intro"
 

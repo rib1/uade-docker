@@ -12,6 +12,7 @@ import json
 import logging
 import os
 import platform
+import posixpath
 import re
 import shutil
 import socket
@@ -224,9 +225,8 @@ DOWNLOAD_RATE_LIMIT: Final = int(os.getenv("DOWNLOAD_RATE_LIMIT", "6"))  # downl
 CONVERSION_RATE_LIMIT_PER_MINUTE: Final = int(os.getenv("CONVERSION_RATE_LIMIT_PER_MINUTE", "10"))
 CONVERSION_TIMEOUT_SECONDS: Final = int(os.getenv("CONVERSION_TIMEOUT_SECONDS", "300"))
 CONVERSION_LOCK_POLL_SECONDS: Final = 1
+DUPLICATE_CONVERSION_WAIT_SECONDS: Final = int(os.getenv("DUPLICATE_CONVERSION_WAIT_SECONDS", "2"))
 MAX_CONCURRENT_CONVERSIONS: Final = max(1, int(os.getenv("MAX_CONCURRENT_CONVERSIONS", "2")))
-FLAC_PROMOTION_TIMEOUT_SECONDS: Final = int(os.getenv("FLAC_PROMOTION_TIMEOUT_SECONDS", "90"))
-FLAC_PROMOTION_POLL_SECONDS: Final = 1
 PROBE_UPLOAD_RATE_LIMIT_PER_MINUTE: Final = int(
     os.getenv("PROBE_UPLOAD_RATE_LIMIT_PER_MINUTE", "40")
 )
@@ -258,6 +258,9 @@ def get_fs_and_root(uri, fs_kwargs=None):
     elif uri.startswith("gcs://"):
         fs = fsspec.filesystem("gcs", **fs_kwargs)
         root = uri[6:]
+    elif uri.startswith("file://"):
+        fs = fsspec.filesystem("file")
+        root = uri[7:] or TEMP_BASE
     else:
         fs = fsspec.filesystem("file")
         root = uri
@@ -271,14 +274,28 @@ def get_fs_and_root(uri, fs_kwargs=None):
 #   - "gcs://bucket/path" for Google Cloud Storage
 CACHE_URI: Final = os.getenv("CACHE_URI", f"file://{TEMP_BASE}/cache")
 fs_cache, root_cache = get_fs_and_root(CACHE_URI)
+CACHE_PROTOCOLS: Final = (
+    tuple(fs_cache.protocol)
+    if isinstance(fs_cache.protocol, (list, tuple, set))
+    else (fs_cache.protocol,)
+)
 CACHE_ACCESS_UPDATE_INTERVAL_SECONDS: Final = int(
     os.getenv("CACHE_ACCESS_UPDATE_INTERVAL_SECONDS", "300")
 )
 HEALTH_INCLUDE_CACHE_DEBUG: Final = os.getenv("HEALTH_INCLUDE_CACHE_DEBUG", "0") == "1"
 
 # Ensure remote cache directory exists (if using local filesystem)
-if fs_cache.protocol == "file":
+if "file" in CACHE_PROTOCOLS or "local" in CACHE_PROTOCOLS:
     Path(root_cache).mkdir(parents=True, exist_ok=True)
+
+CONVERSION_LOCKS_ROOT_REMOTE: Final = f"{root_cache}/conversion-locks"
+CONVERSION_LOCKS_ROOT_LOCAL: Final[Path | None] = (
+    Path(root_cache) / "conversion-locks"
+    if "file" in CACHE_PROTOCOLS or "local" in CACHE_PROTOCOLS
+    else None
+)
+if CONVERSION_LOCKS_ROOT_LOCAL is not None:
+    CONVERSION_LOCKS_ROOT_LOCAL.mkdir(parents=True, exist_ok=True)
 
 # Rate limiting, disabled if RATE_LIMIT_DISABLED is set to "1"
 rate_limit_enabled = os.getenv("RATE_LIMIT_DISABLED", "0") != "1"
@@ -1129,7 +1146,7 @@ def save_to_cache(cache_hash, file, ext):
     update_cache_access_record(cache_hash, force=True)
 
 
-def fetch_cached_file(cache_hash, *, prefer_flac=False):
+def fetch_cached_file(cache_hash, *, prefer_flac=False, allow_wav_fallback=True):
     """
     Check if a converted file exists in remote cache (WAV or FLAC).
     If found, copy to local and return local path with metadata.
@@ -1139,7 +1156,11 @@ def fetch_cached_file(cache_hash, *, prefer_flac=False):
                subsong_durations, or (None, None) if not found
     """
     # Try FLAC first if preferred
-    for ext in ([".flac"] if prefer_flac else []) + [".wav"]:
+    extensions = [".flac"] if prefer_flac else []
+    if not prefer_flac or allow_wav_fallback:
+        extensions.append(".wav")
+
+    for ext in extensions:
         cache_file_remote = f"{root_cache}/{cache_hash}{ext}"
         cache_file_local = CONVERTED_DIR / f"{cache_hash}{ext}"
         temp_file_local = cache_file_local.with_name(f"{cache_file_local.name}.{uuid.uuid4()}.tmp")
@@ -1152,10 +1173,6 @@ def fetch_cached_file(cache_hash, *, prefer_flac=False):
                 update_cache_access_record(cache_hash)
                 # Load metadata including subsong durations
                 metadata = load_metadata_cache(cache_hash)
-                if prefer_flac and ext == ".wav":
-                    flac_cache_file_local = ensure_cached_flac(cache_hash, cache_file_local)
-                    if flac_cache_file_local and flac_cache_file_local.exists():
-                        return flac_cache_file_local, metadata
                 return cache_file_local, metadata
             # Ensure local cache directory exists
             cache_dir_local = cache_file_local.parent
@@ -1173,10 +1190,6 @@ def fetch_cached_file(cache_hash, *, prefer_flac=False):
             update_cache_access_record(cache_hash)
             # Load metadata including subsong durations
             metadata = load_metadata_cache(cache_hash)
-            if prefer_flac and ext == ".wav":
-                flac_cache_file_local = ensure_cached_flac(cache_hash, cache_file_local)
-                if flac_cache_file_local and flac_cache_file_local.exists():
-                    return flac_cache_file_local, metadata
             return cache_file_local, metadata
     return None, None
 
@@ -1387,18 +1400,6 @@ def load_metadata_cache(cache_hash):
     return None
 
 
-def wait_for_file(file_path, *, timeout_seconds, poll_seconds, description):
-    """Wait for a file to appear locally."""
-    poll_count = max(1, timeout_seconds // poll_seconds)
-    for _ in range(poll_count):
-        if file_path.exists():
-            logger.info(f"{description} completed: {file_path.name}")
-            return True
-        time.sleep(poll_seconds)
-    logger.warning(f"Timeout waiting for {description}: {file_path.name}")
-    return False
-
-
 def _write_lock_metadata(lock_path):
     """Persist basic owner metadata for a file-based lock."""
     try:
@@ -1407,15 +1408,22 @@ def _write_lock_metadata(lock_path):
             "hostname": socket.gethostname(),
             "created_at": time.time(),
         }
-        lock_path.write_text(json.dumps(payload), encoding="utf-8")
+        if isinstance(lock_path, Path):
+            lock_path.write_text(json.dumps(payload), encoding="utf-8")
+        else:
+            with fs_cache.open(lock_path, "w") as f:
+                f.write(json.dumps(payload))
     except Exception:
-        logger.warning(f"Could not write lock metadata for {lock_path.name}", exc_info=True)
+        logger.warning(f"Could not write lock metadata for {_lock_name(lock_path)}", exc_info=True)
 
 
 def _read_lock_metadata(lock_path):
     """Return parsed lock metadata when present."""
     try:
-        return json.loads(lock_path.read_text(encoding="utf-8"))
+        if isinstance(lock_path, Path):
+            return json.loads(lock_path.read_text(encoding="utf-8"))
+        with fs_cache.open(lock_path, "r") as f:
+            return json.load(f)
     except Exception:
         return None
 
@@ -1429,83 +1437,103 @@ def _pid_is_alive(pid):
     return True
 
 
-def _clear_stale_flac_lock(lock_path):
-    """Remove a stale FLAC promotion lock if it has clearly expired."""
+def _lock_name(lock_path):
+    """Return a human-readable name for local or remote lock references."""
+    if isinstance(lock_path, Path):
+        return lock_path.name
+    return posixpath.basename(str(lock_path))
+
+
+def _lock_exists(lock_path):
+    """Check whether a local or remote lock exists."""
+    if isinstance(lock_path, Path):
+        return lock_path.exists()
+    return fs_cache.exists(lock_path)
+
+
+def _lock_touch_exclusive(lock_path):
+    """Create a local or remote lock atomically when possible."""
+    if isinstance(lock_path, Path):
+        lock_path.parent.mkdir(parents=True, exist_ok=True)
+        lock_path.touch(exist_ok=False)
+        return
+
+    parent = posixpath.dirname(lock_path)
+    if parent:
+        fs_cache.makedirs(parent, exist_ok=True)
+    with fs_cache.open(lock_path, "xb") as f:
+        f.write(b"")
+
+
+def _lock_unlink(lock_path):
+    """Remove a local or remote lock if present."""
+    if isinstance(lock_path, Path):
+        lock_path.unlink(missing_ok=True)
+        return
+    if fs_cache.exists(lock_path):
+        fs_cache.rm_file(lock_path)
+
+
+def _lock_age_seconds(lock_path, metadata=None):
+    """Return lock age in seconds using metadata first, then mtime."""
+    metadata = metadata or {}
+    created_at = metadata.get("created_at")
+    if isinstance(created_at, (int, float)):
+        return time.time() - float(created_at)
+
+    if isinstance(lock_path, Path):
+        return time.time() - lock_path.stat().st_mtime
+
+    info = fs_cache.info(lock_path)
+    mtime_ts = parse_timestamp_to_epoch(
+        info.get("mtime") or info.get("LastModified") or info.get("updated") or info.get("created")
+    )
+    if mtime_ts is None:
+        return 0
+    return time.time() - mtime_ts
+
+
+def get_conversion_lock_path(cache_hash):
+    """Return the shared per-hash conversion lock reference."""
+    filename = f"{cache_hash}.lock"
+    if CONVERSION_LOCKS_ROOT_LOCAL is not None:
+        return CONVERSION_LOCKS_ROOT_LOCAL / filename
+    return f"{CONVERSION_LOCKS_ROOT_REMOTE}/{filename}"
+
+
+def _clear_stale_conversion_lock(lock_path):
+    """Remove a stale conversion lock if it has clearly expired."""
     try:
-        age_seconds = time.time() - lock_path.stat().st_mtime
+        metadata = _read_lock_metadata(lock_path) or {}
+        age_seconds = _lock_age_seconds(lock_path, metadata=metadata)
     except FileNotFoundError:
         return False
-
-    if age_seconds <= FLAC_PROMOTION_TIMEOUT_SECONDS:
+    except Exception:
         return False
 
-    metadata = _read_lock_metadata(lock_path) or {}
+    if age_seconds <= CONVERSION_TIMEOUT_SECONDS:
+        return False
+
     lock_hostname = metadata.get("hostname")
     lock_pid = metadata.get("pid")
     local_hostname = socket.gethostname()
 
     if lock_hostname == local_hostname and isinstance(lock_pid, int) and _pid_is_alive(lock_pid):
         logger.info(
-            f"FLAC promotion lock exceeded timeout but owner pid {lock_pid} is still alive: "
+            f"Conversion lock exceeded timeout but owner pid {lock_pid} is still alive: "
             f"{lock_path.name}"
         )
         return False
 
     try:
-        lock_path.unlink(missing_ok=True)
+        _lock_unlink(lock_path)
         logger.warning(
-            f"Removed stale FLAC promotion lock after {age_seconds:.1f}s: {lock_path.name}"
+            f"Removed stale conversion lock after {age_seconds:.1f}s: {_lock_name(lock_path)}"
         )
         return True
     except Exception:
-        logger.warning(f"Could not remove stale FLAC promotion lock: {lock_path.name}")
+        logger.warning(f"Could not remove stale conversion lock: {_lock_name(lock_path)}")
         return False
-
-
-def ensure_cached_flac(cache_hash, wav_path):
-    """Promote a cached WAV artifact to FLAC with a per-hash lock."""
-    flac_path = CONVERTED_DIR / f"{cache_hash}.flac"
-    if flac_path.exists():
-        return flac_path
-
-    flac_lock_path = CONVERTED_DIR / f"{cache_hash}.flac.lock"
-    flac_lock_acquired = False
-    if flac_lock_path.exists():
-        _clear_stale_flac_lock(flac_lock_path)
-    if flac_lock_path.exists():
-        if wait_for_file(
-            flac_path,
-            timeout_seconds=FLAC_PROMOTION_TIMEOUT_SECONDS,
-            poll_seconds=FLAC_PROMOTION_POLL_SECONDS,
-            description="FLAC promotion",
-        ):
-            return flac_path
-        return None
-
-    try:
-        flac_lock_path.touch(exist_ok=False)
-        flac_lock_acquired = True
-        _write_lock_metadata(flac_lock_path)
-        if flac_path.exists():
-            return flac_path
-        if compress_to_flac(wav_path, flac_path):
-            save_to_cache(cache_hash, flac_path, ".flac")
-            return flac_path
-        return None
-    except FileExistsError:
-        if _clear_stale_flac_lock(flac_lock_path):
-            return ensure_cached_flac(cache_hash, wav_path)
-        if wait_for_file(
-            flac_path,
-            timeout_seconds=FLAC_PROMOTION_TIMEOUT_SECONDS,
-            poll_seconds=FLAC_PROMOTION_POLL_SECONDS,
-            description="FLAC promotion after lock contention",
-        ):
-            return flac_path
-        return None
-    finally:
-        if flac_lock_acquired:
-            flac_lock_path.unlink(missing_ok=True)
 
 
 def wait_for_conversion(
@@ -1519,12 +1547,16 @@ def wait_for_conversion(
     *,
     wait_started_at=None,
 ):
-    """Wait for a file conversion to complete and return the result."""
+    """Wait briefly for an in-flight same-hash conversion to complete."""
     logger.info(f"Conversion for {cache_hash} is in progress, waiting...")
-    poll_count = max(1, CONVERSION_TIMEOUT_SECONDS // CONVERSION_LOCK_POLL_SECONDS)
+    poll_count = max(1, DUPLICATE_CONVERSION_WAIT_SECONDS // CONVERSION_LOCK_POLL_SECONDS)
     for _ in range(poll_count):
-        if not lock_path.exists():
-            cached_file, metadata = fetch_cached_file(cache_hash, prefer_flac=prefer_flac)
+        if not _lock_exists(lock_path):
+            cached_file, metadata = fetch_cached_file(
+                cache_hash,
+                prefer_flac=prefer_flac,
+                allow_wav_fallback=not prefer_flac,
+            )
             if cached_file and cached_file.exists():
                 logger.info(f"Conversion for {cache_hash} completed by another thread.")
                 if wait_started_at is not None:
@@ -1553,13 +1585,16 @@ def wait_for_conversion(
             )
             break
         time.sleep(CONVERSION_LOCK_POLL_SECONDS)
-    logger.warning(f"Timeout waiting for conversion of {cache_hash}.")
+    logger.info(
+        f"Conversion for {cache_hash} is still in progress after "
+        f"{DUPLICATE_CONVERSION_WAIT_SECONDS}s; returning processing response."
+    )
     if wait_started_at is not None:
         _log_duration(
             "Conversion lock wait",
             wait_started_at,
             cache_hash=cache_hash,
-            status="timeout",
+            status="processing",
         )
     return None
 
@@ -1596,7 +1631,10 @@ def process_audio_conversion(input_path, *, compress_flac=False, sample_files=No
         Returns the same tuple shape on failure. If the global conversion slot
         is not acquired within CONVERSION_TIMEOUT_SECONDS, the error element is
         "Timeout waiting for global conversion slot." and the converted-file
-        element is None.
+        element is None. If another request already owns the same per-hash lock
+        and the artifact is still not ready after DUPLICATE_CONVERSION_WAIT_SECONDS,
+        the error element becomes "Conversion in progress." so callers can return
+        a retryable response instead of holding the request open.
     """
     # Hold metadata to return to the caller, even if conversion fails.
     metadata_success, module_name, module_format, player_format, subsongs = (
@@ -1703,7 +1741,7 @@ def process_audio_conversion(input_path, *, compress_flac=False, sample_files=No
             )
 
         output_path = CONVERTED_DIR / f"{cache_hash}.wav"
-        lock_path = CONVERTED_DIR / f"{cache_hash}.lock"
+        lock_path = get_conversion_lock_path(cache_hash)
         # Use a temporary file for UADE output to ensure atomic write
         temp_uade_output_path = output_path.with_name(f"{output_path.name}.{uuid.uuid4()!s}.tmp")
         stderr_log_path = temp_uade_output_path.with_suffix(
@@ -1711,7 +1749,11 @@ def process_audio_conversion(input_path, *, compress_flac=False, sample_files=No
         )
 
         # Check remote cache first (before acquiring lock)
-        cached_file, metadata = fetch_cached_file(cache_hash, prefer_flac=compress_flac)
+        cached_file, metadata = fetch_cached_file(
+            cache_hash,
+            prefer_flac=compress_flac,
+            allow_wav_fallback=not compress_flac,
+        )
         if cached_file and cached_file.exists():
             # Extract duration_list from metadata
             duration_list = metadata.get("subsong_durations", []) if metadata else []
@@ -1729,7 +1771,10 @@ def process_audio_conversion(input_path, *, compress_flac=False, sample_files=No
             )
 
         # If lock exists, another thread is already converting this file
-        if lock_path.exists():
+        if _lock_exists(lock_path):
+            _clear_stale_conversion_lock(lock_path)
+
+        if _lock_exists(lock_path):
             lock_wait_started_at = time.perf_counter()
             result = wait_for_conversion(
                 cache_hash,
@@ -1743,18 +1788,34 @@ def process_audio_conversion(input_path, *, compress_flac=False, sample_files=No
             )
             if result:
                 return result
-            logger.warning(
-                f"Timeout waiting for conversion of {cache_hash} by another thread. "
-                "Proceeding with conversion ourselves."
+            logger.info(
+                f"Returning processing state for duplicate conversion request: {cache_hash}"
+            )
+            return (
+                False,
+                "Conversion in progress.",
+                None,
+                player_format,
+                module_name,
+                module_format,
+                subsongs,
+                False,
+                cache_hash,
+                [],
             )
 
         semaphore_acquired = False
         conversion_lock_acquired = False
         try:
-            lock_path.touch(exist_ok=False)
+            _lock_touch_exclusive(lock_path)
             conversion_lock_acquired = True
+            _write_lock_metadata(lock_path)
 
-            cached_file, metadata = fetch_cached_file(cache_hash, prefer_flac=compress_flac)
+            cached_file, metadata = fetch_cached_file(
+                cache_hash,
+                prefer_flac=compress_flac,
+                allow_wav_fallback=not compress_flac,
+            )
             if cached_file and cached_file.exists():
                 # Extract duration_list from metadata
                 duration_list = metadata.get("subsong_durations", []) if metadata else []
@@ -1868,6 +1929,7 @@ def process_audio_conversion(input_path, *, compress_flac=False, sample_files=No
                 flac_output = output_path.with_suffix(".flac")
                 if compress_to_flac(output_path, flac_output):
                     final_output = flac_output
+                    output_path.unlink(missing_ok=True)
 
             if semaphore_acquired:
                 GLOBAL_CONVERSION_SEMAPHORE.release()
@@ -1914,6 +1976,10 @@ def process_audio_conversion(input_path, *, compress_flac=False, sample_files=No
             )
 
         except FileExistsError:
+            if _clear_stale_conversion_lock(lock_path):
+                return process_audio_conversion(
+                    input_path, compress_flac=compress_flac, sample_files=sample_files
+                )
             lock_wait_started_at = time.perf_counter()
             result = wait_for_conversion(
                 cache_hash,
@@ -1929,7 +1995,7 @@ def process_audio_conversion(input_path, *, compress_flac=False, sample_files=No
                 return result
             return (
                 False,
-                "Timeout waiting for another conversion process after lock contention.",
+                "Conversion in progress.",
                 None,
                 player_format,
                 module_name,
@@ -1943,7 +2009,7 @@ def process_audio_conversion(input_path, *, compress_flac=False, sample_files=No
             if semaphore_acquired:
                 GLOBAL_CONVERSION_SEMAPHORE.release()
             if conversion_lock_acquired:
-                lock_path.unlink(missing_ok=True)
+                _lock_unlink(lock_path)
             temp_uade_output_path.unlink(missing_ok=True)  # Clean up temp file
             stderr_log_path.unlink(missing_ok=True)
 
@@ -2191,6 +2257,52 @@ def test_set_local_file_mtime():
     )
 
 
+@app.route("/test/create-stale-conversion-lock", methods=["POST"])
+@limiter.exempt
+def test_create_stale_conversion_lock():
+    """Create a stale conversion lock in test mode to exercise lock reclamation behavior."""
+    if os.getenv("UADE_TEST_MODE") != "1":
+        return json_response({"error": "Not found"}, 404)
+
+    data = request.get_json(silent=True) or {}
+    cache_hash = data.get("cache_hash")
+    age_seconds = data.get("age_seconds", CONVERSION_TIMEOUT_SECONDS + 1)
+
+    if not isinstance(cache_hash, str) or not _MD5_HEX_RE.match(cache_hash):
+        return json_response({"error": "Invalid cache_hash"}, 400)
+
+    try:
+        lock_path = get_conversion_lock_path(cache_hash)
+        if _lock_exists(lock_path):
+            _lock_unlink(lock_path)
+        _lock_touch_exclusive(lock_path)
+        # Write metadata of a dead process
+        payload = {
+            "pid": 99999,  # Unlikely to be alive
+            "hostname": socket.gethostname(),
+            "created_at": time.time() - age_seconds,
+        }
+        mtime_epoch = time.time() - age_seconds
+        if isinstance(lock_path, Path):
+            lock_path.write_text(json.dumps(payload), encoding="utf-8")
+            os.utime(lock_path, (mtime_epoch, mtime_epoch))
+        else:
+            with fs_cache.open(lock_path, "w") as f:
+                f.write(json.dumps(payload))
+
+        return json_response(
+            {
+                "success": True,
+                "lock_file": str(lock_path),
+                "mtime_epoch": mtime_epoch,
+                "age_seconds": age_seconds,
+            }
+        )
+    except Exception as e:
+        logger.error(f"Error creating stale lock: {e}", exc_info=True)
+        return json_response({"error": str(e)}, 500)
+
+
 @app.route("/test/remove-cache-artifact", methods=["POST"])
 @limiter.exempt
 def test_remove_cache_artifact():
@@ -2308,11 +2420,10 @@ def upload_file():
         return json_response({"error": "Empty file provided"}, 400)
 
     try:
-        # Check browser FLAC support
         user_agent = request.headers.get("User-Agent", "")
         sanitized_user_agent = user_agent.replace("\r", "").replace("\n", "")
         logger.info(f"User-Agent: {sanitized_user_agent}")
-        use_flac = supports_flac(user_agent)
+        use_flac = True
 
         # Generate unique ID
         file_id = str(uuid.uuid4())
@@ -2421,7 +2532,7 @@ def convert_probed():
     user_agent = request.headers.get("User-Agent", "")
     sanitized_user_agent = user_agent.replace("\r", "").replace("\n", "")
     logger.info(f"Convert-probed User-Agent: {sanitized_user_agent}")
-    use_flac = supports_flac(user_agent)
+    use_flac = True
 
     return process_module_and_respond(
         probed_path, filename, use_flac, url_cached=False, sample_files=None
@@ -2483,6 +2594,15 @@ def process_module_and_respond(
         ) = process_audio_conversion(module_path, compress_flac=use_flac, sample_files=sample_files)
 
         if not success:
+            if error == "Conversion in progress.":
+                return json_response(
+                    {
+                        "error": error,
+                        "status": "processing",
+                        "retryable": True,
+                    },
+                    409,
+                )
             return json_response({"error": error}, 500)
 
         return json_response(
@@ -3032,9 +3152,7 @@ def convert_url_payload(data):
         if error_response:
             return error_response
 
-        # Check browser FLAC support
-        user_agent = request.headers.get("User-Agent", "")
-        use_flac = supports_flac(user_agent)
+        use_flac = True
         return process_module_and_respond(
             remote_source["module_path"],
             remote_source["filename"],
@@ -3335,22 +3453,6 @@ def extract_filename_from_url(url):
         filename = url_for_filename.split("/")[-1].split("?")[0]
     filename = filename[:100]  # Limit to 100 chars
     return secure_filename(filename) or "module"
-
-
-@app.route("/play-example/<example_id>", methods=["POST"])
-@limiter.limit(f"{CONVERSION_RATE_LIMIT_PER_MINUTE} per minute")
-def play_example(example_id):
-    """Convert and play predefined example"""
-    example = next((ex for ex in EXAMPLES if ex["id"] == example_id), None)
-    if not example:
-        return json_response({"error": "Example not found"}, 404)
-
-    # Prepare payload for convert_url
-    payload = {"url": example["url"]}
-    if "sample_url" in example:
-        payload["sample_url"] = example["sample_url"]
-
-    return convert_url_payload(payload)
 
 
 @app.route("/play/<file_id>")

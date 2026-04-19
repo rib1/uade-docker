@@ -477,6 +477,16 @@ async function handleFileUpload(file) {
   );
 }
 
+const PROCESSING_RETRY_DELAYS_MS = [750, 1500, 2500];
+
+async function parseJsonResponse(response, fallbackMessage) {
+  const contentType = response.headers.get("content-type") || "";
+  if (!contentType.includes("application/json")) {
+    throw new Error(fallbackMessage);
+  }
+  return response.json();
+}
+
 // Perform a conversion (upload, URL, or example)
 async function performConversion(
   endpoint,
@@ -506,8 +516,26 @@ async function performConversion(
   }
 
   try {
-    const response = await fetch(endpoint, options);
-    const data = await response.json();
+    let response;
+    let data;
+    for (let attempt = 0; ; attempt += 1) {
+      response = await fetch(endpoint, options);
+      data = await parseJsonResponse(response, "Conversion returned a non-JSON response");
+
+      if (
+        response.status !== 409 ||
+        data?.status !== "processing" ||
+        !data?.retryable ||
+        attempt >= PROCESSING_RETRY_DELAYS_MS.length
+      ) {
+        break;
+      }
+
+      showStatus("Still converting, retrying...", "info");
+      await new Promise((resolve) => {
+        window.setTimeout(resolve, PROCESSING_RETRY_DELAYS_MS[attempt]);
+      });
+    }
 
     if (response.ok) {
       const moduleName = moduleNameOverride || data.module_name || data.filename;
@@ -1469,9 +1497,22 @@ async function loadExamples() {
 
 // Play Example
 async function handleExamplePlay(example, button) {
+  const payload = {
+    url: example.url,
+  };
+  if (example.sample_url) {
+    payload.sample_url = example.sample_url;
+  }
+
   await performConversion(
-    `/play-example/${example.id}`,
-    { method: "POST" },
+    "/convert-url",
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(payload),
+    },
     button,
     `Converting ${example.name}...`,
     "✓ {moduleName} converted and ready to play",

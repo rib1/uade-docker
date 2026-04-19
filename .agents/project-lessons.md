@@ -130,6 +130,7 @@ This document contains project-specific learnings and regression-avoidance notes
 - **CI/CD:** A long-running attached `docker compose up` can hit agent timeouts. Check `docker compose ps` or rerun in detached mode before assuming failure.
 - **Docker Flakes:** A transient missing-network error right after Compose teardown can be infrastructure noise rather than a code regression. Retry once from a clean stack before debugging the app.
 - **Multi-Instance Validation:** When `/web` dependency bumps touch filesystem or cache-related packages such as `fsspec`, `gcsfs`, or `s3fs`, run the multi-instance Compose suite (`test/docker-compose.multiinstance.yml`) in addition to the normal endpoint tests. Shared-cache behavior across containers is an explicit compatibility surface for this repo.
+- **Multi-Instance Duplicate Converts:** The per-hash conversion lock now lives in the shared cache backend (`/tmp/cache/conversion-locks` for the local multi-instance stack), so the short duplicate-convert `409 processing` contract applies across instances when they share the same cache backend. If this behavior regresses, rerun the multi-instance suite before assuming a frontend issue.
 - **Accessibility:** Run accessibility checks within an integration test environment that has a real browser and running application.
 - **Accessibility:** Use `test/accessibility-preflight.js` to verify the player reaches the intended interactive states before running `pa11y-ci`.
 - **Accessibility:** Generate the Pa11y config on the fly from `test/accessibility-scenarios.js` rather than maintaining a static config file.
@@ -237,8 +238,7 @@ This document contains project-specific learnings and regression-avoidance notes
 - **Cache Integrity:** Use a `HASH.cache-access.json` sidecar file for more reliable LRU cache management than `mtime`.
 - **Cache Integrity:** Sidecar access-record updates must tolerate concurrent writers. Handle `ENOENT` on file replacement as an expected condition.
 - **Cache Integrity:** Implement cleanup logic for orphaned `*.tmp` files to prevent cache pollution from failed sidecar updates.
-- **Cache Behavior:** The cache should promote a cached WAV file to FLAC on demand if a FLAC-capable request arrives, rather than returning the wrong format.
-- **Cache Behavior:** Verify WAV-to-FLAC promotion on read paths too. `/play/*` and `/download/*` should promote and serve FLAC correctly when only WAV is cached.
+- **Cache Behavior:** Playback is now read-only against already-prepared artifacts. Do not reintroduce lazy WAV-to-FLAC promotion on `/play/*` or `/download/*`; conversion endpoints are responsible for producing the canonical FLAC artifact.
 - **Cache Behavior:** Under scanner-style concurrent load, cache health is better judged by leftover temp files and missing sidecars than by raw warning count in logs.
 - **Cache Behavior:** After the sidecar hardening patch, a healthy post-scan cache check is no `*.tmp` files in `/tmp/cache` and every cached audio object has a matching `.cache-access.json`.
 - **Log Noise:** Reduce log noise during DAST scans by logging expected hostile-input rejections and DNS lookup failures at the `INFO` level without tracebacks.

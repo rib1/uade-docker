@@ -12,6 +12,7 @@ const tfmxFixtureUrl =
 const tfmxSampleUrl =
   __ENV.BENCH_TFMX_SAMPLE_URL ||
   "http://uade-test-http-server:8000/fixtures/modules/smpl.turrican_2_level_0-intro";
+const convertUrlResponseCallback = http.expectedStatuses(200, 409);
 
 const sameHashConvertDuration = new Trend("dast_same_hash_convert_duration", true);
 const multiHashConvertUrlDuration = new Trend("dast_multi_hash_convert_url_duration", true);
@@ -130,6 +131,7 @@ function convertUrl(endpointTag) {
     }),
     {
       headers: jsonHeaders(),
+      responseCallback: convertUrlResponseCallback,
       tags: { endpoint: endpointTag },
       timeout: "310s",
     },
@@ -225,8 +227,9 @@ export function sameHashDuplicateWaiters() {
   check(
     response,
     {
-      "dast same-hash convert returned 200": (res) => res.status === 200,
-      "dast same-hash convert returned play_url": () => Boolean(payload?.play_url),
+      "dast same-hash convert returned 200 or 409": (res) => res.status === 200 || res.status === 409,
+      "dast same-hash convert returned play_url or processing state": () =>
+        Boolean(payload?.play_url) || payload?.status === "processing",
     },
     { endpoint: "dast-same-hash-convert" },
   );
