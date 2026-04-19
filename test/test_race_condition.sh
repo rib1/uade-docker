@@ -166,7 +166,7 @@ done
 FLAC_COMPRESSION_COUNT=$(get_flac_compression_count "$FILE_ID")
 
 if [ "$FLAC_COMPRESSION_COUNT" -ne 0 ]; then
-    echo "ERROR: Expected parallel play requests to trigger zero FLAC compressions, got $FLAC_COMPRESSION_COUNT"
+    echo "ERROR: Expected parallel play requests not to trigger FLAC compression, got count=$FLAC_COMPRESSION_COUNT"
     exit 1
 fi
 

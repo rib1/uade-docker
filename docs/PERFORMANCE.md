@@ -240,7 +240,7 @@ Implemented fixes and outcomes:
   - this made queueing visible and allowed Cloud Run tuning from measured data instead of guesswork
 - Read-only playback race fix
   - playback requests no longer perform lazy WAV-to-FLAC promotion on the hot path
-  - the race-condition regression now verifies that parallel `/play/<file_id>` requests trigger zero FLAC compressions and keep cached playback read-only
+  - the race-condition regression now verifies that parallel `/play/<file_id>` requests do not trigger FLAC compression and keep cached playback read-only
 - Faster request-time FLAC compression
   - `compress_to_flac()` now uses `flac -5` instead of `--best`
   - this keeps compression broadly effective while cutting CPU cost on heavy artifacts
