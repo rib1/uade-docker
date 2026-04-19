@@ -30,6 +30,7 @@ const playFullOnBRequests = new Counter("cross_instance_play_full_b_requests");
 const playRangeOnBRequests = new Counter("cross_instance_play_range_b_requests");
 const coldConvertProbedOnARequests = new Counter("cross_instance_convert_probed_a_requests");
 const coldConvertUrlOnARequests = new Counter("cross_instance_convert_url_a_requests");
+const coldConvertProbedOnAProcessing = new Counter("cross_instance_convert_probed_a_processing");
 const convertResponseCallback = http.expectedStatuses(200, 409);
 
 export const options = {
@@ -303,8 +304,12 @@ export function coldConvertProbedOnA(data) {
   const response = convertProbed(baseUrlA, data.probedModuleHash, "cross-convert-probed-a");
   const payload = parseJson(response);
 
-  coldConvertProbedOnADuration.add(response.timings.duration);
   coldConvertProbedOnARequests.add(1);
+  if (response.status === 200) {
+    coldConvertProbedOnADuration.add(response.timings.duration);
+  } else if (response.status === 409) {
+    coldConvertProbedOnAProcessing.add(1);
+  }
 
   requireCheck(
     response,
