@@ -16,7 +16,7 @@ services:
       uade-web:
         condition: service_healthy
       test-http-server:
-        condition: service_started
+        condition: service_healthy
     networks:
       - uade-net
     volumes:

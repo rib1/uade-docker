@@ -1403,6 +1403,7 @@ def load_metadata_cache(cache_hash):
 def _write_lock_metadata(lock_path):
     """Persist basic owner metadata for a file-based lock."""
     try:
+        lock_path = _validated_conversion_lock_path(lock_path)
         payload = {
             "pid": os.getpid(),
             "hostname": socket.gethostname(),
@@ -1420,6 +1421,7 @@ def _write_lock_metadata(lock_path):
 def _read_lock_metadata(lock_path):
     """Return parsed lock metadata when present."""
     try:
+        lock_path = _validated_conversion_lock_path(lock_path)
         if isinstance(lock_path, Path):
             return json.loads(lock_path.read_text(encoding="utf-8"))
         with fs_cache.open(lock_path, "r") as f:
@@ -1444,8 +1446,38 @@ def _lock_name(lock_path):
     return posixpath.basename(str(lock_path))
 
 
+def _validated_conversion_lock_path(lock_path):
+    """Validate and normalize a conversion lock reference before filesystem use."""
+    if isinstance(lock_path, Path):
+        if CONVERSION_LOCKS_ROOT_LOCAL is None:
+            raise ValueError("Local conversion locks are not enabled")
+        resolved_path = lock_path.resolve(strict=False)
+        resolved_root = CONVERSION_LOCKS_ROOT_LOCAL.resolve(strict=False)
+        try:
+            resolved_path.relative_to(resolved_root)
+        except ValueError as exc:
+            raise ValueError("Invalid conversion lock path") from exc
+        if resolved_path.suffix != ".lock" or not _MD5_HEX_RE.fullmatch(resolved_path.stem):
+            raise ValueError("Invalid conversion lock filename")
+        return resolved_path
+
+    if not isinstance(lock_path, str):
+        raise ValueError("Invalid conversion lock path type")
+
+    normalized_path = posixpath.normpath(lock_path)
+    expected_prefix = f"{CONVERSION_LOCKS_ROOT_REMOTE}/"
+    if not normalized_path.startswith(expected_prefix):
+        raise ValueError("Invalid conversion lock path")
+    filename = posixpath.basename(normalized_path)
+    stem, suffix = posixpath.splitext(filename)
+    if suffix != ".lock" or not _MD5_HEX_RE.fullmatch(stem):
+        raise ValueError("Invalid conversion lock filename")
+    return normalized_path
+
+
 def _lock_exists(lock_path):
     """Check whether a local or remote lock exists."""
+    lock_path = _validated_conversion_lock_path(lock_path)
     if isinstance(lock_path, Path):
         return lock_path.exists()
     return fs_cache.exists(lock_path)
@@ -1453,6 +1485,7 @@ def _lock_exists(lock_path):
 
 def _lock_touch_exclusive(lock_path):
     """Create a local or remote lock atomically when possible."""
+    lock_path = _validated_conversion_lock_path(lock_path)
     if isinstance(lock_path, Path):
         lock_path.parent.mkdir(parents=True, exist_ok=True)
         lock_path.touch(exist_ok=False)
@@ -1467,6 +1500,7 @@ def _lock_touch_exclusive(lock_path):
 
 def _lock_unlink(lock_path):
     """Remove a local or remote lock if present."""
+    lock_path = _validated_conversion_lock_path(lock_path)
     if isinstance(lock_path, Path):
         lock_path.unlink(missing_ok=True)
         return
@@ -1476,6 +1510,7 @@ def _lock_unlink(lock_path):
 
 def _lock_age_seconds(lock_path, metadata=None):
     """Return lock age in seconds using metadata first, then mtime."""
+    lock_path = _validated_conversion_lock_path(lock_path)
     metadata = metadata or {}
     created_at = metadata.get("created_at")
     if isinstance(created_at, (int, float)):
@@ -1495,6 +1530,8 @@ def _lock_age_seconds(lock_path, metadata=None):
 
 def get_conversion_lock_path(cache_hash):
     """Return the shared per-hash conversion lock reference."""
+    if not isinstance(cache_hash, str) or not _MD5_HEX_RE.fullmatch(cache_hash):
+        raise ValueError("Invalid cache hash for conversion lock")
     filename = f"{cache_hash}.lock"
     if CONVERSION_LOCKS_ROOT_LOCAL is not None:
         return CONVERSION_LOCKS_ROOT_LOCAL / filename
@@ -1521,7 +1558,7 @@ def _clear_stale_conversion_lock(lock_path):
     if lock_hostname == local_hostname and isinstance(lock_pid, int) and _pid_is_alive(lock_pid):
         logger.info(
             f"Conversion lock exceeded timeout but owner pid {lock_pid} is still alive: "
-            f"{lock_path.name}"
+            f"{_lock_name(lock_path)}"
         )
         return False
 
@@ -2276,31 +2313,32 @@ def test_create_stale_conversion_lock():
         if _lock_exists(lock_path):
             _lock_unlink(lock_path)
         _lock_touch_exclusive(lock_path)
+        mtime_epoch = time.time() - age_seconds
+        validated_lock_path = _validated_conversion_lock_path(lock_path)
         # Write metadata of a dead process
         payload = {
             "pid": 99999,  # Unlikely to be alive
             "hostname": socket.gethostname(),
-            "created_at": time.time() - age_seconds,
+            "created_at": mtime_epoch,
         }
-        mtime_epoch = time.time() - age_seconds
-        if isinstance(lock_path, Path):
-            lock_path.write_text(json.dumps(payload), encoding="utf-8")
-            os.utime(lock_path, (mtime_epoch, mtime_epoch))
+        if isinstance(validated_lock_path, Path):
+            validated_lock_path.write_text(json.dumps(payload), encoding="utf-8")
+            os.utime(validated_lock_path, (mtime_epoch, mtime_epoch))
         else:
-            with fs_cache.open(lock_path, "w") as f:
+            with fs_cache.open(validated_lock_path, "w") as f:
                 f.write(json.dumps(payload))
 
         return json_response(
             {
                 "success": True,
-                "lock_file": str(lock_path),
+                "lock_file": str(validated_lock_path),
                 "mtime_epoch": mtime_epoch,
                 "age_seconds": age_seconds,
             }
         )
     except Exception as e:
         logger.error(f"Error creating stale lock: {e}", exc_info=True)
-        return json_response({"error": str(e)}, 500)
+        return json_response({"error": "Failed to create stale conversion lock"}, 500)
 
 
 @app.route("/test/remove-cache-artifact", methods=["POST"])

@@ -112,7 +112,7 @@ services:
       uade-web:
         condition: service_healthy
       test-http-server: # Add dependency on the new test HTTP server
-        condition: service_started
+        condition: service_healthy
     volumes:
       - test-tmp:/home/tester/app/fixtures
       - uade-tmp:/uade-tmp
@@ -139,6 +139,12 @@ services:
     volumes:
       - test-tmp:/app/fixtures # Mount test fixtures
     working_dir: /app # Serve from /app
+    healthcheck:
+      test: ["CMD", "python", "-c", "import socket; s = socket.create_connection(('127.0.0.1', 8000), 2); s.close()"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 5s
     networks:
       - uade-net
 
@@ -171,7 +177,7 @@ services:
       uade-web-seeded:
         condition: service_healthy
       test-http-server:
-        condition: service_started
+        condition: service_healthy
     environment:
       - ZAP_TARGET_URL=http://uade-web-player-seeded:5000
     volumes:
@@ -194,7 +200,7 @@ services:
       uade-web-seeded:
         condition: service_healthy
       test-http-server:
-        condition: service_started
+        condition: service_healthy
     command: ["./test_race_condition.sh"]
     environment:
       - BASE_URL=http://uade-web-player-seeded:5000

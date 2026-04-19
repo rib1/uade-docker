@@ -173,7 +173,7 @@ def main() -> None:
         method="POST",
         body=json.dumps(
             {
-                "url": "https://modland.com/pub/modules/Sidmon%201.0/Romeo%20Knight/beat_to_the_pulp.sid",
+                "url": "https://modland.com/pub/modules/SidMon%201/Romeo%20Knight/beat%20to%20the%20pulp.sid",
             }
         ),
         content_type="application/json",

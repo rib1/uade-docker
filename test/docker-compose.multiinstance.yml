@@ -77,7 +77,7 @@ services:
       uade-web-b:
         condition: service_healthy
       test-http-server:
-        condition: service_started
+        condition: service_healthy
     command: ./test_multiinstance.sh
     volumes:
       - test-tmp:/home/tester/app/fixtures
