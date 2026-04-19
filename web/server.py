@@ -1538,11 +1538,19 @@ def _lock_age_seconds(lock_path, metadata=None):
     return time.time() - mtime_ts
 
 
+def _conversion_lock_filename(cache_hash):
+    """Build a safe shared lock filename from a validated cache hash."""
+    if not isinstance(cache_hash, str):
+        raise ValueError("Invalid cache hash for conversion lock")
+    sanitized_cache_hash = secure_filename(cache_hash).lower()
+    if not _MD5_HEX_RE.fullmatch(sanitized_cache_hash):
+        raise ValueError("Invalid cache hash for conversion lock")
+    return f"{sanitized_cache_hash}.lock"
+
+
 def get_conversion_lock_path(cache_hash):
     """Return the shared per-hash conversion lock reference."""
-    if not isinstance(cache_hash, str) or not _MD5_HEX_RE.fullmatch(cache_hash):
-        raise ValueError("Invalid cache hash for conversion lock")
-    filename = f"{cache_hash}.lock"
+    filename = _conversion_lock_filename(cache_hash)
     if CONVERSION_LOCKS_ROOT_LOCAL is not None:
         return CONVERSION_LOCKS_ROOT_LOCAL / filename
     return f"{CONVERSION_LOCKS_ROOT_REMOTE}/{filename}"
@@ -2315,7 +2323,7 @@ def test_create_stale_conversion_lock():
     cache_hash = data.get("cache_hash")
     age_seconds = data.get("age_seconds", CONVERSION_TIMEOUT_SECONDS + 1)
 
-    if not isinstance(cache_hash, str) or not _MD5_HEX_RE.match(cache_hash):
+    if not isinstance(cache_hash, str) or not _MD5_HEX_RE.fullmatch(cache_hash):
         return json_response({"error": "Invalid cache_hash"}, 400)
 
     try:

@@ -3,6 +3,8 @@
 # Usage (from project root):
 #   # Run code quality checks
 #   docker compose -f docker-compose.yml -f test/docker-compose.quality.yml run --rm --build quality-check
+#   # Run local CodeQL confirmation
+#   docker compose -f docker-compose.yml -f test/docker-compose.quality.yml run --rm --build codeql-check
 
 services:
   quality-check:
@@ -31,6 +33,17 @@ services:
       - ./docker-compose.dev.yml:/workspace/docker-compose.dev.yml:ro
       - ./.hadolint.yaml:/workspace/.hadolint.yaml:ro
       - ./.yamllint.yml:/workspace/.yamllint.yml:ro
+    working_dir: /workspace
+    networks:
+      - uade-net
+
+  codeql-check:
+    build:
+      context: .
+      dockerfile: test/Dockerfile.codeql
+    container_name: uade-codeql-check
+    volumes:
+      - .:/workspace
     working_dir: /workspace
     networks:
       - uade-net
