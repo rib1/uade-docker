@@ -6,9 +6,9 @@ PLAY_USER_AGENT="Mozilla/5.0 (X11; Linux x86_64; rv:140.0) Gecko/20100101 Firefo
 URL_TO_TEST="${URL_TO_TEST:-http://uade-test-http-server:8000/fixtures/modules/space_debris.mod}"
 SERVICE_READY_TIMEOUT_SECONDS="${SERVICE_READY_TIMEOUT_SECONDS:-60}"
 
-echo "--- Testing race condition: parallel FLAC promotion for one cached WAV artifact ---"
+echo "--- Testing race condition: parallel play requests stay read-only on cached FLAC ---"
 
-perform_convert_url_wav_call() {
+perform_convert_url_flac_call() {
     local_url=$1
     JSON_PAYLOAD=$(jq -n --arg url "$local_url" '{url: $url}')
 
@@ -103,7 +103,7 @@ wait_for_service() {
 
 wait_for_service
 
-HTTP_CODE_BODY=$(perform_convert_url_wav_call "$URL_TO_TEST")
+HTTP_CODE_BODY=$(perform_convert_url_flac_call "$URL_TO_TEST")
 HTTP_CODE=$(echo "$HTTP_CODE_BODY" | head -n1)
 BODY=$(echo "$HTTP_CODE_BODY" | tail -n1)
 
@@ -121,13 +121,12 @@ if [ -z "$FILE_ID" ] || [ "$FILE_ID" = "null" ]; then
     exit 1
 fi
 
-if [ "$AUDIO_FORMAT" != "wav" ]; then
-    echo "ERROR: Initial request did not establish a WAV response starting point"
+if [ "$AUDIO_FORMAT" != "flac" ]; then
+    echo "ERROR: Initial request did not establish a FLAC response starting point"
     echo "Response body: $BODY"
     exit 1
 fi
 
-remove_cache_artifact "$FILE_ID" ".flac"
 reset_flac_compression_counts
 
 PLAY_RESP_1=$(mktemp)
@@ -158,7 +157,7 @@ for response_file in "$PLAY_RESP_1" "$PLAY_RESP_2"; do
     fi
 
     if ! echo "$PLAY_HEADERS" | grep -qi "^Content-Type: audio/flac"; then
-        echo "ERROR: Play endpoint did not serve FLAC during parallel promotion"
+        echo "ERROR: Play endpoint did not serve FLAC during parallel playback"
         echo "Headers: $PLAY_HEADERS"
         exit 1
     fi
@@ -166,10 +165,10 @@ done
 
 FLAC_COMPRESSION_COUNT=$(get_flac_compression_count "$FILE_ID")
 
-if [ "$FLAC_COMPRESSION_COUNT" -ne 1 ]; then
-    echo "ERROR: Expected exactly one FLAC compression, got $FLAC_COMPRESSION_COUNT"
+if [ "$FLAC_COMPRESSION_COUNT" -ne 0 ]; then
+    echo "ERROR: Expected parallel play requests to trigger zero FLAC compressions, got $FLAC_COMPRESSION_COUNT"
     exit 1
 fi
 
 echo "--- Parallel play requests completed successfully! ---"
-echo "--- Race condition test passed: cached WAV promoted to FLAC with a single compression. ---"
+echo "--- Race condition test passed: cached FLAC playback stayed read-only. ---"

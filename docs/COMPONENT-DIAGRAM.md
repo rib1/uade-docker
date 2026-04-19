@@ -22,8 +22,8 @@ Container_Boundary(cli_container, "CLI Player Container - Base Image") {
 
 Container_Boundary(web_container, "Web Player Container - Built FROM CLI Base") {
     Component(flask_app, "Flask Application", "Python Flask", "Main web server handling HTTP requests")
-    Component(web_routes, "Web Routes", "Flask Blueprint", "Handles web page requests and renders templates")
-    Component(api_routes, "API Routes", "Flask Blueprint", "Provides REST API for player control")
+    Component(web_routes, "Web Routes", "Flask routes", "Handles web page and static asset requests")
+    Component(api_routes, "API Routes", "Flask routes", "Provides REST API for conversion, playback, and metadata")
     Component(player_service, "Player Service", "Python", "Manages UADE playback lifecycle")
     Component(uade_wrapper, "UADE Wrapper", "Python subprocess", "Wraps uade123 CLI for programmatic control")
     Component(static_files, "Static Assets", "HTML/CSS/JS", "Web interface and player controls")
@@ -133,19 +133,18 @@ The Web Player Container is built using multi-stage Docker build with `FROM uade
 
 #### Web Routes
 
-- **Technology**: Flask Blueprint
+- **Technology**: Flask routes
 - **Responsibilities**:
   - Serve main player interface (`/`)
-  - Provide metadata endpoints (`/songinfo`)
-  - Handle file uploads (`/upload`)
-  - Render Jinja2 templates
+  - Serve static assets and browser configuration (`/client-config.js`)
+  - Expose lightweight informational endpoints (`/health`, `/examples`, `/supported-extensions`)
 
 #### API Routes
 
-- **Technology**: Flask Blueprint (REST API)
+- **Technology**: Flask routes (REST API)
 - **Responsibilities**:
   - Conversion endpoints (`/upload`, `/probe-upload`, `/convert-probed`, `/convert-url`, `/probe-url`)
-  - Playback endpoints (`/play/{file_id}`, `/play-example/{id}`, `/download/{file_id}`)
+  - Playback endpoints (`/play/{file_id}`, `/download/{file_id}`)
   - Metadata and health endpoints (`/health`, `/examples`, `/supported-extensions`)
   - JSON response formatting
 
@@ -202,7 +201,7 @@ The Web Player Container is built using multi-stage Docker build with `FROM uade
 - **Base**: CLI Player Container (inherits all UADE components)
 - **Frontend**: HTML5, CSS3, Vanilla JavaScript
 - **Backend**: Python 3.13, Flask 3.1.3
-- **Server**: Gunicorn 25.3.0 (4 workers)
+- **Server**: Gunicorn 25.3.0 (`1` worker, `8` threads, `gthread`)
 - **Container**: Multi-stage build (FROM uade-cli)
 - **Additional Components**: Flask app, static assets, Python wrapper
 - **Client-Side Cache Support**: Converted audio is cached in the browser for one month for instant repeat playback.
@@ -223,7 +222,7 @@ The Web Player Container is built using multi-stage Docker build with `FROM uade
    - Install Python and Flask dependencies
    - Copy web application code and templates
    - Configure Gunicorn web server
-   - Expose port 8080 for HTTP traffic
+   - Expose port 5000 for HTTP traffic
 
 ### Web Player Request Flow
 

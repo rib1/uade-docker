@@ -24,14 +24,21 @@ The runner writes benchmark summaries to `reports/benchmarks/`.
 - `test/bench/streaming.js`: full-file and byte-range playback benchmarking after converting the TFMX fixture pair served by the local fixture HTTP server
 - `test/bench/dast-patterns.js`: DAST-inspired contention and burst scenarios using local fixtures
 - `test/bench/semaphore-balance.js`: Cloud Run sweep-only mixed workload for `/play/*` plus cold conversion contention
+- `test/bench/cross-instance-scaleout.js`: cross-instance scale-out benchmark where one app instance handles conversion-heavy traffic and another serves playback from the shared cache
 
-The default benchmark runner executes the suites in this order: smoke, conversion, cache, streaming, DAST-patterns. `test/bench/semaphore-balance.js` runs only through the Cloud Run sweep wrapper.
+The default benchmark runner executes the suites in this order: smoke, conversion, cache, streaming, DAST-patterns. `test/bench/semaphore-balance.js` and `test/bench/cross-instance-scaleout.js` run only through their dedicated wrappers/overlays.
 
 `test/bench/dast-patterns.js` currently covers:
 
 - same-hash duplicate cold `convert-url` waiters
 - mixed-hash contention between cold `convert-url` and cold `convert-probed`
 - cold-to-warm playback burst after a cold TFMX convert
+
+Contract notes for the contention-oriented suites:
+
+- `test/bench/dast-patterns.js` is the intentional same-hash duplicate-convert suite; it explicitly treats the current `200` or `409 processing` contract as valid for same-instance followers after the `2s` duplicate wait budget.
+- `test/bench/semaphore-balance.js` and `test/bench/cross-instance-scaleout.js` now keep a dedicated warm playback artifact (`stormlord.ahx`) separate from the evicted cold `convert-url` target, so the play side stays read-only while the convert side still exercises reconversion.
+- those mixed-load balance suites also accept `409 processing` on their conversion legs, because higher-VU same-hash pressure can now legitimately hit the short duplicate-convert contract instead of always returning `200`.
 
 ## Cloud Run Semaphore Sweep
 
@@ -57,71 +64,99 @@ Default sweep:
 Current measured recommendation for this Cloud Run shape:
 
 - current deployed Cloud Run default remains `MAX_CONCURRENT_CONVERSIONS=2`
-- `2` and `3` are now near-parity on the latest sweep
 - `1` is still clearly too conservative because it reintroduces heavy conversion queueing
-- latest measured edge is slightly in favor of `3`, but not by a large enough margin to treat `2` as invalid
+- the corrected default `1/2/3` rerun still points back to `2` as the best single-instance balance for the current app contract
+- higher exploratory values (`5` and `6`) only looked good in lighter low-contention sweeps; they should not override the more recent default-shape rerun or the conversion-heavy oversubscription comparison
 
-Latest 8-minute sweep result:
+Low-contention 8-VU sweep, after the FLAC and waiter-path updates:
 
-- `1`
-  - play full p95: `1.55ms`
-  - play range p95: `1.63ms`
-  - cold `convert-probed` p95: `15.83s`
-  - cold `convert-url` p95: `15.50s`
-  - semaphore wait p95: `11.76s`
-- `2`
-  - play full p95: `2.93ms`
-  - play range p95: `2.95ms`
-  - cold `convert-probed` p95: `4.47s`
-  - cold `convert-url` p95: `14.06s`
-  - semaphore wait p95: `0.01ms`
+- workload shape:
+  - `4` full-play VUs
+  - `2` range-play VUs
+  - `1` cold `convert-probed` VU
+  - `1` cold `convert-url` VU
+- useful conclusion:
+  - `1` is clearly too restrictive because it reintroduces queueing
+  - `2` removes the queueing bottleneck without harming `/play`
+  - `3` no longer beats `2` on the corrected default-shape rerun
+- latest representative numbers:
+  - `1`
+    - play full p95: `2.86ms`
+    - play range p95: `3.13ms`
+    - cold `convert-probed` p95: `17.93s`
+    - cold `convert-url` p95: `17.95s`
+    - semaphore wait p95: `13.33s`
+  - `2`
+    - play full p95: `2.58ms`
+    - play range p95: `3.05ms`
+    - cold `convert-probed` p95: `4.74s`
+    - cold `convert-url` p95: `15.12s`
+    - semaphore wait p95: `0.01ms`
+  - `3`
+    - play full p95: `2.79ms`
+    - play range p95: `3.52ms`
+    - cold `convert-probed` p95: `6.49s`
+    - cold `convert-url` p95: `19.97s`
+    - semaphore wait p95: `0.01ms`
+
+Conversion-heavy oversubscription check:
+
+- workload shape:
+  - `3` full-play VUs
+  - `1` range-play VU
+  - `3` cold `convert-probed` VUs
+  - `3` cold `convert-url` VUs
+  - total `10` VUs against the Cloud Run-style `8` thread shape
+- this is the first sweep that meaningfully tests whether high semaphore values still make sense when conversion work can dominate the instance
+
+Oversubscribed 5-minute comparison:
+
 - `3`
-  - play full p95: `2.89ms`
-  - play range p95: `3.35ms`
-  - cold `convert-probed` p95: `4.69s`
-  - cold `convert-url` p95: `15.39s`
-  - semaphore wait p95: `0.01ms`
+  - play full p95: `1.64ms`
+  - play range p95: `1.79ms`
+  - cold `convert-probed` p95: `5.00s`
+  - cold `convert-url` p95: `15.00s`
+  - `Conversion lock wait` p95: `15.00s`
+- `6`
+  - play full p95: `2.14ms`
+  - play range p95: `2.80ms`
+  - cold `convert-probed` p95: `4.04s`
+  - cold `convert-url` p95: `14.01s`
+  - `Conversion lock wait` p95: `13.01s`
 
-Most recent 8-minute rerun after the FLAC and waiter-path updates:
+Interpretation:
 
-- `1`
-  - play full p95: `1.54ms`
-  - play range p95: `1.68ms`
-  - cold `convert-probed` p95: `16.31s`
-  - cold `convert-url` p95: `16.13s`
-  - semaphore wait p95: `12.22s`
-- `2`
-  - play full p95: `3.07ms`
-  - play range p95: `2.96ms`
-  - cold `convert-probed` p95: `4.21s`
-  - cold `convert-url` p95: `13.64s`
-  - semaphore wait p95: `0.02ms`
-- `3`
-  - play full p95: `2.76ms`
-  - play range p95: `3.05ms`
-  - cold `convert-probed` p95: `4.07s`
-  - cold `convert-url` p95: `13.37s`
-  - semaphore wait p95: `0.01ms`
+- `6` still wins on cold conversion throughput and latency under real conversion pressure
+- `3` still protects playback latency better
+- the tradeoff is real under oversubscription, unlike the lighter 8-VU sweep where high values mainly looked equivalent because only `2` conversion VUs were active
+- because Cloud Run must protect interactive playback as well as conversion throughput, `2` remains the conservative deployed default and `3` remains the safer high-load candidate unless the product goal shifts toward maximizing conversion throughput
 
-Interpretation of the latest rerun:
+## Cross-Instance Scale-Out
 
-- `2` and `3` are effectively tied for playback latency
-- `3` has a slight measured edge on cold conversion latency and request rate
-- keep treating `2` as a safe default, but the latest data no longer shows a clear reason to avoid `3`
+The repo also now includes a dedicated cross-instance benchmark overlay:
 
-Additional 8-minute comparison for `MAX_CONCURRENT_CONVERSIONS=4`:
+- one app instance (`uade-web-a`) handles conversion-heavy traffic
+- another app instance (`uade-web-b`) handles playback-only traffic
+- both instances share the same cache backend
 
-- `4`
-  - play full p95: `2.57ms`
-  - play range p95: `2.89ms`
-  - cold `convert-probed` p95: `4.17s`
-  - cold `convert-url` p95: `14.70s`
+This is closer to the Cloud Run “one hot instance, one fresh instance” mental model than the single-instance semaphore sweep.
 
-Interpretation of the `4` run:
+First scale-out probe:
 
-- `4` does not meaningfully improve playback over `2` or `3`
-- `4` is slightly worse than `3` on both cold conversion metrics
-- so `4` is not a better choice than the current `2`/`3` near-parity range
+- playback on `uade-web-b` while `uade-web-a` was busy converting:
+  - play full p95: `8.28ms`
+  - play range p95: `17.81ms`
+- `uade-web-a` carried the queueing:
+  - `Conversion lock wait` avg: `11016.33ms`
+  - `Conversion lock wait` p95: `18034.51ms`
+  - `UADE audio render` avg: `9657.38ms`
+  - `Full audio conversion pipeline` avg: `9859.93ms`
+
+Interpretation:
+
+- the queueing pressure stayed on the conversion-heavy instance, not the playback-focused one
+- that supports the Cloud Run scale-out intuition better than the single-instance sweeps alone
+- the current bottleneck under this pattern is duplicate-work locking on the conversion-heavy instance, not the global semaphore
 
 Artifacts:
 
@@ -203,12 +238,35 @@ Implemented fixes and outcomes:
 - Global conversion semaphore plus timing logs
   - added `Conversion semaphore wait` and `Conversion lock wait` timings
   - this made queueing visible and allowed Cloud Run tuning from measured data instead of guesswork
-- WAV-to-FLAC promotion race fix
-  - parallel requests for the same cached WAV no longer trigger duplicate FLAC compression work
-  - the race-condition regression now verifies one FLAC compression per same-hash promotion
+- Read-only playback race fix
+  - playback requests no longer perform lazy WAV-to-FLAC promotion on the hot path
+  - the race-condition regression now verifies that parallel `/play/<file_id>` requests trigger zero FLAC compressions and keep cached playback read-only
 - Faster request-time FLAC compression
   - `compress_to_flac()` now uses `flac -5` instead of `--best`
   - this keeps compression broadly effective while cutting CPU cost on heavy artifacts
+- Canonical FLAC conversion output
+  - conversion endpoints now produce `flac` by default instead of choosing between WAV and FLAC per user agent
+  - successful FLAC conversion removes the intermediate local WAV artifact instead of keeping both siblings around
+  - reasoning:
+    - this simplifies cache state to one normal playback artifact instead of a mixed WAV/FLAC lifecycle
+    - it removes playback-side WAV-to-FLAC promotion as a performance concern on the steady-state path
+    - it makes cross-instance cache behavior easier to reason about because conversion and playback both converge on the same artifact format
+- Frontend example playback now uses `/convert-url`
+  - the legacy `/play-example/<example_id>` route has been removed, and example playback now goes through the same `/examples` -> `/convert-url` -> `/play/<file_id>` path as other URL-backed playback
+  - example cards resolve metadata from `/examples` and then call `/convert-url` directly, just like other URL-backed playback flows
+  - reasoning:
+    - this keeps the main playback path conceptually read-only: prepare audio through conversion, then serve it through `/play/<file_id>`
+    - it removes one special backend route from the hot user flow and makes example playback follow the same conversion contract as shared URLs and queued tracks
+    - it reduces architectural duplication by keeping example selection in the frontend and conversion in the conversion endpoint
+- Short duplicate-convert wait contract
+  - same-hash follower requests now wait up to `2s` for the owner conversion and then return HTTP `409` with `status: "processing"` and `retryable: true`
+  - the frontend treats that as a short retryable state instead of surfacing a hard conversion error immediately
+  - the per-hash conversion lock now lives in the shared cache backend, so the same `409 processing` contract applies across instances when they share the same cache storage
+  - the local multi-instance stack uses `/tmp/cache/conversion-locks` for this shared lock path
+  - reasoning:
+    - this avoids holding duplicate requests open for the full cold-convert duration
+    - it protects Cloud Run request capacity better than long synchronous follower waits
+    - it keeps the app simple: no queue product, no extra service, just a clearer duplicate-work contract
 - Targeted `led-storm` FLAC-heavy cold-path recheck
   - earlier baseline on `571dca...` (`L_E_D_Storm`) was:
     - UADE render: `44038.08ms`
@@ -222,15 +280,8 @@ Implemented fixes and outcomes:
   - net gain on the full pipeline: about `38.43s` faster, or `~57.4%`
   - caveat: the FLAC-stage reduction is attributable to the compression-level change; the full-pipeline gain also includes run-to-run UADE variance on this very heavy module
 
-Cloud Run recommendation:
-
-- for the current Cloud Run shape (`1 CPU`, `8` request concurrency, Gunicorn `1` worker / `8` threads), `2` remains a safe default
-- latest measurement no longer shows a decisive winner between `2` and `3`
-- the newest sweep gives `3` a slight edge, while still showing that `1` is too restrictive because it reintroduces queueing
-- an additional `4` run did not beat `3`, so the useful tuning range is still `2` to `3`
-
 Remaining dominant spikes:
 
-- large cold conversions are still dominated by UADE render time for some modules
-- request-time FLAC compression remains a large tail-latency contributor on the worst artifacts
-- practical next lever: reduce or defer FLAC work on cold paths rather than chasing generic Linux tuning
+- large cold owner conversions are still dominated by UADE render time for some modules
+- request-time FLAC compression is smaller than before, but still a meaningful secondary tail on heavy artifacts
+- duplicate same-hash owner/follower contention is now clearer and better bounded, but it still shows up as `409 processing` plus short lock waits under bursty load

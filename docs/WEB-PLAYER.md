@@ -12,8 +12,8 @@ Play Amiga music modules directly in your web browser! No desktop software requi
 - 🔗 **Shareable URLs** - Share direct links to modules that auto-play for recipients
 - 📦 **LHA & ZIP Archive Support** - Automatically extracts classic Amiga LHA archives (and ZIP)
 - 🗂️ **Dual-File Module Support** - Handles dual-file modules (e.g., TFMX, RJP) automatically
-- 💿 **Smart Compression** - Automatic FLAC compression for capable browsers (50-70% smaller files)
-- ⬇️ **Download Audio** - Save as FLAC or WAV for offline playback
+- 💿 **Smart Compression** - Canonical FLAC conversion output keeps playback artifacts small and consistent
+- ⬇️ **Download Audio** - Save converted FLAC for offline playback
 - 🚀 **Cloud Ready & Stateless Caching** - Designed for cloud platforms with stateless, shareable server-side cache support (S3/GCS/local).
 - 💻 **Client-Side Caching** - Converted audio is cached in your browser for one month for instant repeat playback.
 - ✅ **Cache Indicator** - The UI indicates when audio is served from the server-side cache.
@@ -44,7 +44,7 @@ docker compose up -d uade-web
 - Health checks with auto-restart
 - Persistent storage for uploads/conversions
 - Web runtime environment configuration
-- Read-only source code mount for security
+- Production-like image-backed app filesystem by default
 - Cleanup of old files on write-oriented requests (1 hour interval)
 
 **Managing the service:**
@@ -267,6 +267,8 @@ Content-Type: multipart/form-data
 file: <module file>
 ```
 
+Like the URL conversion endpoints, this endpoint returns a `409 Conflict` response with `status: "processing"` if another request is currently converting the exact same module hash.
+
 ### Convert from URL
 
 ```http
@@ -278,6 +280,18 @@ Content-Type: application/json
   "sample_url": "https://..." // Optional
 }
 ```
+
+If another request is currently converting the exact same module (based on content hash) and it takes longer than the brief duplicate-wait budget (typically 2 seconds), the server returns an HTTP `409 Conflict` response instead of blocking the request:
+
+```json
+{
+  "error": "Conversion in progress.",
+  "status": "processing",
+  "retryable": true
+}
+```
+
+Clients should treat this as a short, retryable state.
 
 ### Probe URL Metadata
 
@@ -349,15 +363,11 @@ Content-Type: application/json
 
 Returns the same response format as `/upload`. Returns 400 for invalid hash format and 404 if the probed module is no longer available on the serving instance. The client treats 404 as a fallback trigger to upload and convert with `/upload` instead.
 
+Like `/upload` and `/convert-url`, this endpoint can also return a `409 Conflict` response with `status: "processing"` when another request is already converting the same module hash and the short duplicate-wait budget expires.
+
 This endpoint is a best-effort optimization for the queue flow described in [Queue](#queue). For the multi-instance and cache-model caveats behind that behavior, see [`ARCHITECTURE.md`](ARCHITECTURE.md).
 
 Rate-limited to 10 requests/minute.
-
-### Play Example
-
-```http
-POST /play-example/{example_id}
-```
 
 ### Get Examples
 
@@ -365,7 +375,26 @@ POST /play-example/{example_id}
 GET /examples
 ```
 
-### Stream/Download WAV/FLAC
+### Example Playback Workflow
+
+Examples are now played through the same conversion flow as any other URL-backed module:
+
+1. `GET /examples` to discover the example metadata
+2. `POST /convert-url` with the example `url` and optional `sample_url`
+3. use the returned `play_url` to stream audio through `GET /play/{file_id}`
+
+Example:
+
+```http
+POST /convert-url
+Content-Type: application/json
+
+{
+  "url": "https://modland.com/pub/modules/Protracker/Captain/space%20debris.mod"
+}
+```
+
+### Stream/Download Converted Audio
 
 ```http
 GET /play/{file_id}      # Stream in browser
@@ -389,8 +418,12 @@ CACHE_ACCESS_UPDATE_INTERVAL_SECONDS: 300 # Minimum seconds between cache access
 RATE_LIMIT: 200 # Max Requests/hour per IP (all endpoints combined)
 RATE_LIMIT_DISABLED: 0 # Set to 1 to disable rate limiting for local development/testing
 CONVERSION_RATE_LIMIT_PER_MINUTE: 10 # Standard conversion/probe rate for most POST endpoints
+DOWNLOAD_RATE_LIMIT: 6 # Max file downloads per minute per IP
 PROBE_UPLOAD_RATE_LIMIT_PER_MINUTE: 40 # Higher queue probe rate for local multi-file adds
 QUEUE_DROP_FILE_LIMIT: 20 # Max files accepted per queue drop or picker batch when rate limiting is enabled
+CONVERSION_TIMEOUT_SECONDS: 300 # Max seconds to wait for a conversion to complete
+DUPLICATE_CONVERSION_WAIT_SECONDS: 2 # Max seconds to wait for an in-flight same-hash conversion before returning 409 processing
+MAX_CONCURRENT_CONVERSIONS: 2 # Max concurrent heavy UADE/FLAC conversions per process
 DISABLE_SSL_VERIFY: 0 # Set to 1 to disable SSL verification for corporate proxies (Zscaler)
 GIT_COMMIT: unknown # Git commit hash (set automatically at build time)
 UADE_TEST_MODE: 0 # Set to 1 to enable test mode (allows internal test server access)
@@ -447,7 +480,7 @@ Modern browsers receive FLAC-compressed audio automatically:
 - ✅ **Safari** - Full FLAC support (macOS/iOS)
 - ✅ **Opera** - Full FLAC support
 
-Older or unsupported browsers automatically receive WAV files as fallback. No configuration needed!
+The current app contract uses canonical FLAC output for converted artifacts, so modern browsers and downloads both use the same converted format by default.
 
 ## Architecture
 
@@ -457,7 +490,7 @@ Architecture highlights:
 
 - Multi-stage build: the web image is built `FROM uade-cli`
 - Production serving uses Gunicorn
-- FLAC is preferred automatically on capable browsers, with WAV fallback
+- Converted artifacts use canonical FLAC output
 - Cleanup is request-triggered and skips `/play/*` and `/download/*`
 - Converted audio can be cached on local disk or shared remote storage (`file`, `s3`, `gcs`)
 
@@ -478,7 +511,7 @@ UADE Web Player uses per-endpoint and global rate limits to prevent abuse and en
 
 - **Conversion endpoints** (`/upload`, `/convert-probed`, `/convert-url`, `/probe-url`): 10 requests per minute per IP
 - **Queue probe endpoint** (`/probe-upload`): 40 requests per minute per IP
-- **Play endpoints** (`/play`, `/play-example`): 50 requests per minute per IP
+- **Play endpoint** (`/play`): 50 requests per minute per IP
 - **Download endpoint** (`/download`): 6 requests per minute per IP
 - **Global limit**: 200 requests per hour per IP (all endpoints combined)
 
@@ -674,15 +707,15 @@ The base `docker-compose.yml` remains production-like:
 - **Cache Performance:** Subsequent plays are instant, served from either the client-side (browser) or server-side cache.
 - **Memory usage:** ~256MB per instance
 - **CPU usage:** Spikes during conversion/compression, idle otherwise
-- **Concurrent requests:** Handled by Gunicorn workers (4 default)
+- **Concurrent requests:** Handled by Gunicorn `gthread` with `1` worker and `8` threads by default
 
 ### Example File Sizes
 
-| Format              | WAV Size | FLAC Size | Reduction |
-| ------------------- | -------- | --------- | --------- |
-| Protracker (3min)   | 25MB     | 10-12MB   | ~55%      |
-| TFMX (5min)         | 50MB     | 25-30MB   | ~45%      |
-| AHX Chiptune (2min) | 20MB     | 8-10MB    | ~60%      |
+| Format              | Approx. decoded size | FLAC Size | Reduction |
+| ------------------- | -------------------- | --------- | --------- |
+| Protracker (3min)   | 25MB                 | 10-12MB   | ~55%      |
+| TFMX (5min)         | 50MB                 | 25-30MB   | ~45%      |
+| AHX Chiptune (2min) | 20MB                 | 8-10MB    | ~60%      |
 
 ## Limitations
 

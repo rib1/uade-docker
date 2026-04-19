@@ -1,0 +1,111 @@
+# To run the cross-instance playback-protection benchmark:
+#    docker compose -f docker-compose.yml -f test/docker-compose.cross-instance-benchmark.yml run --rm --build uade-cross-instance-benchmark-runner
+services:
+  uade-web-a:
+    build:
+      context: .
+      dockerfile: Dockerfile.web
+      args:
+        - GIT_COMMIT=${GIT_COMMIT:-unknown}
+    environment:
+      - FLASK_ENV=production
+      - MAX_UPLOAD_SIZE=10485760
+      - CLEANUP_INTERVAL=3600
+      - RATE_LIMIT_DISABLED=1
+      - DISABLE_SSL_VERIFY=1
+      - UADE_TEST_MODE=1
+      - GIT_COMMIT=${GIT_COMMIT:-unknown}
+      - CACHE_URI=file:///tmp/cache
+      - CACHE_ACCESS_UPDATE_INTERVAL_SECONDS=0
+      - HEALTH_INCLUDE_CACHE_DEBUG=1
+      - MAX_CONCURRENT_CONVERSIONS=${MAX_CONCURRENT_CONVERSIONS:-2}
+    volumes:
+      - uade-modules-a:/tmp/modules
+      - uade-converted-a:/tmp/converted
+      - uade-cache-shared:/tmp/cache
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5000/health"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+      start_period: 10s
+    networks:
+      - uade-net
+
+  uade-web-b:
+    build:
+      context: .
+      dockerfile: Dockerfile.web
+      args:
+        - GIT_COMMIT=${GIT_COMMIT:-unknown}
+    environment:
+      - FLASK_ENV=production
+      - MAX_UPLOAD_SIZE=10485760
+      - CLEANUP_INTERVAL=3600
+      - RATE_LIMIT_DISABLED=1
+      - DISABLE_SSL_VERIFY=1
+      - UADE_TEST_MODE=1
+      - GIT_COMMIT=${GIT_COMMIT:-unknown}
+      - CACHE_URI=file:///tmp/cache
+      - CACHE_ACCESS_UPDATE_INTERVAL_SECONDS=0
+      - HEALTH_INCLUDE_CACHE_DEBUG=1
+      - MAX_CONCURRENT_CONVERSIONS=${MAX_CONCURRENT_CONVERSIONS:-2}
+    volumes:
+      - uade-modules-b:/tmp/modules
+      - uade-converted-b:/tmp/converted
+      - uade-cache-shared:/tmp/cache
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5000/health"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+      start_period: 10s
+    networks:
+      - uade-net
+
+  uade-cross-instance-benchmark-runner:
+    build:
+      context: .
+      dockerfile: test/Dockerfile.benchmark
+    user: "0:0"
+    depends_on:
+      uade-web-a:
+        condition: service_healthy
+      uade-web-b:
+        condition: service_healthy
+      test-http-server:
+        condition: service_started
+    entrypoint: ["./run-cross-instance-scaleout.sh"]
+    networks:
+      - uade-net
+    volumes:
+      - test-tmp:/fixtures:ro
+      - ./reports:/reports
+    environment:
+      - BASE_URL_A=http://uade-web-a:5000
+      - BASE_URL_B=http://uade-web-b:5000
+      - FIXTURES_DIR=/fixtures
+      - REPORT_FILE=/reports/benchmarks/cross-instance-scaleout-summary.json
+      - BENCH_SCENARIO_DURATION=5m
+      - PLAY_FULL_VUS=3
+      - PLAY_RANGE_VUS=1
+      - CONVERT_PROBED_VUS=3
+      - CONVERT_URL_VUS=3
+
+volumes:
+  test-tmp:
+    driver: local
+  uade-modules-a:
+    driver: local
+  uade-converted-a:
+    driver: local
+  uade-modules-b:
+    driver: local
+  uade-converted-b:
+    driver: local
+  uade-cache-shared:
+    driver: local
+
+networks:
+  uade-net:
+    driver: bridge

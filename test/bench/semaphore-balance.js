@@ -6,13 +6,15 @@ const baseUrl = __ENV.BASE_URL || "http://uade-web-player:5000";
 const modFixturePath = __ENV.BENCH_FIXTURE_PATH || "/fixtures/modules/space_debris.mod";
 const modFixtureBytes = open(modFixturePath, "b");
 const modFixtureName = __ENV.BENCH_FIXTURE_NAME || "space_debris.mod";
+const streamFixtureUrl =
+  __ENV.BENCH_STREAM_FIXTURE_URL ||
+  "http://uade-test-http-server:8000/fixtures/modules/stormlord.ahx";
 const tfmxFixtureUrl =
   __ENV.BENCH_REMOTE_FIXTURE_URL ||
   "http://uade-test-http-server:8000/fixtures/modules/mdat.turrican_2_level_0-intro";
 const tfmxSampleUrl =
   __ENV.BENCH_REMOTE_SAMPLE_URL ||
   "http://uade-test-http-server:8000/fixtures/modules/smpl.turrican_2_level_0-intro";
-const playExampleId = __ENV.PLAY_EXAMPLE_ID || "wings-of-death-levels";
 const scenarioDuration = __ENV.BENCH_SCENARIO_DURATION || "8m";
 const playFullVus = Number(__ENV.PLAY_FULL_VUS || 4);
 const playRangeVus = Number(__ENV.PLAY_RANGE_VUS || 2);
@@ -27,6 +29,7 @@ const playFullRequests = new Counter("play_full_requests");
 const playRangeRequests = new Counter("play_range_requests");
 const coldConvertProbedRequests = new Counter("cold_convert_probed_requests");
 const coldConvertUrlRequests = new Counter("cold_convert_url_requests");
+const convertResponseCallback = http.expectedStatuses(200, 409);
 
 export const options = {
   scenarios: {
@@ -104,6 +107,7 @@ function convertProbed(moduleHash, tags = { endpoint: "cold-convert-probed" }) {
     JSON.stringify({ module_hash: moduleHash, filename: modFixtureName }),
     {
       headers: jsonHeaders(),
+      responseCallback: convertResponseCallback,
       tags,
       timeout: "310s",
     },
@@ -119,6 +123,22 @@ function convertTfmx(endpointTag) {
     }),
     {
       headers: jsonHeaders(),
+      responseCallback: convertResponseCallback,
+      tags: { endpoint: endpointTag },
+      timeout: "310s",
+    },
+  );
+}
+
+function convertStreamingTarget(endpointTag) {
+  return http.post(
+    `${baseUrl}/convert-url`,
+    JSON.stringify({
+      url: streamFixtureUrl,
+    }),
+    {
+      headers: jsonHeaders(),
+      responseCallback: convertResponseCallback,
       tags: { endpoint: endpointTag },
       timeout: "310s",
     },
@@ -135,30 +155,6 @@ function removeArtifact(fileId, ext, endpointTag) {
       timeout: "60s",
     },
   );
-}
-
-function warmStreamingTarget() {
-  const response = http.post(
-    `${baseUrl}/play-example/${playExampleId}`,
-    "{}",
-    {
-      headers: jsonHeaders(),
-      tags: { endpoint: "setup-play-example" },
-      timeout: "310s",
-    },
-  );
-  const payload = parseJson(response);
-
-  requireCheck(
-    response,
-    {
-      "setup play-example returned 200": (res) => res.status === 200,
-      "setup play-example returned play_url": () => Boolean(payload?.play_url),
-    },
-    `streaming target setup failed with status ${response.status}`,
-  );
-
-  return payload;
 }
 
 export function setup() {
@@ -206,7 +202,17 @@ export function setup() {
     `remove-cache-artifact for probed setup failed with status ${removeProbedResponse.status}`,
   );
 
-  const streamingPayload = warmStreamingTarget();
+  const warmStreamingResponse = convertStreamingTarget("setup-stream-play-target");
+  const warmStreamingPayload = parseJson(warmStreamingResponse);
+
+  requireCheck(
+    warmStreamingResponse,
+    {
+      "setup stream target returned 200": (res) => res.status === 200,
+      "setup stream target returned play_url": () => Boolean(warmStreamingPayload?.play_url),
+    },
+    `stream play target setup failed with status ${warmStreamingResponse.status}`,
+  );
 
   const warmConvertUrlResponse = convertTfmx("setup-convert-url");
   const warmConvertUrlPayload = parseJson(warmConvertUrlResponse);
@@ -236,7 +242,7 @@ export function setup() {
   );
 
   return {
-    streamPlayUrl: streamingPayload.play_url,
+    streamPlayUrl: warmStreamingPayload.play_url,
     probedModuleHash: moduleHash,
     probedFileId: warmConvertProbedPayload.file_id,
     probedAudioExt: `.${warmConvertProbedPayload.audio_format}`,
@@ -310,8 +316,9 @@ export function coldConvertProbed(data) {
   check(
     response,
     {
-      "cold convert-probed returned 200": (res) => res.status === 200,
-      "cold convert-probed returned play_url": () => Boolean(payload?.play_url),
+      "cold convert-probed returned 200 or 409": (res) => res.status === 200 || res.status === 409,
+      "cold convert-probed returned play_url or processing": () =>
+        Boolean(payload?.play_url) || payload?.status === "processing",
     },
     { endpoint: "cold-convert-probed" },
   );
@@ -337,8 +344,9 @@ export function coldConvertUrl(data) {
   check(
     response,
     {
-      "cold convert-url returned 200": (res) => res.status === 200,
-      "cold convert-url returned play_url": () => Boolean(payload?.play_url),
+      "cold convert-url returned 200 or 409": (res) => res.status === 200 || res.status === 409,
+      "cold convert-url returned play_url or processing": () =>
+        Boolean(payload?.play_url) || payload?.status === "processing",
     },
     { endpoint: "cold-convert-url" },
   );

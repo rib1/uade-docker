@@ -168,18 +168,27 @@ def main() -> None:
     seed_case("examples", path="/examples", expected_status=200)
     seed_case("supported-extensions", path="/supported-extensions", expected_status=200)
     seed_case(
-        "play-example-romeo",
-        path="/play-example/romeo-knight-beat",
+        "convert-example-romeo",
+        path="/convert-url",
         method="POST",
-        body="{}",
+        body=json.dumps(
+            {
+                "url": "https://modland.com/pub/modules/Sidmon%201.0/Romeo%20Knight/beat_to_the_pulp.sid",
+            }
+        ),
         content_type="application/json",
         expected_status=200,
     )
     seed_case(
-        "play-example-turrican2",
-        path="/play-example/huelsbeck-turrican2",
+        "convert-example-turrican2",
+        path="/convert-url",
         method="POST",
-        body="{}",
+        body=json.dumps(
+            {
+                "url": "https://modland.com/pub/modules/TFMX/Chris%20Huelsbeck/mdat.turrican%202%20level%200-intro",
+                "sample_url": "https://modland.com/pub/modules/TFMX/Chris%20Huelsbeck/smpl.turrican%202%20level%200-intro",
+            }
+        ),
         content_type="application/json",
         expected_status=200,
     )

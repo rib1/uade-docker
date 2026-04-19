@@ -496,6 +496,85 @@ test_convert_url_cache_hit_across_instances() {
     record_success "$TEST_NAME"
 }
 
+test_duplicate_convert_on_other_instance_returns_processing() {
+    TEST_NAME="duplicate convert on B returns 409 processing while A owns the cold convert"
+    URL="${LOCAL_TEST_SERVER_URL}/fixtures/modules/mdat.turrican_2_level_0-intro?case=duplicate-processing-cross-instance"
+    SAMPLE_URL="${LOCAL_TEST_SERVER_URL}/fixtures/modules/smpl.turrican_2_level_0-intro?case=duplicate-processing-cross-instance"
+    TMP_DIR=$(mktemp -d)
+    trap 'rm -rf "$TMP_DIR"' RETURN
+
+    # Warm once to learn the stable file_id for this fixture content, then remove
+    # the shared artifact so the next convert is genuinely cold and slow enough
+    # to exercise the duplicate-convert contract across instances.
+    WARM_ALL=$(json_post "$BASE_URL_A" "/convert-url" \
+        "$(jq -nc --arg url "$URL" --arg sample_url "$SAMPLE_URL" '{url: $url, sample_url: $sample_url}')")
+    WARM_CODE=$(echo "$WARM_ALL" | tail -n1)
+    WARM_BODY=$(echo "$WARM_ALL" | sed '$d')
+
+    if [ "$WARM_CODE" -ne 200 ]; then
+        record_failure "$TEST_NAME" "warm-up convert-url on A returned HTTP ${WARM_CODE}; body=${WARM_BODY}"
+        return
+    fi
+
+    FILE_ID=$(echo "$WARM_BODY" | jq -r .file_id)
+    AUDIO_FORMAT=$(echo "$WARM_BODY" | jq -r .audio_format)
+    if [ -z "$FILE_ID" ] || [ "$FILE_ID" = "null" ] || [ -z "$AUDIO_FORMAT" ] || [ "$AUDIO_FORMAT" = "null" ]; then
+        record_failure "$TEST_NAME" "warm-up response missing file_id or audio_format; body=${WARM_BODY}"
+        return
+    fi
+
+    for BASE_URL in "$BASE_URL_A" "$BASE_URL_B"; do
+        REMOVE_ALL=$(json_post "$BASE_URL" "/test/remove-cache-artifact" \
+            "$(jq -nc --arg file_id "$FILE_ID" --arg ext ".${AUDIO_FORMAT}" '{file_id: $file_id, ext: $ext}')")
+        REMOVE_CODE=$(echo "$REMOVE_ALL" | tail -n1)
+        REMOVE_BODY=$(echo "$REMOVE_ALL" | sed '$d')
+
+        if [ "$REMOVE_CODE" -ne 200 ]; then
+            record_failure "$TEST_NAME" "remove-cache-artifact on ${BASE_URL} returned HTTP ${REMOVE_CODE}; body=${REMOVE_BODY}"
+            return
+        fi
+    done
+
+    (
+        json_post "$BASE_URL_A" "/convert-url" \
+            "$(jq -nc --arg url "$URL" --arg sample_url "$SAMPLE_URL" '{url: $url, sample_url: $sample_url}')" \
+            > "${TMP_DIR}/owner-a.txt"
+    ) &
+    OWNER_PID=$!
+
+    sleep 1
+
+    FOLLOWER_ALL=$(json_post "$BASE_URL_B" "/convert-url" \
+        "$(jq -nc --arg url "$URL" --arg sample_url "$SAMPLE_URL" '{url: $url, sample_url: $sample_url}')")
+    FOLLOWER_CODE=$(echo "$FOLLOWER_ALL" | tail -n1)
+    FOLLOWER_BODY=$(echo "$FOLLOWER_ALL" | sed '$d')
+
+    wait "$OWNER_PID"
+    OWNER_ALL=$(cat "${TMP_DIR}/owner-a.txt")
+    OWNER_CODE=$(echo "$OWNER_ALL" | tail -n1)
+    OWNER_BODY=$(echo "$OWNER_ALL" | sed '$d')
+
+    if [ "$OWNER_CODE" -ne 200 ]; then
+        record_failure "$TEST_NAME" "owner convert-url on A returned HTTP ${OWNER_CODE}; body=${OWNER_BODY}"
+        return
+    fi
+
+    if [ "$FOLLOWER_CODE" -ne 409 ]; then
+        record_failure "$TEST_NAME" "expected HTTP 409 on B, got ${FOLLOWER_CODE}; body=${FOLLOWER_BODY}"
+        return
+    fi
+
+    FOLLOWER_STATUS=$(echo "$FOLLOWER_BODY" | jq -r .status)
+    FOLLOWER_RETRYABLE=$(echo "$FOLLOWER_BODY" | jq -r .retryable)
+
+    if [ "$FOLLOWER_STATUS" != "processing" ] || [ "$FOLLOWER_RETRYABLE" != "true" ]; then
+        record_failure "$TEST_NAME" "follower convert-url on B did not return processing contract; body=${FOLLOWER_BODY}"
+        return
+    fi
+
+    record_success "$TEST_NAME"
+}
+
 test_convert_probed_after_remote_cache_removal_same_instance() {
     TEST_NAME="convert-probed on A recovers after remote cache removal"
 
@@ -560,15 +639,17 @@ test_cross_instance_play_after_remote_cache_removal_still_serves() {
     FILE_ID=$(echo "$CONVERT_BODY" | jq -r .file_id)
     AUDIO_FORMAT=$(echo "$CONVERT_BODY" | jq -r .audio_format)
 
-    # Clear any earlier warmed copy on B so this test exercises the true
-    # "shared cache removed, no local fallback on B" path.
-    PRE_REMOVE_ALL=$(json_post "$BASE_URL_B" "/test/remove-cache-artifact" \
-        "$(jq -nc --arg file_id "$FILE_ID" --arg ext ".${AUDIO_FORMAT}" '{file_id: $file_id, ext: $ext}')")
-    PRE_REMOVE_CODE=$(echo "$PRE_REMOVE_ALL" | tail -n1)
-    PRE_REMOVE_BODY=$(echo "$PRE_REMOVE_ALL" | sed '$d')
+    # Warm B's local copy first so this test exercises the "B already
+    # materialized a local artifact, then A removes its local copy and the
+    # shared remote artifact" path.
+    INITIAL_PLAY_CODE=$(fetch_http_code "${BASE_URL_B}/play/${FILE_ID}")
+    if [ "$INITIAL_PLAY_CODE" != "200" ] && [ "$INITIAL_PLAY_CODE" != "206" ]; then
+        record_failure "$TEST_NAME" "initial play on B returned HTTP ${INITIAL_PLAY_CODE} for file_id=${FILE_ID}"
+        return
+    fi
 
-    if [ "$PRE_REMOVE_CODE" -ne 200 ]; then
-        record_failure "$TEST_NAME" "pre-clean remove-cache-artifact on B returned HTTP ${PRE_REMOVE_CODE}; body=${PRE_REMOVE_BODY}"
+    if ! ls "/instance-b/converted/${FILE_ID}".* > /dev/null 2>&1; then
+        record_failure "$TEST_NAME" "initial play on B did not materialize a local converted artifact before removal"
         return
     fi
 
@@ -753,6 +834,7 @@ test_probe_on_a_convert_on_b_expected_gap
 test_queue_hop_probe_convert_play
 test_convert_probed_after_remote_cache_removal_same_instance
 test_convert_url_cache_hit_across_instances
+test_duplicate_convert_on_other_instance_returns_processing
 test_cross_instance_play_after_remote_cache_removal_still_serves
 test_shared_cache_access_sidecar_across_instances
 test_cleanup_state_is_per_instance

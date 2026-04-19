@@ -185,7 +185,7 @@ try {
             "--rm",
             "--build",
             "-e", "BENCH_SUITE=cloudrun-semaphore",
-            "-e", "REPORT_FILE=/reports/benchmarks/semaphore-sweep/limit-$limit/k6-summary.json",
+            "-e", "REPORT_FILE=/$k6SummaryRelative",
             "-e", "BENCH_SCENARIO_DURATION=$Duration",
             "-e", "PLAY_FULL_VUS=$PlayFullVus",
             "-e", "PLAY_RANGE_VUS=$PlayRangeVus",
@@ -207,7 +207,7 @@ try {
 
     $combinedJson = Join-Path $OutputDir "summary.json"
     $combinedMd = Join-Path $OutputDir "summary.md"
-    @($Results) | ConvertTo-Json -Depth 8 | Set-Content -Path $combinedJson
+    ConvertTo-Json -InputObject @($Results) -Depth 8 -AsArray | Set-Content -Path $combinedJson
     Write-MarkdownSummary -RunResults $Results -DestinationPath $combinedMd
 
     Write-Host ""
