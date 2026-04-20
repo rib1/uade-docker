@@ -2460,10 +2460,11 @@ def health():
 @limiter.exempt
 def test_run_cleanup():
     """Trigger cleanup paths in test mode to validate health status transitions."""
-    if os.getenv("UADE_TEST_MODE") != "1":
-        return json_response({"error": "Not found"}, 404)
+    test_mode_response = require_test_mode()
+    if test_mode_response is not None:
+        return test_mode_response
 
-    data = request.get_json(silent=True) or {}
+    data = request_json_or_empty()
     scope = data.get("scope", "all")
     if scope not in {"local", "cache", "all"}:
         return json_response({"error": "Invalid cleanup scope"}, 400)
