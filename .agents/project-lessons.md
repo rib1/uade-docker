@@ -272,3 +272,25 @@ This document contains project-specific learnings and regression-avoidance notes
 - **Rate-Limit Isolation:** Disable rate limiting in the benchmark overlay. Perf runs should measure application behavior, not limiter policy.
 - **Cold Convert-Probed:** A `probe-upload` followed by `convert-probed` is not automatically a cold conversion in this repo. Converted audio is cached independently from probed-file state, so a benchmark that wants a real reconvert must follow the same pattern as the endpoint and multi-instance tests: first convert once, call `/test/remove-cache-artifact`, then measure the next `convert-probed`.
 - **Race Tests:** Concurrency regressions that need `/test/*` helpers should target `uade-web-seeded`, not the default `uade-web` service. The plain app runs with `UADE_TEST_MODE=0`, so test-only cache reset or inspection endpoints will correctly return `404`.
+
+## Python Refactoring Lessons
+
+**Key Takeaways:** `web/server.py` is still readable if refactors stay centered on shared substeps and structured results, not giant mode-driven abstractions.
+
+- **Safe Refactor Shape:** The highest-value readability wins came from replacing long positional tuples with small structured result objects and from extracting shared preparation helpers while keeping convert and probe endpoints separate at the final response stage.
+- **Shared Prep Boundary:** A good boundary in this repo is "prepare module source, then finish per-endpoint". Shared archive handling, invalid-module responses, and module preparation improved readability without forcing convert/probe into one mega helper.
+- **Lock Helper Boundary:** Security-sensitive helpers such as conversion-lock validation stay easier to reason about when local and remote rules are split into separate functions with one tiny dispatcher, instead of mixing both path models in one implementation.
+- **Small Cleanup Bias:** After the biggest flow refactors, the next useful passes were route-plumbing cleanups: shared `409 processing` responses, shared User-Agent logging, upload-file validation, and test-route validation helpers. Those were low-risk because they removed repetition without changing core conversion control flow.
+- **Stop Before Framework Over-Abstraction:** Once convert/probe shared their preparation stage, the remaining duplication was not worth collapsing further unless a new behavioral change required it. In this repo, keeping the last stage explicit is more readable than introducing a generic `mode=probe|convert` pipeline.
+
+## Local CodeQL Lessons
+
+**Key Takeaways:** Keep local CodeQL as a separate Dockerized verification path, and fix the actual taint flows instead of guessing from GitHub alerts.
+
+- **Separate Workflow:** Local CodeQL should stay opt-in and separate from the default Compose quality run. In this repo, `codeql-check` belongs in `test/docker-compose.quality.yml`, but `quality-check` should remain the fast default.
+- **Docker-First Local Scan:** Use the same Compose pattern as other repo checks for local confirmation. The current local entrypoint is `docker compose -f docker-compose.yml -f test/docker-compose.quality.yml run --rm --build codeql-check`.
+- **SARIF Confirmation:** When GitHub Advanced Security findings are unclear, re-run the local Dockerized scan and parse the generated SARIF under `reports/codeql/` before making more speculative changes.
+- **Path Injection Fix Pattern:** CodeQL path-injection findings dropped cleanly only after path creation and file access were routed through explicit managed-root validators. In this repo, validating candidate paths against `MODULES_DIR` and `CONVERTED_DIR` worked better than ad hoc spot fixes at individual call sites.
+- **Filename Flow Hardening:** Uploaded filenames should be normalized once into a stable safe subset and then reused for both path building and log output. Central helpers such as `safe_client_filename()`, `managed_modules_path()`, and `safe_log_name()` reduced both duplication and CodeQL noise.
+- **Log/Response Hygiene:** Shared preparation helpers can reintroduce `log-injection` and reflective-XSS findings if they log raw filenames or return unsanitized names. In this repo, sanitizing before logging and using the safe filename contract consistently cleared those findings.
+- **Real Findings vs Benchmark Noise:** A clean local CodeQL scan does not imply every benchmark race is fixed. During this refactor branch, the remaining real runtime issue was a cross-instance eviction/conversion race, not a static-analysis problem.

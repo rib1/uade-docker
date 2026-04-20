@@ -655,6 +655,48 @@ def validated_md5_hash(value):
     return value
 
 
+def safe_client_filename(filename):
+    """Normalize untrusted client filenames to a stable safe subset."""
+    if not isinstance(filename, str):
+        return "module"
+    normalized = unicodedata.normalize("NFKC", filename)
+    return secure_filename(normalized)[:100] or "module"
+
+
+def validated_managed_path(path, *roots):
+    """Validate that a path stays under one of the managed storage roots."""
+    candidate = Path(path)
+    resolved_candidate = candidate.resolve(strict=False)
+
+    def is_under_root(root):
+        resolved_root = Path(root).resolve(strict=False)
+        try:
+            resolved_candidate.relative_to(resolved_root)
+            return True
+        except ValueError:
+            return False
+
+    for root in roots:
+        if is_under_root(root):
+            return candidate
+    raise ValueError(f"Path {candidate} is outside managed roots")
+
+
+def managed_modules_path(*, filename, suffix):
+    """Build a validated path under MODULES_DIR for uploaded/probed module storage."""
+    return validated_managed_path(
+        MODULES_DIR / f"{safe_client_filename(filename)}_{suffix}",
+        MODULES_DIR,
+    )
+
+
+def safe_log_name(value):
+    """Return a safe short name for logs derived from filenames or paths."""
+    if isinstance(value, Path):
+        value = value.name
+    return safe_client_filename(str(value))
+
+
 def upload_error_response(message, *, probe=False):
     """Return the appropriate upload error payload for convert or probe endpoints."""
     if probe:
@@ -662,22 +704,22 @@ def upload_error_response(message, *, probe=False):
     return json_response({"error": message}, 400)
 
 
-def get_uploaded_request_file(*, probe=False):
+def get_uploaded_request_file():
     """Validate the standard multipart upload field and return the file plus safe filename."""
     if "file" not in request.files:
-        return None, None, upload_error_response("No file provided", probe=probe)
+        return None, None, "No file provided"
 
     file = request.files["file"]
     if file.filename == "":
-        return None, None, upload_error_response("No file selected", probe=probe)
+        return None, None, "No file selected"
 
     file.seek(0, os.SEEK_END)
     file_size = file.tell()
     file.seek(0, os.SEEK_SET)
     if file_size == 0:
-        return None, None, upload_error_response("Empty file provided", probe=probe)
+        return None, None, "Empty file provided"
 
-    return file, secure_filename(file.filename), None
+    return file, safe_client_filename(file.filename), None
 
 
 def _cleanup_old_files_impl():
@@ -839,8 +881,9 @@ def cleanup_cache_files():
 
 def get_file_hash(file_path):
     """Calculate MD5 hash of a file for caching"""
+    file_path = validated_managed_path(file_path, MODULES_DIR, CONVERTED_DIR)
     md5 = hashlib.md5(usedforsecurity=False)  # Only used for caching, not security
-    with Path(file_path).open("rb") as f:
+    with file_path.open("rb") as f:
         for chunk in iter(lambda: f.read(4096), b""):
             md5.update(chunk)
     return md5.hexdigest()
@@ -852,6 +895,17 @@ def touch_for_lru(file_path):
         Path(file_path).touch()
     except Exception:
         logger.warning(f"Could not touch file for LRU update {file_path}", exc_info=True)
+
+
+def wait_for_managed_file(file_path, *, timeout_seconds=DUPLICATE_CONVERSION_WAIT_SECONDS):
+    """Wait briefly for a managed local file to appear after a concurrent replace/rebuild."""
+    deadline = time.monotonic() + timeout_seconds
+    file_path = Path(file_path)
+    while time.monotonic() < deadline:
+        if file_path.exists():
+            return True
+        time.sleep(CONVERSION_LOCK_POLL_SECONDS)
+    return file_path.exists()
 
 
 def find_probed_module_by_hash(module_hash: str) -> Path | None:
@@ -1796,7 +1850,9 @@ def wait_for_conversion(
     return None
 
 
-def process_audio_conversion(input_path, *, compress_flac=False, sample_files=None):
+def process_audio_conversion(
+    input_path, *, compress_flac=False, sample_files=None, _retried_missing_input=False
+):
     """
     Convert module to WAV using UADE with optional caching and FLAC compression.
 
@@ -1836,8 +1892,12 @@ def process_audio_conversion(input_path, *, compress_flac=False, sample_files=No
 
     overall_started_at = time.perf_counter()
     try:
+        input_path = Path(input_path)
+        if not input_path.exists() and not wait_for_managed_file(input_path):
+            return _conversion_failure("File not found: source module not available yet")
+
         # Defensive: Restrict input_path to MODULES_DIR
-        input_resolved = Path(input_path).resolve()
+        input_resolved = input_path.resolve()
         if not (input_resolved.is_relative_to(MODULES_DIR.resolve())):
             logger.error("Aborting: attempted read outside allowed directories")
             return _conversion_failure(
@@ -2173,10 +2233,20 @@ def process_audio_conversion(input_path, *, compress_flac=False, sample_files=No
             stderr_log_path.unlink(missing_ok=True)
 
     except FileNotFoundError:
+        if not _retried_missing_input and wait_for_managed_file(input_path):
+            logger.warning(f"Transient missing input detected during conversion: {input_path}")
+            logger.info(f"Retrying conversion after transient missing input: {input_path}")
+            return process_audio_conversion(
+                input_path,
+                compress_flac=compress_flac,
+                sample_files=sample_files,
+                _retried_missing_input=True,
+            )
         logger.error(f"File not found for processing: {input_path}")
         return _conversion_failure(f"File not found: {input_path}")
 
     except subprocess.TimeoutExpired:
+        logger.error("Conversion timeout", exc_info=True)
         return _conversion_failure(
             f"Conversion timeout ({CONVERSION_TIMEOUT_SECONDS} seconds exceeded)",
             player_format=player_format,
@@ -2553,9 +2623,9 @@ def get_examples():
 @limiter.limit(f"{CONVERSION_RATE_LIMIT_PER_MINUTE} per minute")
 def upload_file():
     """Handle file upload and conversion"""
-    file, filename, error_response = get_uploaded_request_file()
-    if error_response is not None:
-        return error_response
+    file, filename, error_message = get_uploaded_request_file()
+    if error_message is not None:
+        return upload_error_response(error_message)
 
     try:
         log_request_user_agent()
@@ -2565,7 +2635,7 @@ def upload_file():
         file_id = str(uuid.uuid4())
 
         # Save uploaded file
-        module_path = MODULES_DIR / f"{filename}_{file_id}"
+        module_path = managed_modules_path(filename=filename, suffix=file_id)
         file.save(module_path)
         return process_module_and_respond(
             module_path, filename, use_flac, url_cached=False, sample_files=None
@@ -2584,18 +2654,18 @@ def probe_upload():
     Saves the file using a content-based hash so identical content is stored only once.
     Returns a module_hash that /convert-probed can use to convert without re-uploading.
     """
-    file, filename, error_response = get_uploaded_request_file(probe=True)
-    if error_response is not None:
-        return error_response
+    file, filename, error_message = get_uploaded_request_file()
+    if error_message is not None:
+        return upload_error_response(error_message, probe=True)
 
     try:
         file_id = str(uuid.uuid4())
-        temp_path = MODULES_DIR / f"{filename}_{file_id}"
+        temp_path = managed_modules_path(filename=filename, suffix=file_id)
         file.save(temp_path)
 
         # Content-addressed storage: rename to hash-based path for dedup
         module_hash = get_file_hash(temp_path)
-        probed_path = MODULES_DIR / f"probed_{module_hash}"
+        probed_path = validated_managed_path(MODULES_DIR / f"probed_{module_hash}", MODULES_DIR)
 
         if probed_path.exists():
             temp_path.unlink(missing_ok=True)
@@ -2657,9 +2727,15 @@ def convert_probed():
     log_request_user_agent("Convert-probed User-Agent")
     use_flac = True
 
-    return process_module_and_respond(
+    response = process_module_and_respond(
         probed_path, filename, use_flac, url_cached=False, sample_files=None
     )
+    response_data = response.get_json(silent=True) or {}
+    if response.status_code == HTTP_SERVER_ERROR_MIN and str(
+        response_data.get("error", "")
+    ).startswith("File not found:"):
+        return json_response({"error": "Module not found — please re-upload"}, 404)
+    return response
 
 
 def process_module_and_respond(
@@ -2668,28 +2744,13 @@ def process_module_and_respond(
     """
     Shared logic for archive detection, extraction, conversion, metadata, cleanup, and response.
     """
-    # Generate a unique ID for the extraction directory to prevent race conditions
-    unique_id = str(uuid.uuid4())
-    extract_dir = Path(f"{module_path}_extracted_{unique_id}")
-
-    # Check for a zero-byte file, which indicates a previously processed invalid module
-    if module_path.exists() and module_path.stat().st_size == 0:
-        logger.info(f"Skipping processing for known invalid zero-byte module: {module_path}")
-        return json_response(
-            {
-                "error": "Could not detect module metadata. "
-                "The file may be corrupt or not a supported module."
-            },
-            500,
-        )
+    prepared_source, error_response = prepare_module_source(module_path, filename, mode="convert")
+    if error_response is not None:
+        return error_response
 
     try:
-        archive_result = resolve_archive_module(module_path, filename, extract_dir, mode="convert")
-        if archive_result.error:
-            module_path.unlink(missing_ok=True)
-            return json_response({"error": archive_result.error}, 500)
-        filename = archive_result.filename
-        module_path = archive_result.module_path
+        module_path = prepared_source.module_path
+        filename = prepared_source.filename
 
         # Convert to WAV (and optionally FLAC)
         conversion_result = process_audio_conversion(
@@ -2701,35 +2762,16 @@ def process_module_and_respond(
                 return processing_response(conversion_result.error)
             return json_response({"error": conversion_result.error}, 500)
 
-        return json_response(
-            {
-                "success": True,
-                "file_id": conversion_result.cache_hash,
-                "filename": filename,
-                "module_name": conversion_result.module_name,
-                "module_format": conversion_result.module_format,
-                "player_format": conversion_result.player_format,
-                "subsongs": conversion_result.subsongs,
-                "subsong_durations": conversion_result.duration_list,
-                "audio_format": (
-                    conversion_result.final_file.suffix[1:]
-                    if conversion_result.final_file
-                    else "wav"
-                ),
-                "play_url": f"/play/{conversion_result.cache_hash}",
-                "download_url": (
-                    f"/download/{conversion_result.cache_hash}?filename="
-                    f"{urllib.parse.quote(conversion_result.module_name or filename)}"
-                ),
-                "cached": conversion_result.cached,
-                "url_cached": url_cached,
-            }
+        return conversion_success_response(
+            conversion_result,
+            filename,
+            url_cached=url_cached,
         )
 
     finally:
         # Clean up extracted files only (do not delete cached files)
-        if extract_dir.exists():
-            shutil.rmtree(extract_dir, ignore_errors=True)
+        if prepared_source.extract_dir.exists():
+            shutil.rmtree(prepared_source.extract_dir, ignore_errors=True)
 
 
 def detect_cached_module_metadata(input_path, sample_files=None):
@@ -2801,6 +2843,34 @@ class ArchiveResolutionResult:
     error: str | None = None
 
 
+@dataclass(slots=True)
+class PreparedModuleSource:
+    """Module path/name plus extraction dir after common archive preparation."""
+
+    module_path: Path
+    filename: str
+    extract_dir: Path
+
+
+def invalid_module_response(*, probe=False):
+    """Return the standard invalid-module error payload."""
+    payload: dict[str, object] = {
+        "error": "Could not detect module metadata. "
+        "The file may be corrupt or not a supported module."
+    }
+    if probe:
+        payload = {"ok": False, "playable": False, **payload}
+    return json_response(payload, 500)
+
+
+def archive_processing_error_response(error, *, probe=False):
+    """Return the standard archive-processing error payload."""
+    payload: dict[str, object] = {"error": error}
+    if probe:
+        payload = {"ok": False, "playable": False, **payload}
+    return json_response(payload, 500)
+
+
 def resolve_archive_module(module_path, filename, extract_dir, *, mode):
     """Resolve LHA/ZIP archives to their playable inner module file."""
     archive_handlers = (
@@ -2813,7 +2883,7 @@ def resolve_archive_module(module_path, filename, extract_dir, *, mode):
         if not detector(module_path):
             continue
 
-        logger.info(f"Detected {archive_label} archive{mode_suffix}: {filename}")
+        logger.info(f"Detected {archive_label} archive{mode_suffix}: {safe_log_name(filename)}")
         success, error, music_file = extractor(module_path, extract_dir)
         if not success:
             return ArchiveResolutionResult(module_path=module_path, filename=filename, error=error)
@@ -2822,32 +2892,98 @@ def resolve_archive_module(module_path, filename, extract_dir, *, mode):
     return ArchiveResolutionResult(module_path=module_path, filename=filename)
 
 
-def process_module_probe_response(module_path, filename, *, url_cached=False, sample_files=None):
-    """Shared logic for archive handling and metadata-only probe responses."""
+def prepare_module_source(module_path, filename, *, mode):
+    """Prepare a module path/name for convert or probe processing."""
+    module_path = validated_managed_path(module_path, MODULES_DIR)
+    filename = safe_client_filename(filename)
     unique_id = str(uuid.uuid4())
     extract_dir = Path(f"{module_path}_extracted_{unique_id}")
 
     if module_path.exists() and module_path.stat().st_size == 0:
-        logger.info(f"Skipping probe for known invalid zero-byte module: {module_path}")
-        return json_response(
-            {
-                "ok": False,
-                "playable": False,
-                "error": "Could not detect module metadata. "
-                "The file may be corrupt or not a supported module.",
-            },
-            500,
+        logger.info(
+            f"Skipping {mode} for known invalid zero-byte module: {safe_log_name(module_path)}"
+        )
+        return None, invalid_module_response(probe=(mode == "probe"))
+
+    archive_result = resolve_archive_module(module_path, filename, extract_dir, mode=mode)
+    if archive_result.error:
+        module_path.unlink(missing_ok=True)
+        return None, archive_processing_error_response(
+            archive_result.error,
+            probe=(mode == "probe"),
         )
 
+    return (
+        PreparedModuleSource(
+            module_path=archive_result.module_path,
+            filename=archive_result.filename,
+            extract_dir=extract_dir,
+        ),
+        None,
+    )
+
+
+def conversion_success_response(conversion_result, filename, *, url_cached):
+    """Return the standard successful conversion response body."""
+    return json_response(
+        {
+            "success": True,
+            "file_id": conversion_result.cache_hash,
+            "filename": filename,
+            "module_name": conversion_result.module_name,
+            "module_format": conversion_result.module_format,
+            "player_format": conversion_result.player_format,
+            "subsongs": conversion_result.subsongs,
+            "subsong_durations": conversion_result.duration_list,
+            "audio_format": (
+                conversion_result.final_file.suffix[1:] if conversion_result.final_file else "wav"
+            ),
+            "play_url": f"/play/{conversion_result.cache_hash}",
+            "download_url": (
+                f"/download/{conversion_result.cache_hash}?filename="
+                f"{urllib.parse.quote(conversion_result.module_name or filename)}"
+            ),
+            "cached": conversion_result.cached,
+            "url_cached": url_cached,
+        }
+    )
+
+
+def probe_success_response(
+    *,
+    filename,
+    module_name,
+    module_format,
+    player_format,
+    subsongs,
+    url_cached,
+    sample_files,
+):
+    """Return the standard successful metadata-only probe response body."""
+    return json_response(
+        {
+            "ok": True,
+            "playable": True,
+            "filename": filename,
+            "module_name": module_name or filename,
+            "module_format": module_format,
+            "player_format": player_format,
+            "subsongs": subsongs,
+            "url_cached": url_cached,
+            "source_type": "dual" if sample_files else "single",
+        }
+    )
+
+
+def process_module_probe_response(module_path, filename, *, url_cached=False, sample_files=None):
+    """Shared logic for archive handling and metadata-only probe responses."""
+    prepared_source, error_response = prepare_module_source(module_path, filename, mode="probe")
+    if error_response is not None:
+        return error_response
+
     try:
-        archive_result = resolve_archive_module(module_path, filename, extract_dir, mode="probe")
-        if archive_result.error:
-            module_path.unlink(missing_ok=True)
-            return json_response(
-                {"ok": False, "playable": False, "error": archive_result.error}, 500
-            )
-        filename = archive_result.filename
-        module_path = archive_result.module_path
+        module_path = prepared_source.module_path
+        filename = prepared_source.filename
 
         (
             metadata_success,
@@ -2859,32 +2995,20 @@ def process_module_probe_response(module_path, filename, *, url_cached=False, sa
         ) = detect_cached_module_metadata(module_path, sample_files=sample_files)
 
         if not metadata_success:
-            return json_response(
-                {
-                    "ok": False,
-                    "playable": False,
-                    "error": "Could not detect module metadata. "
-                    "The file may be corrupt or not a supported module.",
-                },
-                500,
-            )
+            return invalid_module_response(probe=True)
 
-        return json_response(
-            {
-                "ok": True,
-                "playable": True,
-                "filename": filename,
-                "module_name": module_name or filename,
-                "module_format": module_format,
-                "player_format": player_format,
-                "subsongs": subsongs,
-                "url_cached": url_cached,
-                "source_type": "dual" if sample_files else "single",
-            }
+        return probe_success_response(
+            filename=filename,
+            module_name=module_name,
+            module_format=module_format,
+            player_format=player_format,
+            subsongs=subsongs,
+            url_cached=url_cached,
+            sample_files=sample_files,
         )
     finally:
-        if extract_dir.exists():
-            shutil.rmtree(extract_dir, ignore_errors=True)
+        if prepared_source.extract_dir.exists():
+            shutil.rmtree(prepared_source.extract_dir, ignore_errors=True)
 
 
 def is_safe_url(u):
@@ -3155,9 +3279,28 @@ def materialize_remote_cached_file(
 
 def ensure_sample_alias(sample_path, cached_sample_path):
     """Point the sample alias path at the cached sample artifact."""
+
+    def alias_points_to_cached_target():
+        if not sample_path.is_symlink():
+            return False
+        try:
+            return sample_path.resolve(strict=False) == cached_sample_path.resolve(strict=False)
+        except OSError:
+            return False
+
+    if alias_points_to_cached_target():
+        return
+
     if sample_path.exists() or sample_path.is_symlink():
         sample_path.unlink(missing_ok=True)
-    sample_path.symlink_to(cached_sample_path)
+
+    try:
+        sample_path.symlink_to(cached_sample_path)
+    except FileExistsError:
+        if alias_points_to_cached_target():
+            return
+        sample_path.unlink(missing_ok=True)
+        sample_path.symlink_to(cached_sample_path)
 
 
 def prepare_remote_module_source(url, sample_url=None):
