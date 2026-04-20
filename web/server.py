@@ -655,6 +655,31 @@ def validated_md5_hash(value):
     return value
 
 
+def upload_error_response(message, *, probe=False):
+    """Return the appropriate upload error payload for convert or probe endpoints."""
+    if probe:
+        return json_response({"ok": False, "playable": False, "error": message}, 400)
+    return json_response({"error": message}, 400)
+
+
+def get_uploaded_request_file(*, probe=False):
+    """Validate the standard multipart upload field and return the file plus safe filename."""
+    if "file" not in request.files:
+        return None, None, upload_error_response("No file provided", probe=probe)
+
+    file = request.files["file"]
+    if file.filename == "":
+        return None, None, upload_error_response("No file selected", probe=probe)
+
+    file.seek(0, os.SEEK_END)
+    file_size = file.tell()
+    file.seek(0, os.SEEK_SET)
+    if file_size == 0:
+        return None, None, upload_error_response("Empty file provided", probe=probe)
+
+    return file, secure_filename(file.filename), None
+
+
 def _cleanup_old_files_impl():
     """
     Remove files older than CLEANUP_INTERVAL from local directories.
@@ -2528,19 +2553,9 @@ def get_examples():
 @limiter.limit(f"{CONVERSION_RATE_LIMIT_PER_MINUTE} per minute")
 def upload_file():
     """Handle file upload and conversion"""
-    if "file" not in request.files:
-        return json_response({"error": "No file provided"}, 400)
-
-    file = request.files["file"]
-    if file.filename == "":
-        return json_response({"error": "No file selected"}, 400)
-
-    # Check for empty file content
-    file.seek(0, os.SEEK_END)
-    file_size = file.tell()
-    file.seek(0, os.SEEK_SET)  # Reset file pointer
-    if file_size == 0:
-        return json_response({"error": "Empty file provided"}, 400)
+    file, filename, error_response = get_uploaded_request_file()
+    if error_response is not None:
+        return error_response
 
     try:
         log_request_user_agent()
@@ -2548,7 +2563,6 @@ def upload_file():
 
         # Generate unique ID
         file_id = str(uuid.uuid4())
-        filename = secure_filename(file.filename)
 
         # Save uploaded file
         module_path = MODULES_DIR / f"{filename}_{file_id}"
@@ -2570,22 +2584,12 @@ def probe_upload():
     Saves the file using a content-based hash so identical content is stored only once.
     Returns a module_hash that /convert-probed can use to convert without re-uploading.
     """
-    if "file" not in request.files:
-        return json_response({"ok": False, "playable": False, "error": "No file provided"}, 400)
-
-    file = request.files["file"]
-    if file.filename == "":
-        return json_response({"ok": False, "playable": False, "error": "No file selected"}, 400)
-
-    file.seek(0, os.SEEK_END)
-    file_size = file.tell()
-    file.seek(0, os.SEEK_SET)
-    if file_size == 0:
-        return json_response({"ok": False, "playable": False, "error": "Empty file provided"}, 400)
+    file, filename, error_response = get_uploaded_request_file(probe=True)
+    if error_response is not None:
+        return error_response
 
     try:
         file_id = str(uuid.uuid4())
-        filename = secure_filename(file.filename)
         temp_path = MODULES_DIR / f"{filename}_{file_id}"
         file.save(temp_path)
 
