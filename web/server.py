@@ -3234,19 +3234,21 @@ def prepare_remote_module_source(url, sample_url=None):
     }, None
 
 
+def prepare_remote_source_from_payload(data):
+    """Validate a URL-backed request payload and resolve its remote source."""
+    if not isinstance(data, dict):
+        return None, json_response({"error": "Invalid JSON body"}, 400)
+    if "url" not in data:
+        return None, json_response({"error": "No URL provided"}, 400)
+    return prepare_remote_module_source(data["url"], data.get("sample_url"))
+
+
 def convert_url_payload(data):
     """Shared logic for URL-backed module conversion requests."""
     convert_url_started_at = time.perf_counter()
-    if not isinstance(data, dict):
-        return json_response({"error": "Invalid JSON body"}, 400)
-    if "url" not in data:
-        return json_response({"error": "No URL provided"}, 400)
-
-    url = data["url"]
-    sample_url = data.get("sample_url")
 
     try:
-        remote_source, error_response = prepare_remote_module_source(url, sample_url)
+        remote_source, error_response = prepare_remote_source_from_payload(data)
         if error_response:
             return error_response
 
@@ -3289,16 +3291,8 @@ def convert_url():
 
 def probe_url_payload(data):
     """Shared logic for URL-backed metadata probe requests."""
-    if not isinstance(data, dict):
-        return json_response({"error": "Invalid JSON body"}, 400)
-    if "url" not in data:
-        return json_response({"error": "No URL provided"}, 400)
-
-    url = data["url"]
-    sample_url = data.get("sample_url")
-
     try:
-        remote_source, error_response = prepare_remote_module_source(url, sample_url)
+        remote_source, error_response = prepare_remote_source_from_payload(data)
         if error_response:
             return error_response
         return process_module_probe_response(
