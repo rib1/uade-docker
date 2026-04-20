@@ -2627,23 +2627,12 @@ def process_module_and_respond(
         )
 
     try:
-        # Check if it's an LHA or ZIP archive
-        if is_lha_file(module_path):
-            logger.info(f"Detected LHA archive: {filename}")
-            success, error, music_file = extract_lha(module_path, extract_dir)
-            if not success:
-                module_path.unlink(missing_ok=True)
-                return json_response({"error": error}, 500)
-            filename = music_file.name
-            module_path = music_file
-        elif is_zip_file(module_path):
-            logger.info(f"Detected ZIP archive: {filename}")
-            success, error, music_file = extract_zip(module_path, extract_dir)
-            if not success:
-                module_path.unlink(missing_ok=True)
-                return json_response({"error": error}, 500)
-            filename = music_file.name
-            module_path = music_file
+        archive_result = resolve_archive_module(module_path, filename, extract_dir, mode="convert")
+        if archive_result.error:
+            module_path.unlink(missing_ok=True)
+            return json_response({"error": archive_result.error}, 500)
+        filename = archive_result.filename
+        module_path = archive_result.module_path
 
         # Convert to WAV (and optionally FLAC)
         conversion_result = process_audio_conversion(
@@ -2753,6 +2742,36 @@ def detect_cached_module_metadata(input_path, sample_files=None):
     return metadata_success, module_name, module_format, player_format, subsongs, cache_hash
 
 
+@dataclass(slots=True)
+class ArchiveResolutionResult:
+    """Resolved module path/name after optional archive extraction."""
+
+    module_path: Path
+    filename: str
+    error: str | None = None
+
+
+def resolve_archive_module(module_path, filename, extract_dir, *, mode):
+    """Resolve LHA/ZIP archives to their playable inner module file."""
+    archive_handlers = (
+        ("LHA", is_lha_file, extract_lha),
+        ("ZIP", is_zip_file, extract_zip),
+    )
+    mode_suffix = " during probe" if mode == "probe" else ""
+
+    for archive_label, detector, extractor in archive_handlers:
+        if not detector(module_path):
+            continue
+
+        logger.info(f"Detected {archive_label} archive{mode_suffix}: {filename}")
+        success, error, music_file = extractor(module_path, extract_dir)
+        if not success:
+            return ArchiveResolutionResult(module_path=module_path, filename=filename, error=error)
+        return ArchiveResolutionResult(module_path=music_file, filename=music_file.name)
+
+    return ArchiveResolutionResult(module_path=module_path, filename=filename)
+
+
 def process_module_probe_response(module_path, filename, *, url_cached=False, sample_files=None):
     """Shared logic for archive handling and metadata-only probe responses."""
     unique_id = str(uuid.uuid4())
@@ -2771,22 +2790,14 @@ def process_module_probe_response(module_path, filename, *, url_cached=False, sa
         )
 
     try:
-        if is_lha_file(module_path):
-            logger.info(f"Detected LHA archive during probe: {filename}")
-            success, error, music_file = extract_lha(module_path, extract_dir)
-            if not success:
-                module_path.unlink(missing_ok=True)
-                return json_response({"ok": False, "playable": False, "error": error}, 500)
-            filename = music_file.name
-            module_path = music_file
-        elif is_zip_file(module_path):
-            logger.info(f"Detected ZIP archive during probe: {filename}")
-            success, error, music_file = extract_zip(module_path, extract_dir)
-            if not success:
-                module_path.unlink(missing_ok=True)
-                return json_response({"ok": False, "playable": False, "error": error}, 500)
-            filename = music_file.name
-            module_path = music_file
+        archive_result = resolve_archive_module(module_path, filename, extract_dir, mode="probe")
+        if archive_result.error:
+            module_path.unlink(missing_ok=True)
+            return json_response(
+                {"ok": False, "playable": False, "error": archive_result.error}, 500
+            )
+        filename = archive_result.filename
+        module_path = archive_result.module_path
 
         (
             metadata_success,
