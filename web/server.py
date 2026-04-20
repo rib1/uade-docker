@@ -26,6 +26,7 @@ import urllib.parse
 import uuid
 import zipfile
 from contextlib import contextmanager
+from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Final
@@ -1556,6 +1557,71 @@ def get_conversion_lock_path(cache_hash):
     return f"{CONVERSION_LOCKS_ROOT_REMOTE}/{filename}"
 
 
+@dataclass(slots=True)
+class ConversionResult:
+    """Structured result returned by process_audio_conversion()."""
+
+    success: bool
+    error: str | None
+    final_file: Path | None
+    player_format: str | None
+    module_name: str | None
+    module_format: str | None
+    subsongs: int
+    cached: bool
+    cache_hash: str | None
+    duration_list: list[float] = field(default_factory=list)
+
+
+def _conversion_failure(
+    error,
+    *,
+    player_format=None,
+    module_name=None,
+    module_format=None,
+    subsongs=0,
+    cache_hash=None,
+):
+    """Build a failed conversion result with the standard shared fields."""
+    return ConversionResult(
+        success=False,
+        error=error,
+        final_file=None,
+        player_format=player_format,
+        module_name=module_name,
+        module_format=module_format,
+        subsongs=subsongs,
+        cached=False,
+        cache_hash=cache_hash,
+    )
+
+
+def _conversion_success(
+    final_file,
+    *,
+    player_format,
+    module_name,
+    module_format,
+    subsongs,
+    cached,
+    cache_hash,
+    duration_list=None,
+):
+    """Build a successful conversion result with consistent field names."""
+    return ConversionResult(
+        success=True,
+        error=None,
+        final_file=final_file,
+        player_format=player_format,
+        module_name=module_name,
+        module_format=module_format,
+        subsongs=subsongs,
+        cached=cached,
+        cache_hash=cache_hash,
+        duration_list=duration_list or [],
+    )
+
+
 def _clear_stale_conversion_lock(lock_path):
     """Remove a stale conversion lock if it has clearly expired."""
     try:
@@ -1623,17 +1689,15 @@ def wait_for_conversion(
                     )
                 # Extract duration_list from metadata
                 duration_list = metadata.get("subsong_durations", []) if metadata else []
-                return (
-                    True,
-                    None,
+                return _conversion_success(
                     cached_file,
-                    player_format,
-                    module_name,
-                    module_format,
-                    subsongs,
-                    True,  # cached
-                    cache_hash,
-                    duration_list,
+                    player_format=player_format,
+                    module_name=module_name,
+                    module_format=module_format,
+                    subsongs=subsongs,
+                    cached=True,
+                    cache_hash=cache_hash,
+                    duration_list=duration_list,
                 )
             logger.warning(
                 f"Conversion lock for {cache_hash} cleared but no cached artifact was found."
@@ -1670,26 +1734,17 @@ def process_audio_conversion(input_path, *, compress_flac=False, sample_files=No
                              if metadata detection fails.
 
     Returns:
-        A tuple containing:
-        success (bool): True if conversion succeeded, False otherwise.
-        error (str or None): Error message if conversion failed, None otherwise.
-        final_file (Path or None): Path to the converted audio file (WAV or FLAC).
-        player_format (str or None): Detected player format.
-        module_name (str or None): Detected module name.
-        module_format (str or None): Detected module format.
-        subsongs (int): Number of subsongs detected.
-        cached (bool): True if the audio was served from cache.
-        cache_hash (str or None): The MD5 hash of the input file.
-        duration_list (list[float]): Per-subsong durations (empty for single subsong or cache hits).
+        ConversionResult containing success/error state, the converted file path,
+        detected metadata, cache status, cache hash, and per-subsong durations.
 
     Failure modes:
-        Returns the same tuple shape on failure. If the global conversion slot
-        is not acquired within CONVERSION_TIMEOUT_SECONDS, the error element is
-        "Timeout waiting for global conversion slot." and the converted-file
-        element is None. If another request already owns the same per-hash lock
-        and the artifact is still not ready after DUPLICATE_CONVERSION_WAIT_SECONDS,
-        the error element becomes "Conversion in progress." so callers can return
-        a retryable response instead of holding the request open.
+        Returns a failed ConversionResult on error. If the global conversion slot
+        is not acquired within CONVERSION_TIMEOUT_SECONDS, the error field is
+        "Timeout waiting for global conversion slot.". If another request already
+        owns the same per-hash lock and the artifact is still not ready after
+        DUPLICATE_CONVERSION_WAIT_SECONDS, the error field becomes
+        "Conversion in progress." so callers can return a retryable response
+        instead of holding the request open.
     """
     # Hold metadata to return to the caller, even if conversion fails.
     metadata_success, module_name, module_format, player_format, subsongs = (
@@ -1707,17 +1762,13 @@ def process_audio_conversion(input_path, *, compress_flac=False, sample_files=No
         input_resolved = Path(input_path).resolve()
         if not (input_resolved.is_relative_to(MODULES_DIR.resolve())):
             logger.error("Aborting: attempted read outside allowed directories")
-            return (
-                False,
+            return _conversion_failure(
                 "Illegal input file path",
-                None,
-                player_format,
-                module_name,
-                module_format,
-                subsongs,
-                False,
-                cache_hash,
-                [],
+                player_format=player_format,
+                module_name=module_name,
+                module_format=module_format,
+                subsongs=subsongs,
+                cache_hash=cache_hash,
             )
 
         # Calculate cache hash first to check for cached metadata
@@ -1781,18 +1832,14 @@ def process_audio_conversion(input_path, *, compress_flac=False, sample_files=No
                     f"Could not detect metadata for {input_path}, but other locks exist. "
                     "Retaining file for ongoing metadata detection."
                 )
-            return (
-                False,
+            return _conversion_failure(
                 "Could not detect module metadata. "
                 "The file may be corrupt or not a supported module.",
-                None,
-                player_format,
-                module_name,
-                module_format,
-                subsongs,
-                False,
-                cache_hash,
-                [],
+                player_format=player_format,
+                module_name=module_name,
+                module_format=module_format,
+                subsongs=subsongs,
+                cache_hash=cache_hash,
             )
 
         output_path = CONVERTED_DIR / f"{cache_hash}.wav"
@@ -1812,17 +1859,15 @@ def process_audio_conversion(input_path, *, compress_flac=False, sample_files=No
         if cached_file and cached_file.exists():
             # Extract duration_list from metadata
             duration_list = metadata.get("subsong_durations", []) if metadata else []
-            return (
-                True,
-                None,
+            return _conversion_success(
                 cached_file,
-                player_format,
-                module_name,
-                module_format,
-                subsongs,
-                True,
-                cache_hash,
-                duration_list,
+                player_format=player_format,
+                module_name=module_name,
+                module_format=module_format,
+                subsongs=subsongs,
+                cached=True,
+                cache_hash=cache_hash,
+                duration_list=duration_list,
             )
 
         # If lock exists, another thread is already converting this file
@@ -1846,17 +1891,13 @@ def process_audio_conversion(input_path, *, compress_flac=False, sample_files=No
             logger.info(
                 f"Returning processing state for duplicate conversion request: {cache_hash}"
             )
-            return (
-                False,
+            return _conversion_failure(
                 "Conversion in progress.",
-                None,
-                player_format,
-                module_name,
-                module_format,
-                subsongs,
-                False,
-                cache_hash,
-                [],
+                player_format=player_format,
+                module_name=module_name,
+                module_format=module_format,
+                subsongs=subsongs,
+                cache_hash=cache_hash,
             )
 
         semaphore_acquired = False
@@ -1874,17 +1915,15 @@ def process_audio_conversion(input_path, *, compress_flac=False, sample_files=No
             if cached_file and cached_file.exists():
                 # Extract duration_list from metadata
                 duration_list = metadata.get("subsong_durations", []) if metadata else []
-                return (
-                    True,
-                    None,
+                return _conversion_success(
                     cached_file,
-                    player_format,
-                    module_name,
-                    module_format,
-                    subsongs,
-                    True,
-                    cache_hash,
-                    duration_list,
+                    player_format=player_format,
+                    module_name=module_name,
+                    module_format=module_format,
+                    subsongs=subsongs,
+                    cached=True,
+                    cache_hash=cache_hash,
+                    duration_list=duration_list,
                 )
 
             semaphore_wait_started_at = time.perf_counter()
@@ -1898,17 +1937,13 @@ def process_audio_conversion(input_path, *, compress_flac=False, sample_files=No
                 acquired=semaphore_acquired,
             )
             if not semaphore_acquired:
-                return (
-                    False,
+                return _conversion_failure(
                     "Timeout waiting for global conversion slot.",
-                    None,
-                    player_format,
-                    module_name,
-                    module_format,
-                    subsongs,
-                    False,
-                    cache_hash,
-                    [],
+                    player_format=player_format,
+                    module_name=module_name,
+                    module_format=module_format,
+                    subsongs=subsongs,
+                    cache_hash=cache_hash,
                 )
 
             cmd = [
@@ -1938,34 +1973,26 @@ def process_audio_conversion(input_path, *, compress_flac=False, sample_files=No
             if result.returncode != 0:
                 stderr_output = _read_text_file(stderr_log_path, tail_bytes=8192)
                 logger.error(f"UADE error: {stderr_output}")
-                return (
-                    False,
+                return _conversion_failure(
                     f"Conversion failed: {stderr_output}",
-                    None,
-                    player_format,
-                    module_name,
-                    module_format,
-                    subsongs,
-                    False,
-                    cache_hash,
-                    [],
+                    player_format=player_format,
+                    module_name=module_name,
+                    module_format=module_format,
+                    subsongs=subsongs,
+                    cache_hash=cache_hash,
                 )
 
             Path.replace(temp_uade_output_path, output_path)
             logger.info(f"Atomically moved {temp_uade_output_path} to {output_path}")
 
             if not output_path.exists():
-                return (
-                    False,
+                return _conversion_failure(
                     "Conversion failed: Output file not created",
-                    None,
-                    player_format,
-                    module_name,
-                    module_format,
-                    subsongs,
-                    False,
-                    cache_hash,
-                    [],
+                    player_format=player_format,
+                    module_name=module_name,
+                    module_format=module_format,
+                    subsongs=subsongs,
+                    cache_hash=cache_hash,
                 )
 
             # Multi-subsong parsing still needs the UADE timing lines, but we can
@@ -2022,17 +2049,15 @@ def process_audio_conversion(input_path, *, compress_flac=False, sample_files=No
                 flac=compress_flac,
             )
             logger.info(f"Successfully converted: {input_path} -> {final_output}")
-            return (
-                True,
-                None,
+            return _conversion_success(
                 final_output,
-                player_format,
-                module_name,
-                module_format,
-                subsongs,
-                False,
-                cache_hash,
-                duration_list,
+                player_format=player_format,
+                module_name=module_name,
+                module_format=module_format,
+                subsongs=subsongs,
+                cached=False,
+                cache_hash=cache_hash,
+                duration_list=duration_list,
             )
 
         except FileExistsError:
@@ -2053,17 +2078,13 @@ def process_audio_conversion(input_path, *, compress_flac=False, sample_files=No
             )
             if result:
                 return result
-            return (
-                False,
+            return _conversion_failure(
                 "Conversion in progress.",
-                None,
-                player_format,
-                module_name,
-                module_format,
-                subsongs,
-                False,
-                cache_hash,
-                [],
+                player_format=player_format,
+                module_name=module_name,
+                module_format=module_format,
+                subsongs=subsongs,
+                cache_hash=cache_hash,
             )
         finally:
             if semaphore_acquired:
@@ -2075,45 +2096,26 @@ def process_audio_conversion(input_path, *, compress_flac=False, sample_files=No
 
     except FileNotFoundError:
         logger.error(f"File not found for processing: {input_path}")
-        return (
-            False,
-            f"File not found: {input_path}",
-            None,
-            None,
-            None,
-            None,
-            0,
-            False,
-            None,
-            [],
-        )
+        return _conversion_failure(f"File not found: {input_path}")
 
     except subprocess.TimeoutExpired:
-        return (
-            False,
+        return _conversion_failure(
             f"Conversion timeout ({CONVERSION_TIMEOUT_SECONDS} seconds exceeded)",
-            None,
-            player_format,
-            module_name,
-            module_format,
-            subsongs,
-            False,
-            cache_hash,
-            [],
+            player_format=player_format,
+            module_name=module_name,
+            module_format=module_format,
+            subsongs=subsongs,
+            cache_hash=cache_hash,
         )
     except Exception:
         logger.error("Conversion exception", exc_info=True)
-        return (
-            False,
+        return _conversion_failure(
             "Internal server error during conversion",
-            None,
-            player_format,
-            module_name,
-            module_format,
-            subsongs,
-            False,
-            cache_hash,
-            [],
+            player_format=player_format,
+            module_name=module_name,
+            module_format=module_format,
+            subsongs=subsongs,
+            cache_hash=cache_hash,
         )
 
 
@@ -2644,48 +2646,43 @@ def process_module_and_respond(
             module_path = music_file
 
         # Convert to WAV (and optionally FLAC)
-        (
-            success,
-            error,
-            final_file,
-            player_format,
-            module_name,
-            module_format,
-            subsongs,
-            cached,
-            converted_file_id,
-            duration_list,
-        ) = process_audio_conversion(module_path, compress_flac=use_flac, sample_files=sample_files)
+        conversion_result = process_audio_conversion(
+            module_path, compress_flac=use_flac, sample_files=sample_files
+        )
 
-        if not success:
-            if error == "Conversion in progress.":
+        if not conversion_result.success:
+            if conversion_result.error == "Conversion in progress.":
                 return json_response(
                     {
-                        "error": error,
+                        "error": conversion_result.error,
                         "status": "processing",
                         "retryable": True,
                     },
                     409,
                 )
-            return json_response({"error": error}, 500)
+            return json_response({"error": conversion_result.error}, 500)
 
         return json_response(
             {
                 "success": True,
-                "file_id": converted_file_id,
+                "file_id": conversion_result.cache_hash,
                 "filename": filename,
-                "module_name": module_name,
-                "module_format": module_format,
-                "player_format": player_format,
-                "subsongs": subsongs,
-                "subsong_durations": duration_list,
-                "audio_format": final_file.suffix[1:] if final_file else "wav",
-                "play_url": f"/play/{converted_file_id}",
-                "download_url": (
-                    f"/download/{converted_file_id}?filename="
-                    f"{urllib.parse.quote(module_name or filename)}"
+                "module_name": conversion_result.module_name,
+                "module_format": conversion_result.module_format,
+                "player_format": conversion_result.player_format,
+                "subsongs": conversion_result.subsongs,
+                "subsong_durations": conversion_result.duration_list,
+                "audio_format": (
+                    conversion_result.final_file.suffix[1:]
+                    if conversion_result.final_file
+                    else "wav"
                 ),
-                "cached": cached,
+                "play_url": f"/play/{conversion_result.cache_hash}",
+                "download_url": (
+                    f"/download/{conversion_result.cache_hash}?filename="
+                    f"{urllib.parse.quote(conversion_result.module_name or filename)}"
+                ),
+                "cached": conversion_result.cached,
                 "url_cached": url_cached,
             }
         )
