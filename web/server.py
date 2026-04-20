@@ -629,6 +629,32 @@ def log_request_user_agent(prefix="User-Agent"):
     logger.info(f"{prefix}: {sanitized_user_agent}")
 
 
+def require_test_mode():
+    """Return a 404 response when a test-only route is hit outside test mode."""
+    if os.getenv("UADE_TEST_MODE") != "1":
+        return json_response({"error": "Not found"}, 404)
+    return None
+
+
+def request_json_or_empty():
+    """Return request JSON body or an empty dict when parsing fails."""
+    return request.get_json(silent=True) or {}
+
+
+def validated_file_id(file_id):
+    """Validate and sanitize a file_id used in local/remote artifact paths."""
+    if not isinstance(file_id, str) or not re.fullmatch(r"[a-zA-Z0-9_-]+", file_id):
+        return None
+    return secure_filename(file_id)
+
+
+def validated_md5_hash(value):
+    """Validate a lowercase MD5 hex string used for cache/module identifiers."""
+    if not isinstance(value, str) or not _MD5_HEX_RE.fullmatch(value):
+        return None
+    return value
+
+
 def _cleanup_old_files_impl():
     """
     Remove files older than CLEANUP_INTERVAL from local directories.
@@ -2304,22 +2330,23 @@ def test_run_cleanup():
 @limiter.exempt
 def test_set_local_file_mtime():
     """Set a converted local file mtime in test mode to exercise cleanup behavior."""
-    if os.getenv("UADE_TEST_MODE") != "1":
-        return json_response({"error": "Not found"}, 404)
+    test_mode_response = require_test_mode()
+    if test_mode_response is not None:
+        return test_mode_response
 
-    data = request.get_json(silent=True) or {}
-    file_id = data.get("file_id")
+    data = request_json_or_empty()
+    file_id = validated_file_id(data.get("file_id"))
     ext = data.get("ext")
     mtime_epoch = data.get("mtime_epoch")
 
-    if not isinstance(file_id, str) or not re.fullmatch(r"[a-zA-Z0-9_-]+", file_id):
+    if file_id is None:
         return json_response({"error": "Invalid file_id"}, 400)
     if ext not in {".wav", ".flac", ".json"}:
         return json_response({"error": "Invalid extension"}, 400)
     if not isinstance(mtime_epoch, (int, float)):
         return json_response({"error": "Invalid mtime_epoch"}, 400)
 
-    target_path = (CONVERTED_DIR / f"{secure_filename(file_id)}{ext}").resolve()
+    target_path = (CONVERTED_DIR / f"{file_id}{ext}").resolve()
     converted_dir_base = CONVERTED_DIR.resolve()
     try:
         target_path.relative_to(converted_dir_base)
@@ -2353,14 +2380,15 @@ def test_set_local_file_mtime():
 @limiter.exempt
 def test_create_stale_conversion_lock():
     """Create a stale conversion lock in test mode to exercise lock reclamation behavior."""
-    if os.getenv("UADE_TEST_MODE") != "1":
-        return json_response({"error": "Not found"}, 404)
+    test_mode_response = require_test_mode()
+    if test_mode_response is not None:
+        return test_mode_response
 
-    data = request.get_json(silent=True) or {}
-    cache_hash = data.get("cache_hash")
+    data = request_json_or_empty()
+    cache_hash = validated_md5_hash(data.get("cache_hash"))
     age_seconds = data.get("age_seconds", CONVERSION_TIMEOUT_SECONDS + 1)
 
-    if not isinstance(cache_hash, str) or not _MD5_HEX_RE.fullmatch(cache_hash):
+    if cache_hash is None:
         return json_response({"error": "Invalid cache_hash"}, 400)
 
     try:
@@ -2400,27 +2428,27 @@ def test_create_stale_conversion_lock():
 @limiter.exempt
 def test_remove_cache_artifact():
     """Remove a local and remote cache artifact in test mode to force specific cache paths."""
-    if os.getenv("UADE_TEST_MODE") != "1":
-        return json_response({"error": "Not found"}, 404)
+    test_mode_response = require_test_mode()
+    if test_mode_response is not None:
+        return test_mode_response
 
-    data = request.get_json(silent=True) or {}
-    file_id = data.get("file_id")
+    data = request_json_or_empty()
+    file_id = validated_file_id(data.get("file_id"))
     ext = data.get("ext")
 
-    if not isinstance(file_id, str) or not re.fullmatch(r"[a-zA-Z0-9_-]+", file_id):
+    if file_id is None:
         return json_response({"error": "Invalid file_id"}, 400)
     if ext not in {".wav", ".flac", ".json"}:
         return json_response({"error": "Invalid extension"}, 400)
 
-    safe_file_id = secure_filename(file_id)
-    local_path = (CONVERTED_DIR / f"{safe_file_id}{ext}").resolve()
+    local_path = (CONVERTED_DIR / f"{file_id}{ext}").resolve()
     converted_dir_base = CONVERTED_DIR.resolve()
     try:
         local_path.relative_to(converted_dir_base)
     except ValueError:
         return json_response({"error": "Invalid target path"}, 400)
 
-    remote_path = f"{root_cache}/{safe_file_id}{ext}"
+    remote_path = f"{root_cache}/{file_id}{ext}"
     local_removed = False
     remote_removed = False
 
@@ -2443,35 +2471,37 @@ def test_remove_cache_artifact():
 @limiter.exempt
 def test_flac_compression_count():
     """Inspect or reset FLAC compression counts in test mode."""
-    if os.getenv("UADE_TEST_MODE") != "1":
-        return json_response({"error": "Not found"}, 404)
+    test_mode_response = require_test_mode()
+    if test_mode_response is not None:
+        return test_mode_response
 
     if request.method == "POST":
         with FLAC_COMPRESSION_COUNTS_LOCK:
             FLAC_COMPRESSION_COUNTS.clear()
         return json_response({"reset": True})
 
-    file_id = request.args.get("file_id")
-    if not isinstance(file_id, str) or not re.fullmatch(r"[a-zA-Z0-9_-]+", file_id):
+    file_id = validated_file_id(request.args.get("file_id"))
+    if file_id is None:
         return json_response({"error": "Invalid file_id"}, 400)
 
     with FLAC_COMPRESSION_COUNTS_LOCK:
-        count = FLAC_COMPRESSION_COUNTS.get(secure_filename(file_id), 0)
+        count = FLAC_COMPRESSION_COUNTS.get(file_id, 0)
 
-    return json_response({"file_id": secure_filename(file_id), "count": count})
+    return json_response({"file_id": file_id, "count": count})
 
 
 @app.route("/test/remove-probed-module", methods=["POST"])
 @limiter.exempt
 def test_remove_probed_module():
     """Remove a probed module in test mode to exercise convert-probed fallback paths."""
-    if os.getenv("UADE_TEST_MODE") != "1":
-        return json_response({"error": "Not found"}, 404)
+    test_mode_response = require_test_mode()
+    if test_mode_response is not None:
+        return test_mode_response
 
-    data = request.get_json(silent=True) or {}
-    module_hash = data.get("module_hash")
+    data = request_json_or_empty()
+    module_hash = validated_md5_hash(data.get("module_hash"))
 
-    if not isinstance(module_hash, str) or not _MD5_HEX_RE.match(module_hash):
+    if module_hash is None:
         return json_response({"error": "Invalid module hash"}, 400)
 
     removed = False
