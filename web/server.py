@@ -3096,6 +3096,66 @@ def get_dual_file_module_filenames(filename):
     return filename, suffix, sample_filename, sample_suffix
 
 
+def materialize_remote_cached_file(
+    url, cached_path, *, cache_label, external_label, wait_seconds=20
+):
+    """Ensure a remote file is present, waiting briefly if another request owns it."""
+    lock_path = cached_path.with_suffix(f"{cached_path.suffix}.lock")
+    if cached_path.exists():
+        logger.info(
+            f"Cache hit for {cache_label}: {sanitized_url(url)}, using cached file: {cached_path}"
+        )
+        touch_for_lru(cached_path)
+        return True, None
+
+    download_lock_acquired = False
+    try:
+        lock_path.touch(exist_ok=False)
+        download_lock_acquired = True
+        if not cached_path.exists():
+            logger.info(f"Downloading: {sanitized_url(url)}")
+            download_started_at = time.perf_counter()
+            temp_path = cached_path.with_suffix(f"{cached_path.suffix}.tmp")
+            success, error_response = download_and_limit_size(
+                url, temp_path, f"External {external_label}"
+            )
+            if temp_path.exists():
+                Path.replace(temp_path, cached_path)
+                logger.info(f"Moved partial/complete download to: {cached_path}")
+            _log_duration(
+                f"Remote {external_label} download",
+                download_started_at,
+                filename=cached_path.name,
+            )
+            if not success:
+                return False, error_response
+    except FileExistsError:
+        logger.info(f"Download for {sanitized_url(url)} is already in progress, waiting...")
+        for _ in range(wait_seconds):
+            time.sleep(1)
+            if cached_path.exists():
+                logger.info(
+                    f"Cache hit for {cache_label} completed by another thread: "
+                    f"{sanitized_url(url)}, using cached file: {cached_path}"
+                )
+                touch_for_lru(cached_path)
+                return True, None
+        logger.warning(f"Timeout waiting for download of {sanitized_url(url)}.")
+        return False, json_response({"error": "Timeout waiting for file download."}, 500)
+    finally:
+        if download_lock_acquired:
+            lock_path.unlink(missing_ok=True)
+
+    return False, None
+
+
+def ensure_sample_alias(sample_path, cached_sample_path):
+    """Point the sample alias path at the cached sample artifact."""
+    if sample_path.exists() or sample_path.is_symlink():
+        sample_path.unlink(missing_ok=True)
+    sample_path.symlink_to(cached_sample_path)
+
+
 def prepare_remote_module_source(url, sample_url=None):
     """Validate, download, and resolve a remote module source for probe/convert routes."""
     remote_prepare_started_at = time.perf_counter()
@@ -3113,54 +3173,14 @@ def prepare_remote_module_source(url, sample_url=None):
 
     filename, suffix, sample_filename, sample_suffix = get_dual_file_module_filenames(filename)
     module_path = MODULES_DIR / f"{filename}_{url_hash}{suffix}"
-    lock_path = module_path.with_suffix(f"{module_path.suffix}.lock")
-    module_download_lock_acquired = False
-
-    url_cache_hit = False
-    if module_path.exists():
-        url_cache_hit = True
-        logger.info(f"Cache hit for module: {sanitized_url(url)}, using cached file: {module_path}")
-        touch_for_lru(module_path)
-    else:
-        try:
-            lock_path.touch(exist_ok=False)
-            module_download_lock_acquired = True
-            try:
-                if not module_path.exists():
-                    logger.info(f"Downloading: {sanitized_url(url)}")
-                    download_started_at = time.perf_counter()
-                    temp_path = module_path.with_suffix(f"{module_path.suffix}.tmp")
-                    success, error_response = download_and_limit_size(
-                        url, temp_path, "External module"
-                    )
-                    if temp_path.exists():
-                        Path.replace(temp_path, module_path)
-                        logger.info(f"Moved partial/complete download to: {module_path}")
-                    _log_duration(
-                        "Remote module download",
-                        download_started_at,
-                        filename=module_path.name,
-                    )
-                    if not success:
-                        return None, error_response
-            finally:
-                if module_download_lock_acquired:
-                    lock_path.unlink(missing_ok=True)
-        except FileExistsError:
-            logger.info(f"Download for {sanitized_url(url)} is already in progress, waiting...")
-            for _ in range(20):
-                time.sleep(1)
-                if module_path.exists():
-                    logger.info(
-                        f"Cache hit for module completed by another thread: "
-                        f"{sanitized_url(url)}, using cached file: {module_path}"
-                    )
-                    touch_for_lru(module_path)
-                    url_cache_hit = True
-                    break
-            else:
-                logger.warning(f"Timeout waiting for download of {sanitized_url(url)}.")
-                return None, json_response({"error": "Timeout waiting for file download."}, 500)
+    url_cache_hit, error_response = materialize_remote_cached_file(
+        url,
+        module_path,
+        cache_label="module",
+        external_label="module",
+    )
+    if error_response:
+        return None, error_response
 
     if not module_path.exists():
         return None, json_response({"error": "Failed to retrieve module file."}, 500)
@@ -3175,69 +3195,25 @@ def prepare_remote_module_source(url, sample_url=None):
 
         sample_path = MODULES_DIR / f"{sample_filename}_{url_hash}{sample_suffix}"
         cached_sample_path = MODULES_DIR / f"{sample_filename}_{sample_url_hash}{sample_suffix}"
-        sample_lock_path = cached_sample_path.with_suffix(f"{cached_sample_path.suffix}.lock")
-        sample_download_lock_acquired = False
         sample_files = [sample_path, cached_sample_path]
 
-        if cached_sample_path.exists():
-            if not sample_path.exists():
-                sample_path.unlink(missing_ok=True)
-                sample_path.symlink_to(cached_sample_path)
+        sample_cache_hit, error_response = materialize_remote_cached_file(
+            sample_url,
+            cached_sample_path,
+            cache_label="sample file",
+            external_label="sample",
+        )
+        if error_response:
+            return None, error_response
+
+        ensure_sample_alias(sample_path, cached_sample_path)
+        if sample_cache_hit:
             logger.info(
                 f"Cache hit for sample file: {sanitized_url(sample_url)}, "
                 f"using cached file {cached_sample_path}, linking to {sample_path}"
             )
-            touch_for_lru(cached_sample_path)
         else:
-            try:
-                sample_lock_path.touch(exist_ok=False)
-                sample_download_lock_acquired = True
-                sample_download_started_at = time.perf_counter()
-                temp_path = module_path.with_suffix(f"{cached_sample_path.suffix}.tmp")
-                success, error_response = download_and_limit_size(
-                    sample_url, temp_path, "External sample"
-                )
-                if temp_path.exists():
-                    Path.replace(temp_path, cached_sample_path)
-                    logger.info(f"Moved partial/complete sample download to: {cached_sample_path}")
-                _log_duration(
-                    "Remote sample download",
-                    sample_download_started_at,
-                    filename=cached_sample_path.name,
-                )
-                if not success:
-                    return None, error_response
-
-                if sample_path.exists() or sample_path.is_symlink():
-                    sample_path.unlink(missing_ok=True)
-                sample_path.symlink_to(cached_sample_path)
-                logger.info(f"Cached sample file: {cached_sample_path}, linking to {sample_path}")
-            except FileExistsError:
-                logger.info(
-                    f"Download for {sanitized_url(cached_sample_path)} is already "
-                    "in progress, waiting..."
-                )
-                for _ in range(20):
-                    time.sleep(1)
-                    if cached_sample_path.exists():
-                        if not sample_path.exists():
-                            sample_path.unlink(missing_ok=True)
-                            sample_path.symlink_to(cached_sample_path)
-                        logger.info(
-                            f"Cache hit for sample file completed by another thread: "
-                            f"{sanitized_url(sample_url)}, using cached file "
-                            f"{cached_sample_path}, linking to {sample_path}"
-                        )
-                        touch_for_lru(cached_sample_path)
-                        break
-                else:
-                    logger.warning(
-                        f"Timeout waiting for download of {sanitized_url(cached_sample_path)}."
-                    )
-                    return None, json_response({"error": "Timeout waiting for file download."}, 500)
-            finally:
-                if sample_download_lock_acquired:
-                    sample_lock_path.unlink(missing_ok=True)
+            logger.info(f"Cached sample file: {cached_sample_path}, linking to {sample_path}")
 
     _log_duration(
         "Remote module source preparation",
