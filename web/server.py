@@ -655,7 +655,7 @@ def validated_md5_hash(value):
     return value
 
 
-def safe_client_filename(filename):
+def _safe_client_filename(filename):
     """Normalize untrusted client filenames to a stable safe subset."""
     if not isinstance(filename, str):
         return "module"
@@ -663,7 +663,7 @@ def safe_client_filename(filename):
     return secure_filename(normalized)[:100] or "module"
 
 
-def validated_managed_path(path, *roots):
+def _validated_managed_path(path, *roots):
     """Validate that a path stays under one of the managed storage roots."""
     candidate = Path(path)
     resolved_candidate = candidate.resolve(strict=False)
@@ -682,19 +682,19 @@ def validated_managed_path(path, *roots):
     raise ValueError(f"Path {candidate} is outside managed roots")
 
 
-def managed_modules_path(*, filename, suffix):
+def _managed_modules_path(*, filename, suffix):
     """Build a validated path under MODULES_DIR for uploaded/probed module storage."""
-    return validated_managed_path(
-        MODULES_DIR / f"{safe_client_filename(filename)}_{suffix}",
+    return _validated_managed_path(
+        MODULES_DIR / f"{_safe_client_filename(filename)}_{suffix}",
         MODULES_DIR,
     )
 
 
-def safe_log_name(value):
+def _safe_log_name(value):
     """Return a safe short name for logs derived from filenames or paths."""
     if isinstance(value, Path):
         value = value.name
-    return safe_client_filename(str(value))
+    return _safe_client_filename(str(value))
 
 
 def upload_error_response(message, *, probe=False):
@@ -719,7 +719,7 @@ def get_uploaded_request_file():
     if file_size == 0:
         return None, None, "Empty file provided"
 
-    return file, safe_client_filename(file.filename), None
+    return file, _safe_client_filename(file.filename), None
 
 
 def _cleanup_old_files_impl():
@@ -881,7 +881,7 @@ def cleanup_cache_files():
 
 def get_file_hash(file_path):
     """Calculate MD5 hash of a file for caching"""
-    file_path = validated_managed_path(file_path, MODULES_DIR, CONVERTED_DIR)
+    file_path = _validated_managed_path(file_path, MODULES_DIR, CONVERTED_DIR)
     md5 = hashlib.md5(usedforsecurity=False)  # Only used for caching, not security
     with file_path.open("rb") as f:
         for chunk in iter(lambda: f.read(4096), b""):
@@ -897,7 +897,7 @@ def touch_for_lru(file_path):
         logger.warning(f"Could not touch file for LRU update {file_path}", exc_info=True)
 
 
-def wait_for_managed_file(file_path, *, timeout_seconds=DUPLICATE_CONVERSION_WAIT_SECONDS):
+def _wait_for_managed_file(file_path, *, timeout_seconds=DUPLICATE_CONVERSION_WAIT_SECONDS):
     """Wait briefly for a managed local file to appear after a concurrent replace/rebuild."""
     deadline = time.monotonic() + timeout_seconds
     file_path = Path(file_path)
@@ -908,7 +908,7 @@ def wait_for_managed_file(file_path, *, timeout_seconds=DUPLICATE_CONVERSION_WAI
     return file_path.exists()
 
 
-def find_probed_module_by_hash(module_hash: str) -> Path | None:
+def _find_probed_module_by_hash(module_hash: str) -> Path | None:
     """Find a cached probed module by validated hash without constructing a hash-based path."""
     try:
         for entry in MODULES_DIR.iterdir():
@@ -1323,7 +1323,7 @@ def detect_module_metadata(input_path):
     """
     Detect module metadata using uade123 -g
 
-    Returns: (metadata_success, module_name, module_format, player_format, subsongs)
+    Returns a ModuleMetadataResult with detected module fields.
     """
     metadata_started_at = time.perf_counter()
     try:
@@ -1334,7 +1334,7 @@ def detect_module_metadata(input_path):
         )
         if result.returncode != 0:
             logger.error(f"UADE metadata detection error: {result.stderr}")
-            return False, None, None, None, 0
+            return _metadata_failure()
 
         metadata_success = False
         module_name = None
@@ -1398,14 +1398,20 @@ def detect_module_metadata(input_path):
             input=input_path.name,
             subsongs=subsongs,
         )
-        return metadata_success, module_name, module_format, player_format, subsongs
+        return ModuleMetadataResult(
+            success=metadata_success,
+            module_name=module_name,
+            module_format=module_format,
+            player_format=player_format,
+            subsongs=subsongs,
+        )
 
     except subprocess.TimeoutExpired:
         logger.warning(f"Detect metadata timeout (5 seconds exceeded) for file: {input_path}")
-        return False, None, None, None, 0
+        return _metadata_failure()
     except Exception:
         logger.warning("Could not detect metadata", exc_info=True)
-        return False, None, None, None, 0
+        return _metadata_failure()
 
 
 def parse_subsong_durations(uade_output, subsong_count):
@@ -1705,6 +1711,17 @@ class ConversionResult:
     duration_list: list[float] = field(default_factory=list)
 
 
+@dataclass(slots=True)
+class ModuleMetadataResult:
+    """Structured result for module metadata detection/cache lookup."""
+
+    success: bool
+    module_name: str | None
+    module_format: str | None
+    player_format: str | None
+    subsongs: int
+
+
 def _conversion_failure(
     error,
     *,
@@ -1751,6 +1768,28 @@ def _conversion_success(
         cached=cached,
         cache_hash=cache_hash,
         duration_list=duration_list or [],
+    )
+
+
+def _metadata_failure():
+    """Return the standard failed metadata result."""
+    return ModuleMetadataResult(
+        success=False,
+        module_name=None,
+        module_format=None,
+        player_format=None,
+        subsongs=0,
+    )
+
+
+def _metadata_success(*, module_name, module_format, player_format, subsongs):
+    """Return the standard successful metadata result."""
+    return ModuleMetadataResult(
+        success=True,
+        module_name=module_name,
+        module_format=module_format,
+        player_format=player_format,
+        subsongs=subsongs,
     )
 
 
@@ -1892,7 +1931,7 @@ def wait_for_conversion(
     return None
 
 
-def resolve_inflight_conversion(
+def _resolve_inflight_conversion(
     cache_hash,
     lock_path,
     *,
@@ -1933,6 +1972,24 @@ def resolve_inflight_conversion(
     )
 
 
+@contextmanager
+def _acquire_conversion_semaphore(cache_hash, *, timeout_seconds):
+    """Acquire the global conversion semaphore with timing and automatic release."""
+    semaphore_wait_started_at = time.perf_counter()
+    acquired = GLOBAL_CONVERSION_SEMAPHORE.acquire(timeout=timeout_seconds)
+    _log_duration(
+        "Conversion semaphore wait",
+        semaphore_wait_started_at,
+        cache_hash=cache_hash,
+        acquired=acquired,
+    )
+    try:
+        yield acquired
+    finally:
+        if acquired:
+            GLOBAL_CONVERSION_SEMAPHORE.release()
+
+
 def process_audio_conversion(
     input_path, *, compress_flac=False, sample_files=None, _retried_missing_input=False
 ):
@@ -1964,19 +2021,13 @@ def process_audio_conversion(
         instead of holding the request open.
     """
     # Hold metadata to return to the caller, even if conversion fails.
-    metadata_success, module_name, module_format, player_format, subsongs = (
-        False,
-        None,
-        None,
-        None,
-        0,
-    )
+    metadata = _metadata_failure()
     cache_hash = None
 
     overall_started_at = time.perf_counter()
     try:
         input_path = Path(input_path)
-        if not input_path.exists() and not wait_for_managed_file(input_path):
+        if not input_path.exists() and not _wait_for_managed_file(input_path):
             return _conversion_failure("File not found: source module not available yet")
 
         # Defensive: Restrict input_path to MODULES_DIR
@@ -1985,10 +2036,10 @@ def process_audio_conversion(
             logger.error("Aborting: attempted read outside allowed directories")
             return _conversion_failure(
                 "Illegal input file path",
-                player_format=player_format,
-                module_name=module_name,
-                module_format=module_format,
-                subsongs=subsongs,
+                player_format=metadata.player_format,
+                module_name=metadata.module_name,
+                module_format=metadata.module_format,
+                subsongs=metadata.subsongs,
                 cache_hash=cache_hash,
             )
 
@@ -1999,25 +2050,23 @@ def process_audio_conversion(
         cached_metadata = load_metadata_cache(cache_hash)
         if cached_metadata:
             # Use cached metadata instead of running detection
-            module_name = cached_metadata.get("module_name")
-            module_format = cached_metadata.get("module_format")
-            player_format = cached_metadata.get("player_format", "Module")
-            subsongs = cached_metadata.get("subsongs", 1)
-            metadata_success = True
-            logger.info(f"Using cached metadata for {cache_hash}: {module_name} ({player_format})")
+            metadata = _metadata_success(
+                module_name=cached_metadata.get("module_name"),
+                module_format=cached_metadata.get("module_format"),
+                player_format=cached_metadata.get("player_format", "Module"),
+                subsongs=cached_metadata.get("subsongs", 1),
+            )
+            logger.info(
+                f"Using cached metadata for {cache_hash}: "
+                f"{metadata.module_name} ({metadata.player_format})"
+            )
         else:
             # No cached metadata, run detection
             # Use a unique lock file for metadata detection (per thread/process)
             unique_metadata_lock = MODULES_DIR / f"{cache_hash}.metadatalock.{uuid.uuid4()!s}"
             unique_metadata_lock.touch(exist_ok=True)
             try:
-                (
-                    metadata_success,
-                    module_name,
-                    module_format,
-                    player_format,
-                    subsongs,
-                ) = detect_module_metadata(input_path)
+                metadata = detect_module_metadata(input_path)
             finally:
                 unique_metadata_lock.unlink(missing_ok=True)
 
@@ -2025,7 +2074,7 @@ def process_audio_conversion(
         # This prevents disk abuse and caches the fact that this URL provides an invalid module.
         # Only truncates if no other .metadatalock.* files exist for this module.
         # Retains original content if metadata is detected but conversion fails (for debug).
-        if not metadata_success:
+        if not metadata.success:
             # Check for any remaining .metadatalock.* files for this module
             lock_glob = MODULES_DIR.glob(f"{cache_hash}.metadatalock.*")
             if not any(lock_glob):
@@ -2056,10 +2105,10 @@ def process_audio_conversion(
             return _conversion_failure(
                 "Could not detect module metadata. "
                 "The file may be corrupt or not a supported module.",
-                player_format=player_format,
-                module_name=module_name,
-                module_format=module_format,
-                subsongs=subsongs,
+                player_format=metadata.player_format,
+                module_name=metadata.module_name,
+                module_format=metadata.module_format,
+                subsongs=metadata.subsongs,
                 cache_hash=cache_hash,
             )
 
@@ -2075,27 +2124,26 @@ def process_audio_conversion(
         cached_result = _cached_conversion_result(
             cache_hash,
             prefer_flac=compress_flac,
-            player_format=player_format,
-            module_name=module_name,
-            module_format=module_format,
-            subsongs=subsongs,
+            player_format=metadata.player_format,
+            module_name=metadata.module_name,
+            module_format=metadata.module_format,
+            subsongs=metadata.subsongs,
         )
         if cached_result:
             return cached_result
 
-        inflight_result = resolve_inflight_conversion(
+        inflight_result = _resolve_inflight_conversion(
             cache_hash,
             lock_path,
             prefer_flac=compress_flac,
-            player_format=player_format,
-            module_name=module_name,
-            module_format=module_format,
-            subsongs=subsongs,
+            player_format=metadata.player_format,
+            module_name=metadata.module_name,
+            module_format=metadata.module_format,
+            subsongs=metadata.subsongs,
         )
         if inflight_result:
             return inflight_result
 
-        semaphore_acquired = False
         conversion_lock_acquired = False
         try:
             _lock_touch_exclusive(lock_path)
@@ -2105,69 +2153,63 @@ def process_audio_conversion(
             cached_result = _cached_conversion_result(
                 cache_hash,
                 prefer_flac=compress_flac,
-                player_format=player_format,
-                module_name=module_name,
-                module_format=module_format,
-                subsongs=subsongs,
+                player_format=metadata.player_format,
+                module_name=metadata.module_name,
+                module_format=metadata.module_format,
+                subsongs=metadata.subsongs,
             )
             if cached_result:
                 return cached_result
 
-            semaphore_wait_started_at = time.perf_counter()
-            semaphore_acquired = GLOBAL_CONVERSION_SEMAPHORE.acquire(
-                timeout=CONVERSION_TIMEOUT_SECONDS
-            )
-            _log_duration(
-                "Conversion semaphore wait",
-                semaphore_wait_started_at,
-                cache_hash=cache_hash,
-                acquired=semaphore_acquired,
-            )
-            if not semaphore_acquired:
-                return _conversion_failure(
-                    "Timeout waiting for global conversion slot.",
-                    player_format=player_format,
-                    module_name=module_name,
-                    module_format=module_format,
-                    subsongs=subsongs,
-                    cache_hash=cache_hash,
-                )
+            with _acquire_conversion_semaphore(
+                cache_hash, timeout_seconds=CONVERSION_TIMEOUT_SECONDS
+            ) as semaphore_acquired:
+                if not semaphore_acquired:
+                    return _conversion_failure(
+                        "Timeout waiting for global conversion slot.",
+                        player_format=metadata.player_format,
+                        module_name=metadata.module_name,
+                        module_format=metadata.module_format,
+                        subsongs=metadata.subsongs,
+                        cache_hash=cache_hash,
+                    )
 
-            cmd = [
-                UADE123_BIN,
-                "-c",
-                "-f",
-                str(temp_uade_output_path),
-                str(input_path),
-            ]  # Headless mode
+                cmd = [
+                    UADE123_BIN,
+                    "-c",
+                    "-f",
+                    str(temp_uade_output_path),
+                    str(input_path),
+                ]  # Headless mode
 
-            # Modern way to set umask for a child process without using the deprecated preexec_fn.
-            # We wrap the command in a shell that sets the umask and then execs the binary.
-            # This is thread-safe and avoids Python's deprecated preexec_fn.
-            full_cmd = [SH_BIN, "-c", 'umask 0002; exec "$@"', "--", *cmd]
+                # Modern way to set umask for a child process without using the
+                # deprecated preexec_fn.
+                # We wrap the command in a shell that sets the umask and then execs the binary.
+                # This is thread-safe and avoids Python's deprecated preexec_fn.
+                full_cmd = [SH_BIN, "-c", 'umask 0002; exec "$@"', "--", *cmd]
 
-            uade_started_at = time.perf_counter()
-            with Path(stderr_log_path).open("wb") as stderr_log:
-                result = subprocess.run(  # noqa: S603
-                    full_cmd,
-                    stdout=subprocess.DEVNULL,
-                    stderr=stderr_log,
-                    check=False,
-                    timeout=CONVERSION_TIMEOUT_SECONDS,
-                )
-            _log_duration("UADE audio render", uade_started_at, input=input_path.name)
+                uade_started_at = time.perf_counter()
+                with Path(stderr_log_path).open("wb") as stderr_log:
+                    result = subprocess.run(  # noqa: S603
+                        full_cmd,
+                        stdout=subprocess.DEVNULL,
+                        stderr=stderr_log,
+                        check=False,
+                        timeout=CONVERSION_TIMEOUT_SECONDS,
+                    )
+                _log_duration("UADE audio render", uade_started_at, input=input_path.name)
 
-            if result.returncode != 0:
-                stderr_output = _read_text_file(stderr_log_path, tail_bytes=8192)
-                logger.error(f"UADE error: {stderr_output}")
-                return _conversion_failure(
-                    f"Conversion failed: {stderr_output}",
-                    player_format=player_format,
-                    module_name=module_name,
-                    module_format=module_format,
-                    subsongs=subsongs,
-                    cache_hash=cache_hash,
-                )
+                if result.returncode != 0:
+                    stderr_output = _read_text_file(stderr_log_path, tail_bytes=8192)
+                    logger.error(f"UADE error: {stderr_output}")
+                    return _conversion_failure(
+                        f"Conversion failed: {stderr_output}",
+                        player_format=metadata.player_format,
+                        module_name=metadata.module_name,
+                        module_format=metadata.module_format,
+                        subsongs=metadata.subsongs,
+                        cache_hash=cache_hash,
+                    )
 
             Path.replace(temp_uade_output_path, output_path)
             logger.info(f"Atomically moved {temp_uade_output_path} to {output_path}")
@@ -2175,19 +2217,21 @@ def process_audio_conversion(
             if not output_path.exists():
                 return _conversion_failure(
                     "Conversion failed: Output file not created",
-                    player_format=player_format,
-                    module_name=module_name,
-                    module_format=module_format,
-                    subsongs=subsongs,
+                    player_format=metadata.player_format,
+                    module_name=metadata.module_name,
+                    module_format=metadata.module_format,
+                    subsongs=metadata.subsongs,
                     cache_hash=cache_hash,
                 )
 
             # Multi-subsong parsing still needs the UADE timing lines, but we can
             # avoid loading the render log at all for the common single-subsong case.
             render_log_output = ""
-            if subsongs > 1:
+            if metadata.subsongs > 1:
                 render_log_output = _read_text_file(stderr_log_path)
-            duration_list, duration_error = parse_subsong_durations(render_log_output, subsongs)
+            duration_list, duration_error = parse_subsong_durations(
+                render_log_output, metadata.subsongs
+            )
             if duration_error:
                 logger.warning(f"Duration parsing error: {duration_error}")
 
@@ -2202,19 +2246,15 @@ def process_audio_conversion(
                     flac_success = True
                     output_path.unlink(missing_ok=True)
 
-            if semaphore_acquired:
-                GLOBAL_CONVERSION_SEMAPHORE.release()
-                semaphore_acquired = False
-
             # Save metadata to local disk first (includes detected metadata and subsong durations)
-            metadata = {
-                "subsongs": subsongs,
+            metadata_payload = {
+                "subsongs": metadata.subsongs,
                 "subsong_durations": duration_list,
-                "module_name": module_name,
-                "module_format": module_format,
-                "player_format": player_format,
+                "module_name": metadata.module_name,
+                "module_format": metadata.module_format,
+                "player_format": metadata.player_format,
             }
-            save_metadata(cache_hash, metadata)
+            save_metadata(cache_hash, metadata_payload)
 
             # Save audio to remote cache (will also copy metadata to remote)
             if flac_success:
@@ -2238,38 +2278,36 @@ def process_audio_conversion(
             logger.info(f"Successfully converted: {input_path} -> {final_output}")
             return _conversion_success(
                 final_output,
-                player_format=player_format,
-                module_name=module_name,
-                module_format=module_format,
-                subsongs=subsongs,
+                player_format=metadata.player_format,
+                module_name=metadata.module_name,
+                module_format=metadata.module_format,
+                subsongs=metadata.subsongs,
                 cached=False,
                 cache_hash=cache_hash,
                 duration_list=duration_list,
             )
 
         except FileExistsError:
-            result = resolve_inflight_conversion(
+            result = _resolve_inflight_conversion(
                 cache_hash,
                 lock_path,
                 prefer_flac=compress_flac,
-                player_format=player_format,
-                module_name=module_name,
-                module_format=module_format,
-                subsongs=subsongs,
+                player_format=metadata.player_format,
+                module_name=metadata.module_name,
+                module_format=metadata.module_format,
+                subsongs=metadata.subsongs,
             )
             if result:
                 return result
             raise
         finally:
-            if semaphore_acquired:
-                GLOBAL_CONVERSION_SEMAPHORE.release()
             if conversion_lock_acquired:
                 _lock_unlink(lock_path)
             temp_uade_output_path.unlink(missing_ok=True)  # Clean up temp file
             stderr_log_path.unlink(missing_ok=True)
 
     except FileNotFoundError:
-        if not _retried_missing_input and wait_for_managed_file(input_path):
+        if not _retried_missing_input and _wait_for_managed_file(input_path):
             logger.warning(f"Transient missing input detected during conversion: {input_path}")
             logger.info(f"Retrying conversion after transient missing input: {input_path}")
             return process_audio_conversion(
@@ -2285,20 +2323,20 @@ def process_audio_conversion(
         logger.error("Conversion timeout", exc_info=True)
         return _conversion_failure(
             f"Conversion timeout ({CONVERSION_TIMEOUT_SECONDS} seconds exceeded)",
-            player_format=player_format,
-            module_name=module_name,
-            module_format=module_format,
-            subsongs=subsongs,
+            player_format=metadata.player_format,
+            module_name=metadata.module_name,
+            module_format=metadata.module_format,
+            subsongs=metadata.subsongs,
             cache_hash=cache_hash,
         )
     except Exception:
         logger.error("Conversion exception", exc_info=True)
         return _conversion_failure(
             "Internal server error during conversion",
-            player_format=player_format,
-            module_name=module_name,
-            module_format=module_format,
-            subsongs=subsongs,
+            player_format=metadata.player_format,
+            module_name=metadata.module_name,
+            module_format=metadata.module_format,
+            subsongs=metadata.subsongs,
             cache_hash=cache_hash,
         )
 
@@ -2636,7 +2674,7 @@ def test_remove_probed_module():
         return json_response({"error": "Invalid module hash"}, 400)
 
     removed = False
-    probed_path = find_probed_module_by_hash(module_hash)
+    probed_path = _find_probed_module_by_hash(module_hash)
     if probed_path and probed_path.exists():
         probed_path.unlink(missing_ok=True)
         removed = True
@@ -2671,7 +2709,7 @@ def upload_file():
         file_id = str(uuid.uuid4())
 
         # Save uploaded file
-        module_path = managed_modules_path(filename=filename, suffix=file_id)
+        module_path = _managed_modules_path(filename=filename, suffix=file_id)
         file.save(module_path)
         return process_module_and_respond(
             module_path, filename, use_flac, url_cached=False, sample_files=None
@@ -2696,12 +2734,12 @@ def probe_upload():
 
     try:
         file_id = str(uuid.uuid4())
-        temp_path = managed_modules_path(filename=filename, suffix=file_id)
+        temp_path = _managed_modules_path(filename=filename, suffix=file_id)
         file.save(temp_path)
 
         # Content-addressed storage: rename to hash-based path for dedup
         module_hash = get_file_hash(temp_path)
-        probed_path = validated_managed_path(MODULES_DIR / f"probed_{module_hash}", MODULES_DIR)
+        probed_path = _validated_managed_path(MODULES_DIR / f"probed_{module_hash}", MODULES_DIR)
 
         if probed_path.exists():
             temp_path.unlink(missing_ok=True)
@@ -2753,7 +2791,7 @@ def convert_probed():
     if not _MD5_HEX_RE.match(module_hash):
         return json_response({"error": "Invalid module hash"}, 400)
 
-    probed_path = find_probed_module_by_hash(module_hash)
+    probed_path = _find_probed_module_by_hash(module_hash)
 
     if probed_path is None or not probed_path.exists() or probed_path.stat().st_size == 0:
         return json_response({"error": "Module not found — please re-upload"}, 404)
@@ -2818,30 +2856,28 @@ def detect_cached_module_metadata(input_path, sample_files=None):
     invalid state, matching the existing convert-url/upload behavior.
     """
     cache_hash = get_file_hash(input_path)
-    module_name = None
-    module_format = None
-    player_format = None
-    subsongs = 0
-
     cached_metadata = load_metadata_cache(cache_hash)
     if cached_metadata:
-        module_name = cached_metadata.get("module_name")
-        module_format = cached_metadata.get("module_format")
-        player_format = cached_metadata.get("player_format", "Module")
-        subsongs = cached_metadata.get("subsongs", 1)
-        logger.info(f"Using cached metadata for {cache_hash}: {module_name} ({player_format})")
-        return True, module_name, module_format, player_format, subsongs, cache_hash
+        metadata = _metadata_success(
+            module_name=cached_metadata.get("module_name"),
+            module_format=cached_metadata.get("module_format"),
+            player_format=cached_metadata.get("player_format", "Module"),
+            subsongs=cached_metadata.get("subsongs", 1),
+        )
+        logger.info(
+            f"Using cached metadata for {cache_hash}: "
+            f"{metadata.module_name} ({metadata.player_format})"
+        )
+        return metadata, cache_hash
 
     unique_metadata_lock = MODULES_DIR / f"{cache_hash}.metadatalock.{uuid.uuid4()!s}"
     unique_metadata_lock.touch(exist_ok=True)
     try:
-        metadata_success, module_name, module_format, player_format, subsongs = (
-            detect_module_metadata(input_path)
-        )
+        metadata = detect_module_metadata(input_path)
     finally:
         unique_metadata_lock.unlink(missing_ok=True)
 
-    if not metadata_success:
+    if not metadata.success:
         lock_glob = MODULES_DIR.glob(f"{cache_hash}.metadatalock.*")
         if not any(lock_glob):
             logger.info(
@@ -2867,7 +2903,7 @@ def detect_cached_module_metadata(input_path, sample_files=None):
                 "Retaining file for ongoing metadata detection."
             )
 
-    return metadata_success, module_name, module_format, player_format, subsongs, cache_hash
+    return metadata, cache_hash
 
 
 @dataclass(slots=True)
@@ -2919,7 +2955,7 @@ def resolve_archive_module(module_path, filename, extract_dir, *, mode):
         if not detector(module_path):
             continue
 
-        logger.info(f"Detected {archive_label} archive{mode_suffix}: {safe_log_name(filename)}")
+        logger.info(f"Detected {archive_label} archive{mode_suffix}: {_safe_log_name(filename)}")
         success, error, music_file = extractor(module_path, extract_dir)
         if not success:
             return ArchiveResolutionResult(module_path=module_path, filename=filename, error=error)
@@ -2930,14 +2966,14 @@ def resolve_archive_module(module_path, filename, extract_dir, *, mode):
 
 def prepare_module_source(module_path, filename, *, mode):
     """Prepare a module path/name for convert or probe processing."""
-    module_path = validated_managed_path(module_path, MODULES_DIR)
-    filename = safe_client_filename(filename)
+    module_path = _validated_managed_path(module_path, MODULES_DIR)
+    filename = _safe_client_filename(filename)
     unique_id = str(uuid.uuid4())
     extract_dir = Path(f"{module_path}_extracted_{unique_id}")
 
     if module_path.exists() and module_path.stat().st_size == 0:
         logger.info(
-            f"Skipping {mode} for known invalid zero-byte module: {safe_log_name(module_path)}"
+            f"Skipping {mode} for known invalid zero-byte module: {_safe_log_name(module_path)}"
         )
         return None, invalid_module_response(probe=(mode == "probe"))
 
@@ -3021,24 +3057,19 @@ def process_module_probe_response(module_path, filename, *, url_cached=False, sa
         module_path = prepared_source.module_path
         filename = prepared_source.filename
 
-        (
-            metadata_success,
-            module_name,
-            module_format,
-            player_format,
-            subsongs,
-            _cache_hash,
-        ) = detect_cached_module_metadata(module_path, sample_files=sample_files)
+        metadata, _cache_hash = detect_cached_module_metadata(
+            module_path, sample_files=sample_files
+        )
 
-        if not metadata_success:
+        if not metadata.success:
             return invalid_module_response(probe=True)
 
         return probe_success_response(
             filename=filename,
-            module_name=module_name,
-            module_format=module_format,
-            player_format=player_format,
-            subsongs=subsongs,
+            module_name=metadata.module_name,
+            module_format=metadata.module_format,
+            player_format=metadata.player_format,
+            subsongs=metadata.subsongs,
             url_cached=url_cached,
             sample_files=sample_files,
         )
