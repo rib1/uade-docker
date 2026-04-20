@@ -634,6 +634,106 @@ test_duplicate_convert_on_other_instance_returns_processing() {
     record_success "$TEST_NAME"
 }
 
+test_cross_instance_busy_convert_allows_play_on_other_instance() {
+    TEST_NAME="A busy cold convert still allows warm play on B"
+    HEAVY_URL="${LOCAL_TEST_SERVER_URL}/fixtures/modules/mdat.turrican_2_level_0-intro?case=busy-convert-play-other-instance"
+    HEAVY_SAMPLE_URL="${LOCAL_TEST_SERVER_URL}/fixtures/modules/smpl.turrican_2_level_0-intro?case=busy-convert-play-other-instance"
+    PLAY_URL="${LOCAL_TEST_SERVER_URL}/fixtures/modules/space_debris.mod?case=busy-convert-play-other-instance-warm-play"
+    TMP_DIR=$(mktemp -d)
+    trap 'rm -rf "$TMP_DIR"' RETURN
+
+    PLAY_WARM_ALL=$(json_post_until_ready "$BASE_URL_B" "/convert-url" \
+        "$(jq -nc --arg url "$PLAY_URL" '{url: $url}')")
+    PLAY_WARM_CODE=$(echo "$PLAY_WARM_ALL" | tail -n1)
+    PLAY_WARM_BODY=$(echo "$PLAY_WARM_ALL" | sed '$d')
+
+    if [ "$PLAY_WARM_CODE" -ne 200 ]; then
+        record_failure "$TEST_NAME" "warm play seed on B returned HTTP ${PLAY_WARM_CODE}; body=${PLAY_WARM_BODY}"
+        return
+    fi
+
+    PLAY_FILE_ID=$(echo "$PLAY_WARM_BODY" | jq -r .file_id)
+    if [ -z "$PLAY_FILE_ID" ] || [ "$PLAY_FILE_ID" = "null" ]; then
+        record_failure "$TEST_NAME" "warm play seed missing file_id; body=${PLAY_WARM_BODY}"
+        return
+    fi
+
+    WARM_HEAVY_ALL=$(json_post_until_ready "$BASE_URL_A" "/convert-url" \
+        "$(jq -nc --arg url "$HEAVY_URL" --arg sample_url "$HEAVY_SAMPLE_URL" '{url: $url, sample_url: $sample_url}')")
+    WARM_HEAVY_CODE=$(echo "$WARM_HEAVY_ALL" | tail -n1)
+    WARM_HEAVY_BODY=$(echo "$WARM_HEAVY_ALL" | sed '$d')
+
+    if [ "$WARM_HEAVY_CODE" -ne 200 ]; then
+        record_failure "$TEST_NAME" "heavy warm-up convert on A returned HTTP ${WARM_HEAVY_CODE}; body=${WARM_HEAVY_BODY}"
+        return
+    fi
+
+    HEAVY_FILE_ID=$(echo "$WARM_HEAVY_BODY" | jq -r .file_id)
+    HEAVY_AUDIO_FORMAT=$(echo "$WARM_HEAVY_BODY" | jq -r .audio_format)
+    if [ -z "$HEAVY_FILE_ID" ] || [ "$HEAVY_FILE_ID" = "null" ] || [ -z "$HEAVY_AUDIO_FORMAT" ] || [ "$HEAVY_AUDIO_FORMAT" = "null" ]; then
+        record_failure "$TEST_NAME" "heavy warm-up missing file_id or audio_format; body=${WARM_HEAVY_BODY}"
+        return
+    fi
+
+    for BASE_URL in "$BASE_URL_A" "$BASE_URL_B"; do
+        REMOVE_ALL=$(json_post "$BASE_URL" "/test/remove-cache-artifact" \
+            "$(jq -nc --arg file_id "$HEAVY_FILE_ID" --arg ext ".${HEAVY_AUDIO_FORMAT}" '{file_id: $file_id, ext: $ext}')")
+        REMOVE_CODE=$(echo "$REMOVE_ALL" | tail -n1)
+        REMOVE_BODY=$(echo "$REMOVE_ALL" | sed '$d')
+
+        if [ "$REMOVE_CODE" -ne 200 ]; then
+            record_failure "$TEST_NAME" "heavy artifact removal on ${BASE_URL} returned HTTP ${REMOVE_CODE}; body=${REMOVE_BODY}"
+            return
+        fi
+    done
+
+    (
+        json_post "$BASE_URL_A" "/convert-url" \
+            "$(jq -nc --arg url "$HEAVY_URL" --arg sample_url "$HEAVY_SAMPLE_URL" '{url: $url, sample_url: $sample_url}')" \
+            > "${TMP_DIR}/owner-a.txt"
+    ) &
+    OWNER_PID=$!
+
+    FOLLOWER_ALL=$(json_post "$BASE_URL_B" "/convert-url" \
+        "$(jq -nc --arg url "$HEAVY_URL" --arg sample_url "$HEAVY_SAMPLE_URL" '{url: $url, sample_url: $sample_url}')")
+    FOLLOWER_CODE=$(echo "$FOLLOWER_ALL" | tail -n1)
+    FOLLOWER_BODY=$(echo "$FOLLOWER_ALL" | sed '$d')
+
+    PLAY_HTTP_CODE=$(fetch_http_code "${BASE_URL_B}/play/${PLAY_FILE_ID}")
+    if [ "$PLAY_HTTP_CODE" != "200" ] && [ "$PLAY_HTTP_CODE" != "206" ]; then
+        record_failure "$TEST_NAME" "play on B returned HTTP ${PLAY_HTTP_CODE} while A was busy converting"
+        wait "$OWNER_PID"
+        return
+    fi
+
+    wait "$OWNER_PID"
+    OWNER_ALL=$(cat "${TMP_DIR}/owner-a.txt")
+    OWNER_CODE=$(echo "$OWNER_ALL" | tail -n1)
+    OWNER_BODY=$(echo "$OWNER_ALL" | sed '$d')
+
+    if [ "$OWNER_CODE" -ne 200 ]; then
+        record_failure "$TEST_NAME" "owner convert-url on A returned HTTP ${OWNER_CODE}; body=${OWNER_BODY}"
+        return
+    fi
+
+    if [ "$FOLLOWER_CODE" -ne 200 ] && [ "$FOLLOWER_CODE" -ne 409 ]; then
+        record_failure "$TEST_NAME" "expected HTTP 200 or 409 on B for heavy follower, got ${FOLLOWER_CODE}; body=${FOLLOWER_BODY}"
+        return
+    fi
+
+    if [ "$FOLLOWER_CODE" -eq 409 ]; then
+        FOLLOWER_STATUS=$(echo "$FOLLOWER_BODY" | jq -r .status)
+        FOLLOWER_RETRYABLE=$(echo "$FOLLOWER_BODY" | jq -r .retryable)
+
+        if [ "$FOLLOWER_STATUS" != "processing" ] || [ "$FOLLOWER_RETRYABLE" != "true" ]; then
+            record_failure "$TEST_NAME" "heavy follower on B did not return processing contract; body=${FOLLOWER_BODY}"
+            return
+        fi
+    fi
+
+    record_success "$TEST_NAME"
+}
+
 test_convert_probed_after_remote_cache_removal_same_instance() {
     TEST_NAME="convert-probed on A recovers after remote cache removal"
 
@@ -931,6 +1031,7 @@ test_queue_hop_probe_convert_play
 test_convert_probed_after_remote_cache_removal_same_instance
 test_convert_url_cache_hit_across_instances
 test_duplicate_convert_on_other_instance_returns_processing
+test_cross_instance_busy_convert_allows_play_on_other_instance
 test_cross_instance_play_after_remote_cache_removal_still_serves
 test_shared_cache_access_sidecar_across_instances
 test_cleanup_state_is_per_instance
