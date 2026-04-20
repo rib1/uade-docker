@@ -1760,6 +1760,7 @@ function renderPlaylist() {
   updatePlayerSectionVisibility();
   updatePrimaryPlayerActions();
   updatePlaylistMobileLabels();
+  updateMediaSessionNavigationHandlers();
 }
 
 function updatePlaylistMobileLabels() {
@@ -2246,20 +2247,57 @@ function updateMediaSession(title, artist, album) {
         { src: "/static/protracker_square.png", sizes: "512x512", type: "image/png" },
       ],
     });
-
-    // Set up subsong navigation with media controls (prev/next track buttons)
-    navigator.mediaSession.setActionHandler("previoustrack", () => {
-      if (currentSubsongs > 1 && currentSubsongDurations.length > 0) {
-        navigateToPreviousSubsong();
-      }
-    });
-
-    navigator.mediaSession.setActionHandler("nexttrack", () => {
-      if (currentSubsongs > 1 && currentSubsongDurations.length > 0) {
-        navigateToNextSubsong();
-      }
-    });
+    updateMediaSessionNavigationHandlers();
   }
+}
+
+function hasActivePlaylistTrack() {
+  return (
+    currentPlaylistTrackId !== null &&
+    playlistTracks.some((track) => track.id === currentPlaylistTrackId)
+  );
+}
+
+function canPlayPreviousPlaylistTrack() {
+  if (!hasActivePlaylistTrack()) {
+    return false;
+  }
+  const currentIndex = playlistTracks.findIndex((track) => track.id === currentPlaylistTrackId);
+  return currentIndex > 0;
+}
+
+function canPlayNextPlaylistTrack() {
+  if (!hasActivePlaylistTrack()) {
+    return false;
+  }
+  const currentIndex = playlistTracks.findIndex((track) => track.id === currentPlaylistTrackId);
+  return currentIndex >= 0 && currentIndex < playlistTracks.length - 1;
+}
+
+function updateMediaSessionNavigationHandlers() {
+  if (!("mediaSession" in navigator)) {
+    return;
+  }
+
+  navigator.mediaSession.setActionHandler("previoustrack", () => {
+    if (canPlayPreviousPlaylistTrack()) {
+      playPreviousPlaylistTrack();
+      return;
+    }
+    if (currentSubsongs > 1 && currentSubsongDurations.length > 0) {
+      navigateToPreviousSubsong();
+    }
+  });
+
+  navigator.mediaSession.setActionHandler("nexttrack", () => {
+    if (canPlayNextPlaylistTrack()) {
+      playNextPlaylistTrack();
+      return;
+    }
+    if (!hasActivePlaylistTrack() && currentSubsongs > 1 && currentSubsongDurations.length > 0) {
+      navigateToNextSubsong();
+    }
+  });
 }
 
 // Subsong Navigation
