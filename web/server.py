@@ -610,6 +610,25 @@ def json_response(data, status=200):
     return response
 
 
+def processing_response(error="Conversion in progress."):
+    """Return the standard retryable duplicate-conversion response."""
+    return json_response(
+        {
+            "error": error,
+            "status": "processing",
+            "retryable": True,
+        },
+        409,
+    )
+
+
+def log_request_user_agent(prefix="User-Agent"):
+    """Log a sanitized request User-Agent value."""
+    user_agent = request.headers.get("User-Agent", "")
+    sanitized_user_agent = user_agent.replace("\r", "").replace("\n", "")
+    logger.info(f"{prefix}: {sanitized_user_agent}")
+
+
 def _cleanup_old_files_impl():
     """
     Remove files older than CLEANUP_INTERVAL from local directories.
@@ -1447,31 +1466,32 @@ def _lock_name(lock_path):
     return posixpath.basename(str(lock_path))
 
 
-def _validated_conversion_lock_path(lock_path):
-    """Validate and normalize a conversion lock reference before filesystem use."""
-    if isinstance(lock_path, Path):
-        local_lock_path = lock_path
-        if CONVERSION_LOCKS_ROOT_LOCAL is None:
-            raise ValueError("Local conversion locks are not enabled")
-        normalized_path_text = os.path.normpath(os.fspath(local_lock_path))
-        normalized_root_text = os.path.normpath(os.fspath(CONVERSION_LOCKS_ROOT_LOCAL))
-        normalized_path_for_compare = os.path.normcase(normalized_path_text)
-        normalized_root_for_compare = os.path.normcase(normalized_root_text)
-        if not Path(normalized_path_text).is_absolute():
-            raise ValueError("Invalid conversion lock path")
-        try:
-            common_root = os.path.commonpath(
-                [normalized_root_for_compare, normalized_path_for_compare]
-            )
-        except ValueError as exc:
-            raise ValueError("Invalid conversion lock path") from exc
-        if common_root != normalized_root_for_compare:
-            raise ValueError("Invalid conversion lock path")
-        normalized_path = Path(normalized_path_text)
-        if normalized_path.suffix != ".lock" or not _MD5_HEX_RE.fullmatch(normalized_path.stem):
-            raise ValueError("Invalid conversion lock filename")
-        return normalized_path
+def _validated_local_conversion_lock_path(lock_path):
+    """Validate and normalize a local conversion lock path."""
+    if CONVERSION_LOCKS_ROOT_LOCAL is None:
+        raise ValueError("Local conversion locks are not enabled")
 
+    normalized_path_text = os.path.normpath(os.fspath(lock_path))
+    normalized_root_text = os.path.normpath(os.fspath(CONVERSION_LOCKS_ROOT_LOCAL))
+    normalized_path_for_compare = os.path.normcase(normalized_path_text)
+    normalized_root_for_compare = os.path.normcase(normalized_root_text)
+    if not Path(normalized_path_text).is_absolute():
+        raise ValueError("Invalid conversion lock path")
+    try:
+        common_root = os.path.commonpath([normalized_root_for_compare, normalized_path_for_compare])
+    except ValueError as exc:
+        raise ValueError("Invalid conversion lock path") from exc
+    if common_root != normalized_root_for_compare:
+        raise ValueError("Invalid conversion lock path")
+
+    normalized_path = Path(normalized_path_text)
+    if normalized_path.suffix != ".lock" or not _MD5_HEX_RE.fullmatch(normalized_path.stem):
+        raise ValueError("Invalid conversion lock filename")
+    return normalized_path
+
+
+def _validated_remote_conversion_lock_path(lock_path):
+    """Validate and normalize a remote conversion lock path."""
     if not isinstance(lock_path, str):
         raise ValueError("Invalid conversion lock path type")
 
@@ -1484,6 +1504,13 @@ def _validated_conversion_lock_path(lock_path):
     if suffix != ".lock" or not _MD5_HEX_RE.fullmatch(stem):
         raise ValueError("Invalid conversion lock filename")
     return normalized_remote_path
+
+
+def _validated_conversion_lock_path(lock_path):
+    """Validate and normalize a conversion lock reference before filesystem use."""
+    if isinstance(lock_path, Path):
+        return _validated_local_conversion_lock_path(lock_path)
+    return _validated_remote_conversion_lock_path(lock_path)
 
 
 def _lock_exists(lock_path):
@@ -2486,9 +2513,7 @@ def upload_file():
         return json_response({"error": "Empty file provided"}, 400)
 
     try:
-        user_agent = request.headers.get("User-Agent", "")
-        sanitized_user_agent = user_agent.replace("\r", "").replace("\n", "")
-        logger.info(f"User-Agent: {sanitized_user_agent}")
+        log_request_user_agent()
         use_flac = True
 
         # Generate unique ID
@@ -2595,9 +2620,7 @@ def convert_probed():
 
     touch_for_lru(probed_path)
 
-    user_agent = request.headers.get("User-Agent", "")
-    sanitized_user_agent = user_agent.replace("\r", "").replace("\n", "")
-    logger.info(f"Convert-probed User-Agent: {sanitized_user_agent}")
+    log_request_user_agent("Convert-probed User-Agent")
     use_flac = True
 
     return process_module_and_respond(
@@ -2641,14 +2664,7 @@ def process_module_and_respond(
 
         if not conversion_result.success:
             if conversion_result.error == "Conversion in progress.":
-                return json_response(
-                    {
-                        "error": conversion_result.error,
-                        "status": "processing",
-                        "retryable": True,
-                    },
-                    409,
-                )
+                return processing_response(conversion_result.error)
             return json_response({"error": conversion_result.error}, 500)
 
         return json_response(
