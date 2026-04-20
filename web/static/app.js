@@ -2284,7 +2284,7 @@ function updateMediaSessionNavigationHandlers() {
       playPreviousPlaylistTrack();
       return;
     }
-    if (currentSubsongs > 1 && currentSubsongDurations.length > 0) {
+    if (!hasActivePlaylistTrack() && currentSubsongs > 1 && currentSubsongDurations.length > 0) {
       navigateToPreviousSubsong();
     }
   });
