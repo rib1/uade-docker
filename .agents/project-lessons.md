@@ -275,13 +275,14 @@ This document contains project-specific learnings and regression-avoidance notes
 
 ## Python Refactoring Lessons
 
-**Key Takeaways:** `web/server.py` is still readable if refactors stay centered on shared substeps and structured results, not giant mode-driven abstractions.
+**Key Takeaways:** The applied `server.py` refactors paid off when they made core flows more linear and explicit without changing endpoint contracts.
 
-- **Safe Refactor Shape:** The highest-value readability wins came from replacing long positional tuples with small structured result objects and from extracting shared preparation helpers while keeping convert and probe endpoints separate at the final response stage.
-- **Shared Prep Boundary:** A good boundary in this repo is "prepare module source, then finish per-endpoint". Shared archive handling, invalid-module responses, and module preparation improved readability without forcing convert/probe into one mega helper.
-- **Lock Helper Boundary:** Security-sensitive helpers such as conversion-lock validation stay easier to reason about when local and remote rules are split into separate functions with one tiny dispatcher, instead of mixing both path models in one implementation.
-- **Small Cleanup Bias:** After the biggest flow refactors, the next useful passes were route-plumbing cleanups: shared `409 processing` responses, shared User-Agent logging, upload-file validation, and test-route validation helpers. Those were low-risk because they removed repetition without changing core conversion control flow.
-- **Stop Before Framework Over-Abstraction:** Once convert/probe shared their preparation stage, the remaining duplication was not worth collapsing further unless a new behavioral change required it. In this repo, keeping the last stage explicit is more readable than introducing a generic `mode=probe|convert` pipeline.
+- **Structured Results First:** Replacing long positional tuples with `ConversionResult` and `ModuleMetadataResult` was the biggest readability win. In this repo, structured result objects were more valuable than further helper splitting.
+- **Share Preparation, Not Endpoints:** The good boundary was "prepare once, finish separately". Shared archive/module preparation improved both convert and probe paths, but the final convert/probe response stages should stay explicit instead of being collapsed into a generic mode-driven pipeline.
+- **Duplicate-Convert Flow Simplification:** Short-wait duplicate handling became easier to reason about after routing pre-existing locks and lock-race `FileExistsError` paths through one shared in-flight conversion helper, while keeping the same `409 processing` contract.
+- **Security-Sensitive Helpers Should Stay Narrow:** Conversion-lock validation stayed clearer after splitting local and remote path rules into separate helpers with one dispatcher. The same principle applied to managed-path and filename helpers used for CodeQL hardening.
+- **Small Cleanup Passes Still Matter:** After the big flow refactors, the useful follow-ups were shared `409` responses, shared User-Agent logging, upload/test-route validation helpers, and consistent internal helper naming. Those passes were worthwhile because they removed repeated plumbing without hiding control flow.
+- **Stop After the High-Value Passes:** Once conversion results, metadata results, shared preparation, semaphore handling, and duplicate-convert handling were cleaned up, additional abstraction stopped paying for itself. In this repo, further refactoring should require a behavioral reason, not just a readability preference.
 
 ## Local CodeQL Lessons
 
