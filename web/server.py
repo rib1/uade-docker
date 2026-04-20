@@ -1754,6 +1754,56 @@ def _conversion_success(
     )
 
 
+def _cached_conversion_result(
+    cache_hash,
+    *,
+    prefer_flac,
+    player_format,
+    module_name,
+    module_format,
+    subsongs,
+):
+    """Return a cached conversion result when the remote/local cache already has the artifact."""
+    cached_file, metadata = fetch_cached_file(
+        cache_hash,
+        prefer_flac=prefer_flac,
+        allow_wav_fallback=not prefer_flac,
+    )
+    if not (cached_file and cached_file.exists()):
+        return None
+
+    duration_list = metadata.get("subsong_durations", []) if metadata else []
+    return _conversion_success(
+        cached_file,
+        player_format=player_format,
+        module_name=module_name,
+        module_format=module_format,
+        subsongs=subsongs,
+        cached=True,
+        cache_hash=cache_hash,
+        duration_list=duration_list,
+    )
+
+
+def _processing_conversion_failure(
+    *,
+    player_format,
+    module_name,
+    module_format,
+    subsongs,
+    cache_hash,
+):
+    """Return the standard short-wait duplicate-conversion failure result."""
+    return _conversion_failure(
+        "Conversion in progress.",
+        player_format=player_format,
+        module_name=module_name,
+        module_format=module_format,
+        subsongs=subsongs,
+        cache_hash=cache_hash,
+    )
+
+
 def _clear_stale_conversion_lock(lock_path):
     """Remove a stale conversion lock if it has clearly expired."""
     try:
@@ -1805,12 +1855,15 @@ def wait_for_conversion(
     poll_count = max(1, DUPLICATE_CONVERSION_WAIT_SECONDS // CONVERSION_LOCK_POLL_SECONDS)
     for _ in range(poll_count):
         if not _lock_exists(lock_path):
-            cached_file, metadata = fetch_cached_file(
+            result = _cached_conversion_result(
                 cache_hash,
                 prefer_flac=prefer_flac,
-                allow_wav_fallback=not prefer_flac,
+                player_format=player_format,
+                module_name=module_name,
+                module_format=module_format,
+                subsongs=subsongs,
             )
-            if cached_file and cached_file.exists():
+            if result:
                 logger.info(f"Conversion for {cache_hash} completed by another thread.")
                 if wait_started_at is not None:
                     _log_duration(
@@ -1819,18 +1872,7 @@ def wait_for_conversion(
                         cache_hash=cache_hash,
                         status="completed",
                     )
-                # Extract duration_list from metadata
-                duration_list = metadata.get("subsong_durations", []) if metadata else []
-                return _conversion_success(
-                    cached_file,
-                    player_format=player_format,
-                    module_name=module_name,
-                    module_format=module_format,
-                    subsongs=subsongs,
-                    cached=True,
-                    cache_hash=cache_hash,
-                    duration_list=duration_list,
-                )
+                return result
             logger.warning(
                 f"Conversion lock for {cache_hash} cleared but no cached artifact was found."
             )
@@ -1848,6 +1890,47 @@ def wait_for_conversion(
             status="processing",
         )
     return None
+
+
+def resolve_inflight_conversion(
+    cache_hash,
+    lock_path,
+    *,
+    prefer_flac,
+    player_format,
+    module_name,
+    module_format,
+    subsongs,
+):
+    """Handle a duplicate same-hash conversion by stale-lock cleanup plus short wait."""
+    if _lock_exists(lock_path):
+        _clear_stale_conversion_lock(lock_path)
+
+    if not _lock_exists(lock_path):
+        return None
+
+    lock_wait_started_at = time.perf_counter()
+    result = wait_for_conversion(
+        cache_hash,
+        lock_path,
+        prefer_flac,
+        player_format,
+        module_name,
+        module_format,
+        subsongs,
+        wait_started_at=lock_wait_started_at,
+    )
+    if result:
+        return result
+
+    logger.info(f"Returning processing state for duplicate conversion request: {cache_hash}")
+    return _processing_conversion_failure(
+        player_format=player_format,
+        module_name=module_name,
+        module_format=module_format,
+        subsongs=subsongs,
+        cache_hash=cache_hash,
+    )
 
 
 def process_audio_conversion(
@@ -1989,54 +2072,28 @@ def process_audio_conversion(
         )
 
         # Check remote cache first (before acquiring lock)
-        cached_file, metadata = fetch_cached_file(
+        cached_result = _cached_conversion_result(
             cache_hash,
             prefer_flac=compress_flac,
-            allow_wav_fallback=not compress_flac,
+            player_format=player_format,
+            module_name=module_name,
+            module_format=module_format,
+            subsongs=subsongs,
         )
-        if cached_file and cached_file.exists():
-            # Extract duration_list from metadata
-            duration_list = metadata.get("subsong_durations", []) if metadata else []
-            return _conversion_success(
-                cached_file,
-                player_format=player_format,
-                module_name=module_name,
-                module_format=module_format,
-                subsongs=subsongs,
-                cached=True,
-                cache_hash=cache_hash,
-                duration_list=duration_list,
-            )
+        if cached_result:
+            return cached_result
 
-        # If lock exists, another thread is already converting this file
-        if _lock_exists(lock_path):
-            _clear_stale_conversion_lock(lock_path)
-
-        if _lock_exists(lock_path):
-            lock_wait_started_at = time.perf_counter()
-            result = wait_for_conversion(
-                cache_hash,
-                lock_path,
-                compress_flac,
-                player_format,
-                module_name,
-                module_format,
-                subsongs,
-                wait_started_at=lock_wait_started_at,
-            )
-            if result:
-                return result
-            logger.info(
-                f"Returning processing state for duplicate conversion request: {cache_hash}"
-            )
-            return _conversion_failure(
-                "Conversion in progress.",
-                player_format=player_format,
-                module_name=module_name,
-                module_format=module_format,
-                subsongs=subsongs,
-                cache_hash=cache_hash,
-            )
+        inflight_result = resolve_inflight_conversion(
+            cache_hash,
+            lock_path,
+            prefer_flac=compress_flac,
+            player_format=player_format,
+            module_name=module_name,
+            module_format=module_format,
+            subsongs=subsongs,
+        )
+        if inflight_result:
+            return inflight_result
 
         semaphore_acquired = False
         conversion_lock_acquired = False
@@ -2045,24 +2102,16 @@ def process_audio_conversion(
             conversion_lock_acquired = True
             _write_lock_metadata(lock_path)
 
-            cached_file, metadata = fetch_cached_file(
+            cached_result = _cached_conversion_result(
                 cache_hash,
                 prefer_flac=compress_flac,
-                allow_wav_fallback=not compress_flac,
+                player_format=player_format,
+                module_name=module_name,
+                module_format=module_format,
+                subsongs=subsongs,
             )
-            if cached_file and cached_file.exists():
-                # Extract duration_list from metadata
-                duration_list = metadata.get("subsong_durations", []) if metadata else []
-                return _conversion_success(
-                    cached_file,
-                    player_format=player_format,
-                    module_name=module_name,
-                    module_format=module_format,
-                    subsongs=subsongs,
-                    cached=True,
-                    cache_hash=cache_hash,
-                    duration_list=duration_list,
-                )
+            if cached_result:
+                return cached_result
 
             semaphore_wait_started_at = time.perf_counter()
             semaphore_acquired = GLOBAL_CONVERSION_SEMAPHORE.acquire(
@@ -2199,31 +2248,18 @@ def process_audio_conversion(
             )
 
         except FileExistsError:
-            if _clear_stale_conversion_lock(lock_path):
-                return process_audio_conversion(
-                    input_path, compress_flac=compress_flac, sample_files=sample_files
-                )
-            lock_wait_started_at = time.perf_counter()
-            result = wait_for_conversion(
+            result = resolve_inflight_conversion(
                 cache_hash,
                 lock_path,
-                compress_flac,
-                player_format,
-                module_name,
-                module_format,
-                subsongs,
-                wait_started_at=lock_wait_started_at,
-            )
-            if result:
-                return result
-            return _conversion_failure(
-                "Conversion in progress.",
+                prefer_flac=compress_flac,
                 player_format=player_format,
                 module_name=module_name,
                 module_format=module_format,
                 subsongs=subsongs,
-                cache_hash=cache_hash,
             )
+            if result:
+                return result
+            raise
         finally:
             if semaphore_acquired:
                 GLOBAL_CONVERSION_SEMAPHORE.release()
