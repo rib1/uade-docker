@@ -28,6 +28,7 @@ import zipfile
 from contextlib import contextmanager
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
+from functools import wraps
 from pathlib import Path
 from typing import Final
 
@@ -629,11 +630,35 @@ def log_request_user_agent(prefix="User-Agent"):
     logger.info(f"{prefix}: {sanitized_user_agent}")
 
 
+def is_test_mode_enabled():
+    """Return whether test-only behavior is enabled for this process."""
+    return os.getenv("UADE_TEST_MODE") == "1"
+
+
 def require_test_mode():
     """Return a 404 response when a test-only route is hit outside test mode."""
-    if os.getenv("UADE_TEST_MODE") != "1":
+    if not is_test_mode_enabled():
         return json_response({"error": "Not found"}, 404)
     return None
+
+
+def test_route(rule, **options):
+    """Register a test-only route that is exempt from rate limiting."""
+    if not rule.startswith("/test/"):
+        raise ValueError("test_route paths must start with /test/")
+
+    def decorator(route_handler):
+        @wraps(route_handler)
+        def wrapped(*args, **kwargs):
+            test_mode_response = require_test_mode()
+            if test_mode_response is not None:
+                return test_mode_response
+            return route_handler(*args, **kwargs)
+
+        wrapped = limiter.exempt(wrapped)
+        return app.route(rule, **options)(wrapped)
+
+    return decorator
 
 
 def request_json_or_empty():
@@ -2456,14 +2481,9 @@ def health():
     )
 
 
-@app.route("/test/run-cleanup", methods=["POST"])
-@limiter.exempt
+@test_route("/test/run-cleanup", methods=["POST"])
 def test_run_cleanup():
     """Trigger cleanup paths in test mode to validate health status transitions."""
-    test_mode_response = require_test_mode()
-    if test_mode_response is not None:
-        return test_mode_response
-
     data = request_json_or_empty()
     scope = data.get("scope", "all")
     if scope not in {"local", "cache", "all"}:
@@ -2496,14 +2516,9 @@ def test_run_cleanup():
     )
 
 
-@app.route("/test/set-local-file-mtime", methods=["POST"])
-@limiter.exempt
+@test_route("/test/set-local-file-mtime", methods=["POST"])
 def test_set_local_file_mtime():
     """Set a converted local file mtime in test mode to exercise cleanup behavior."""
-    test_mode_response = require_test_mode()
-    if test_mode_response is not None:
-        return test_mode_response
-
     data = request_json_or_empty()
     file_id = validated_file_id(data.get("file_id"))
     ext = data.get("ext")
@@ -2546,14 +2561,9 @@ def test_set_local_file_mtime():
     )
 
 
-@app.route("/test/create-stale-conversion-lock", methods=["POST"])
-@limiter.exempt
+@test_route("/test/create-stale-conversion-lock", methods=["POST"])
 def test_create_stale_conversion_lock():
     """Create a stale conversion lock in test mode to exercise lock reclamation behavior."""
-    test_mode_response = require_test_mode()
-    if test_mode_response is not None:
-        return test_mode_response
-
     data = request_json_or_empty()
     cache_hash = validated_md5_hash(data.get("cache_hash"))
     age_seconds = data.get("age_seconds", CONVERSION_TIMEOUT_SECONDS + 1)
@@ -2594,14 +2604,9 @@ def test_create_stale_conversion_lock():
         return json_response({"error": "Failed to create stale conversion lock"}, 500)
 
 
-@app.route("/test/remove-cache-artifact", methods=["POST"])
-@limiter.exempt
+@test_route("/test/remove-cache-artifact", methods=["POST"])
 def test_remove_cache_artifact():
     """Remove a local and remote cache artifact in test mode to force specific cache paths."""
-    test_mode_response = require_test_mode()
-    if test_mode_response is not None:
-        return test_mode_response
-
     data = request_json_or_empty()
     file_id = validated_file_id(data.get("file_id"))
     ext = data.get("ext")
@@ -2637,14 +2642,9 @@ def test_remove_cache_artifact():
     )
 
 
-@app.route("/test/flac-compression-count", methods=["GET", "POST"])
-@limiter.exempt
+@test_route("/test/flac-compression-count", methods=["GET", "POST"])
 def test_flac_compression_count():
     """Inspect or reset FLAC compression counts in test mode."""
-    test_mode_response = require_test_mode()
-    if test_mode_response is not None:
-        return test_mode_response
-
     if request.method == "POST":
         with FLAC_COMPRESSION_COUNTS_LOCK:
             FLAC_COMPRESSION_COUNTS.clear()
@@ -2660,14 +2660,9 @@ def test_flac_compression_count():
     return json_response({"file_id": file_id, "count": count})
 
 
-@app.route("/test/remove-probed-module", methods=["POST"])
-@limiter.exempt
+@test_route("/test/remove-probed-module", methods=["POST"])
 def test_remove_probed_module():
     """Remove a probed module in test mode to exercise convert-probed fallback paths."""
-    test_mode_response = require_test_mode()
-    if test_mode_response is not None:
-        return test_mode_response
-
     data = request_json_or_empty()
     module_hash = validated_md5_hash(data.get("module_hash"))
 
@@ -3107,7 +3102,7 @@ def is_safe_url(u):
             )  # codeql [py/log-injection] lgtm [py/log-injection]
             normalized_hostname = parsed.hostname
 
-        if os.getenv("UADE_TEST_MODE") == "1" and normalized_hostname == "uade-test-http-server":
+        if is_test_mode_enabled() and normalized_hostname == "uade-test-http-server":
             logger.info(
                 f"is_safe_url: allowed internal test host '{normalized_hostname}' "
                 f"in test mode for URL: {sanitized_url_for_log}"
@@ -3582,7 +3577,7 @@ def normalized_remote_cache_url(url):
         lowered_key = key.lower()
         is_tracking_param = lowered_key.startswith("utm_")
         is_test_cache_buster = (
-            os.getenv("UADE_TEST_MODE") == "1"
+            is_test_mode_enabled()
             and hostname == "uade-test-http-server"
             and lowered_key in test_only_cache_buster_keys
         )

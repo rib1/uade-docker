@@ -18,13 +18,15 @@
 #    GIT_COMMIT=$(git rev-parse HEAD); docker compose -f docker-compose.yml -f test/docker-compose.endpoints.yml run --rm --build uade-test-runner
 # 2. To run integration tests again:
 #    docker compose -f docker-compose.yml -f test/docker-compose.endpoints.yml run --rm uade-test-runner
-# 3. To run ratelimit-tests (RATE_LIMIT_DISABLED set ON by docker-compose.ratelimit.yml):
+# 3. To verify /test endpoints stay unavailable in prod mode:
+#    docker compose -f docker-compose.yml -f test/docker-compose.prodmode.yml run --rm --build uade-test-prod-mode-runner
+# 4. To run ratelimit-tests (RATE_LIMIT_DISABLED set ON by docker-compose.ratelimit.yml):
 #    docker compose -f docker-compose.yml -f test/docker-compose.ratelimit.yml run --rm --build uade-test-ratelimit-runner
-# 4. To run the accessibility test:
+# 5. To run the accessibility test:
 #    docker compose -f docker-compose.yml -f test/docker-compose.accessibility.yml run --rm --build uade-test-accessibility-runner
-# 5. To run the race condition test:
+# 6. To run the race condition test:
 #    docker compose run --rm --build uade-test-race-condition-runner
-# 6. To bring up the multi-instance UI locally (two app containers sharing cache):
+# 7. To bring up the multi-instance UI locally (two app containers sharing cache):
 #    docker compose -f docker-compose.yml -f test/docker-compose.multiinstance.yml up -d --build uade-web-a uade-web-b
 #    UI URLs:
 #      http://localhost:5001  (uade-web-a)
@@ -33,14 +35,14 @@
 #    docker compose -f docker-compose.yml -f test/docker-compose.multiinstance.yml run --rm --build uade-test-multiinstance-runner
 #    To stop and clean up the multi-instance setup:
 #    docker compose -f docker-compose.yml -f test/docker-compose.multiinstance.yml down -v
-# 7. To run the benchmark suite (rate limiting disabled, uses the same downloaded fixtures as the endpoint tests):
+# 8. To run the benchmark suite (rate limiting disabled, uses the same downloaded fixtures as the endpoint tests):
 #    docker compose -f docker-compose.yml -f test/docker-compose.benchmark.yml run --rm --build uade-benchmark-runner
-# 8. To run a DAST scan (UADE_TEST_MODE is OFF by default):
+# 9. To run a DAST scan (UADE_TEST_MODE is OFF by default):
 #    docker compose run --rm --build zap-scan
 #    To run a DAST scan with local-only ZAP seed requests (UADE_TEST_MODE is ON):
 #    docker compose run --rm --build zap-scan-seeded
 #    The HTML report will be in the ./reports directory.
-# 9. To run a full DAST scan (UADE_TEST_MODE is OFF by default):
+# 10. To run a full DAST scan (UADE_TEST_MODE is OFF by default):
 #    docker compose run --rm --build zap-full-scan
 #    To run a full DAST scan with local-only ZAP seed requests (UADE_TEST_MODE is ON):
 #    docker compose run --rm --build zap-full-scan-seeded
