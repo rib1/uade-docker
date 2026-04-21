@@ -6,7 +6,7 @@ set -e
 # This script is intended to be run from a Docker container that has curl and jq installed.
 
 # Define the base URL for the API
-BASE_URL="http://uade-web-player:5000"
+BASE_URL="${TEST_BASE_URL:-http://uade-web-player:5000}"
 LOCAL_TEST_SERVER_PORT=8000
 LOCAL_TEST_SERVER_URL="http://uade-test-http-server:$LOCAL_TEST_SERVER_PORT"
 SKIP_MODARCHIVE_TESTS="${SKIP_MODARCHIVE_TESTS:-0}"
@@ -2639,6 +2639,7 @@ print_endpoint_coverage_summary() {
     python3 ./report_endpoint_coverage.py test_endpoints.sh
     echo ""
 }
+
 
 # Wait for the service to be up
 echo "Waiting for uade-web-player to be available..."
