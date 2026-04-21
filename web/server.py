@@ -1761,10 +1761,20 @@ class ModuleMetadataResult:
 
 @dataclass(slots=True)
 class SampleFileAndAlias:
+    """Pair a downloaded sample cache file with its module-side alias.
+
+    `sample_path` holds the sample artifact keyed by the *sample* URL hash (stable cache key).
+    `sample_alias_path` is the alias/symlink keyed by the *module* URL hash.
+    UADE actually opens symlink to `sample_path` via :func:`ensure_sample_alias`.
+
+    `paths()` returns `(sample_path, sample_alias_path)` so callers process
+    the real file before the alias.
+    """
+
     sample_path: Path
     sample_alias_path: Path
 
-    def paths(self):
+    def paths(self) -> tuple[Path, Path]:
         return (self.sample_path, self.sample_alias_path)
 
 
@@ -2817,6 +2827,8 @@ def convert_probed():
     Returns 404 if the probed file has been cleaned up, signalling the client to re-upload.
     """
     convert_probed_started_at = time.perf_counter()
+    filename = None
+    module_hash = None
     try:
         data = request.get_json(silent=True)
         if not data:
@@ -2847,12 +2859,15 @@ def convert_probed():
         ).startswith("File not found:"):
             return json_response({"error": "Module not found! Please re-upload"}, 404)
         return response
+    except Exception as exc:
+        logger.error("Convert-probed error", exc_info=True)
+        return json_response({"error": str(exc) or "Internal server error"}, 500)
     finally:
         _log_duration(
             "convert-probed request",
             convert_probed_started_at,
-            filename=filename if "filename" in locals() else None,
-            module_hash=module_hash if "module_hash" in locals() else None,
+            filename=filename,
+            module_hash=module_hash,
         )
 
 
@@ -3340,7 +3355,14 @@ def get_dual_file_module_filenames(filename):
 
 
 def download_module(url, cached_path, *, cache_label, external_label, wait_seconds=20):
-    """Download the file unless another thread is already downloading it, then wait."""
+    """Materialize a downloaded file and report cache-hit state.
+
+    Returns `(cache_hit, error_response)`, where `cache_hit` is `True` only
+    when `cached_path` already existed or a concurrent downloader finished
+    while we waited. Fresh downloads return `False`, so callers should inspect
+    `error_response` and/or `cached_path.exists()` to determine success instead
+    of treating the first element as a generic success flag.
+    """
     lock_path = cached_path.with_suffix(f"{cached_path.suffix}.lock")
     if cached_path.exists():
         logger.info(
