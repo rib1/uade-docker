@@ -1,6 +1,10 @@
 # To verify /test endpoints stay unavailable in prod mode:
-#    docker compose -f docker-compose.yml -f test/docker-compose.prodmode.yml run --rm --build uade-test-prod-mode-runner
+#    docker compose -f docker-compose.yml -f test/docker-compose.prodmode.yml up --force-recreate --build --abort-on-container-exit --exit-code-from uade-test-prod-mode-runner uade-web uade-test-prod-mode-runner
 services:
+  uade-web:
+    environment:
+      - UADE_TEST_MODE=0
+
   uade-test-prod-mode-runner:
     build:
       context: .

@@ -661,6 +661,16 @@ def test_route(rule, **options):
     return decorator
 
 
+@app.before_request
+def hide_test_routes_outside_test_mode():
+    """Return 404 for /test routes before Flask handles methods or OPTIONS."""
+    if request.path.startswith("/test/"):
+        test_mode_response = require_test_mode()
+        if test_mode_response is not None:
+            return test_mode_response
+    return None
+
+
 def request_json_or_empty():
     """Return request JSON body or an empty dict when parsing fails."""
     return request.get_json(silent=True) or {}
