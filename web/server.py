@@ -630,14 +630,14 @@ def log_request_user_agent(prefix="User-Agent"):
     logger.info(f"{prefix}: {sanitized_user_agent}")
 
 
-def is_test_mode_enabled():
-    """Return whether test-only behavior is enabled for this process."""
+def is_test_features_enabled():
+    """Return whether test-only features are enabled for this process."""
     return os.getenv("UADE_TEST_MODE") == "1"
 
 
-def require_test_mode():
-    """Return a 404 response when a test-only route is hit outside test mode."""
-    if not is_test_mode_enabled():
+def require_test_features():
+    """Return a 404 response when a test-only route is hit with test features off."""
+    if not is_test_features_enabled():
         return json_response({"error": "Not found"}, 404)
     return None
 
@@ -650,8 +650,7 @@ def test_route(rule, **options):
     def decorator(route_handler):
         @wraps(route_handler)
         def wrapped(*args, **kwargs):
-            test_mode_response = require_test_mode()
-            if test_mode_response is not None:
+            if (test_mode_response := require_test_features()) is not None:
                 return test_mode_response
             return route_handler(*args, **kwargs)
 
@@ -665,9 +664,7 @@ def test_route(rule, **options):
 def hide_test_routes_outside_test_mode():
     """Return 404 for /test routes before Flask handles methods or OPTIONS."""
     if request.path.startswith("/test/"):
-        test_mode_response = require_test_mode()
-        if test_mode_response is not None:
-            return test_mode_response
+        return require_test_features()
     return None
 
 
@@ -1368,7 +1365,12 @@ def detect_module_metadata(input_path):
             cmd, capture_output=True, text=True, check=False, timeout=5, encoding="latin1"
         )
         if result.returncode != 0:
-            logger.error(f"UADE metadata detection error: {result.stderr}")
+            logger.warning(
+                "UADE metadata detection rejected unsupported or invalid module "
+                "(input=%s, stderr=%s)",
+                input_path,
+                result.stderr.strip(),
+            )
             return _metadata_failure()
 
         metadata_success = False
@@ -3112,7 +3114,7 @@ def is_safe_url(u):
             )  # codeql [py/log-injection] lgtm [py/log-injection]
             normalized_hostname = parsed.hostname
 
-        if is_test_mode_enabled() and normalized_hostname == "uade-test-http-server":
+        if is_test_features_enabled() and normalized_hostname == "uade-test-http-server":
             logger.info(
                 f"is_safe_url: allowed internal test host '{normalized_hostname}' "
                 f"in test mode for URL: {sanitized_url_for_log}"
@@ -3587,7 +3589,7 @@ def normalized_remote_cache_url(url):
         lowered_key = key.lower()
         is_tracking_param = lowered_key.startswith("utm_")
         is_test_cache_buster = (
-            is_test_mode_enabled()
+            is_test_features_enabled()
             and hostname == "uade-test-http-server"
             and lowered_key in test_only_cache_buster_keys
         )
@@ -3654,7 +3656,7 @@ def download_and_limit_size(url, temp_file_path, error_context=""):
                 try:
                     content_length = int(content_length)
                     if content_length > max_size:
-                        logger.error(
+                        logger.warning(
                             f"External download size ({content_length} bytes) exceeds limit "
                             f"before download ({error_context}): {sanitized_url(final_url)}"
                         )
@@ -3681,7 +3683,7 @@ def download_and_limit_size(url, temp_file_path, error_context=""):
                         downloaded_size += len(chunk)
                         if downloaded_size > max_size:
                             response.close()
-                            logger.error(
+                            logger.warning(
                                 f"External download exceeded limit during download "
                                 f"({error_context}): {sanitized_url(final_url)}"
                             )
@@ -3715,20 +3717,29 @@ def download_and_limit_size(url, temp_file_path, error_context=""):
                 HTTP_CLIENT_ERROR_MIN,
             )
 
-        logger.error(f"Download failed for {sanitized_url(url)} ({error_context})", exc_info=True)
+        logger.warning(
+            "Remote fetch failed for %s (%s) with upstream status %s",
+            sanitized_url(url),
+            error_context,
+            status_code if status_code is not None else "unknown",
+        )
         return False, json_response(
             {"error": f"Download failed for {error_context}"}, HTTP_BAD_GATEWAY
         )
     except ValueError:
         logger.warning(
             f"Rejected unsafe redirect target for {sanitized_url(url)} ({error_context})",
-            exc_info=True,
         )
         if temp_file_path.exists():
             temp_file_path.unlink(missing_ok=True)
         return False, json_response({"error": "Unsafe or disallowed URL provided"}, 400)
     except requests.RequestException:
-        logger.error(f"Download failed for {sanitized_url(url)} ({error_context})", exc_info=True)
+        logger.warning(
+            "Remote fetch transport failure for %s (%s): %s",
+            sanitized_url(url),
+            error_context,
+            type(sys.exc_info()[1]).__name__ if sys.exc_info()[1] is not None else "unknown",
+        )
         # Clean up partial file
         if temp_file_path.exists():
             temp_file_path.unlink(missing_ok=True)
