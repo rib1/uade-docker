@@ -40,6 +40,54 @@ Contract notes for the contention-oriented suites:
 - `test/bench/semaphore-balance.js` and `test/bench/cross-instance-scaleout.js` now keep a dedicated warm playback artifact (`stormlord.ahx`) separate from the evicted cold `convert-url` target, so the play side stays read-only while the convert side still exercises reconversion.
 - those mixed-load balance suites also accept `409 processing` on their conversion legs, because higher-VU same-hash pressure can now legitimately hit the short duplicate-convert contract instead of always returning `200`.
 
+## Benchmark Scheduling Notes
+
+The benchmark `startTime` values are intentional. They are not arbitrary sleeps.
+
+Current rationale:
+
+- `test/bench/conversion.js` keeps a buffer between the cold `convert-probed` stage and the warm follow-up stages so the warm measurements do not accidentally overlap the cold owner conversion
+- `test/bench/dast-patterns.js` still staggers the heavy scenarios on purpose because the slow TFMX `convert-url` path can take around `14s` to `15s` locally, and the cold `convert-probed` path can still take around `4s` to `5s`
+- the current local timings were verified by rerunning the benchmark stack and checking `uade-web-player` logs for warnings, errors, tracebacks, or overlap-related anomalies; none were observed
+
+Current local stagger:
+
+- `test/bench/conversion.js`
+  - `warm_convert_probed`: `40s`
+  - `warm_upload`: `46s`
+- `test/bench/dast-patterns.js`
+  - `multi_hash_convert_url`: `30s`
+  - `multi_hash_convert_probed`: `55s`
+  - `cold_to_warm_playback_burst`: `1m15s`
+
+The `conversion.js` offsets use the safer `40s` / `46s` window because tighter local variants still produced warm-stage overlap and occasional request failures on cold-cache reruns.
+
+## Latest Local Benchmark Extract
+
+Latest local benchmark run on April 21, 2026:
+
+| Flow | Source | Avg | Median | P95 | Max | Notes |
+| --- | --- | ---: | ---: | ---: | ---: | --- |
+| Smoke endpoints overall | `smoke-summary.json` | `1.49ms` | `0.94ms` | `3.63ms` | `24.54ms` | Healthy baseline |
+| `GET /health` | `smoke-summary.json` | `2.21ms` | `1.38ms` | `5.59ms` | `14.56ms` | Fast |
+| `GET /` | `smoke-summary.json` | `1.78ms` | `0.92ms` | `6.00ms` | `24.54ms` | Fast |
+| `GET /client-config.js` | `smoke-summary.json` | `1.03ms` | `0.70ms` | `2.48ms` | `7.38ms` | Fast |
+| `GET /supported-extensions` | `smoke-summary.json` | `0.95ms` | `0.76ms` | `1.78ms` | `4.21ms` | Fast |
+| Warm upload | `conversion-summary.json` | `5.36ms` | `5.24ms` | `5.72ms` | `5.74ms` | Cache-hot |
+| Cold `convert-probed` | `conversion-summary.json` | `4.48s` | `4.43s` | `4.65s` | `4.68s` | Real conversion cost |
+| Warm `convert-probed` | `conversion-summary.json` | `3.40ms` | `3.33ms` | `4.00ms` | `4.16ms` | Cache-hit speed |
+| Multi-hash `convert-probed` | `dast-patterns-summary.json` | `4.40s` | `4.40s` | `4.40s` | `4.40s` | Single cold probed conversion |
+| Multi-hash `convert-url` TFMX | `dast-patterns-summary.json` | `13.76s` | `13.76s` | `13.76s` | `13.76s` | Slowest path |
+| Play burst full | `dast-patterns-summary.json` | `0.79ms` | `0.80ms` | `0.80ms` | `0.80ms` | Very fast once ready |
+| Play burst range | `dast-patterns-summary.json` | `0.78ms` | `0.81ms` | `0.82ms` | `0.82ms` | Very fast once ready |
+
+Timing notes from the same run:
+
+- cold `convert-probed` was dominated by UADE render at roughly `3.7s` to `4.1s`, plus FLAC compression at roughly `0.53s` to `0.64s`
+- TFMX `convert-url` was dominated by UADE render at roughly `12.3s` to `13.2s`, plus FLAC compression at roughly `1.29s` to `1.53s`
+- no real app errors, warnings, tracebacks, or fixture-server anomalies were observed during this run
+- the duplicate `409 processing` responses in the DAST-pattern benchmark were expected and matched the short duplicate-convert contract
+
 ## Cloud Run Semaphore Sweep
 
 The repo also includes a host-side sweep wrapper for tuning `MAX_CONCURRENT_CONVERSIONS`

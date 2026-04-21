@@ -2861,7 +2861,7 @@ def convert_probed():
         return response
     except Exception as exc:
         logger.error("Convert-probed error", exc_info=True)
-        return json_response({"error": str(exc) or "Internal server error"}, 500)
+        return json_response({"error": "Internal server error"}, 500)
     finally:
         _log_duration(
             "convert-probed request",
