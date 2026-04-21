@@ -23,6 +23,7 @@ echo "Prod-mode service is healthy."
 echo "--- Testing Prod Mode: /test endpoints return 404 ---"
 for endpoint in \
   "POST /test/run-cleanup" \
+  "OPTIONS /test/run-cleanup" \
   "POST /test/set-local-file-mtime" \
   "POST /test/create-stale-conversion-lock" \
   "POST /test/remove-cache-artifact" \
