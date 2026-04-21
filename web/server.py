@@ -650,8 +650,8 @@ def test_route(rule, **options):
     def decorator(route_handler):
         @wraps(route_handler)
         def wrapped(*args, **kwargs):
-            if (test_mode_response := require_test_features()) is not None:
-                return test_mode_response
+            if (test_features_response := require_test_features()) is not None:
+                return test_features_response
             return route_handler(*args, **kwargs)
 
         wrapped = limiter.exempt(wrapped)
@@ -3717,11 +3717,16 @@ def download_and_limit_size(url, temp_file_path, error_context=""):
                 HTTP_CLIENT_ERROR_MIN,
             )
 
+        upstream_body_snippet = None
+        if exc.response is not None and exc.response.text:
+            upstream_body_snippet = exc.response.text.strip().replace("\n", " ")[:200]
         logger.warning(
-            "Remote fetch failed for %s (%s) with upstream status %s",
+            "Remote fetch failed for %s (%s) with upstream status %s [%s]%s",
             sanitized_url(url),
             error_context,
             status_code if status_code is not None else "unknown",
+            type(exc).__name__,
+            (f" body={upstream_body_snippet}" if upstream_body_snippet is not None else ""),
         )
         return False, json_response(
             {"error": f"Download failed for {error_context}"}, HTTP_BAD_GATEWAY
@@ -3733,12 +3738,13 @@ def download_and_limit_size(url, temp_file_path, error_context=""):
         if temp_file_path.exists():
             temp_file_path.unlink(missing_ok=True)
         return False, json_response({"error": "Unsafe or disallowed URL provided"}, 400)
-    except requests.RequestException:
+    except requests.RequestException as exc:
         logger.warning(
-            "Remote fetch transport failure for %s (%s): %s",
+            "Remote fetch transport failure for %s (%s): %s: %s",
             sanitized_url(url),
             error_context,
-            type(sys.exc_info()[1]).__name__ if sys.exc_info()[1] is not None else "unknown",
+            type(exc).__name__,
+            exc,
         )
         # Clean up partial file
         if temp_file_path.exists():
