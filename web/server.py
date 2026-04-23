@@ -787,9 +787,14 @@ def prepare_uploaded_request_source(*, content_addressed=False):
     probed_path = _validated_managed_path(MODULES_DIR / f"probed_{module_hash}", MODULES_DIR)
 
     if probed_path.exists():
-        temp_path.unlink(missing_ok=True)
-        if probed_path.stat().st_size > 0:
-            touch_for_lru(probed_path)
+        try:
+            if probed_path.stat().st_size > 0:
+                temp_path.unlink(missing_ok=True)
+                touch_for_lru(probed_path)
+            else:
+                temp_path.unlink(missing_ok=True)
+        except FileNotFoundError:
+            temp_path.replace(probed_path)
     else:
         temp_path.replace(probed_path)
 
@@ -3197,10 +3202,16 @@ def prepare_probed_source_from_payload(data):
     filename = _safe_client_filename(data.get("filename"))
     probed_path = _find_probed_module_by_hash(module_hash)
 
-    if probed_path is None or not probed_path.exists() or probed_path.stat().st_size == 0:
+    if probed_path is None or not probed_path.exists():
         return None, json_response({"error": "Module not found! Please re-upload"}, 404)
 
-    touch_for_lru(probed_path)
+    try:
+        if probed_path.stat().st_size == 0:
+            return None, json_response({"error": "Module not found! Please re-upload"}, 404)
+        touch_for_lru(probed_path)
+    except FileNotFoundError:
+        return None, json_response({"error": "Module not found! Please re-upload"}, 404)
+
     return ResolvedModuleSource(module_path=probed_path, filename=filename), None
 
 
