@@ -441,7 +441,8 @@ function validateConsecutiveIfNumberedListItems(relativePath, content) {
   let previousIfListItem = null;
 
   for (let index = 0; index < lines.length; index += 1) {
-    const trimmedLine = lines[index].trim();
+    const rawLine = lines[index];
+    const trimmedLine = rawLine.trim();
 
     if (trimmedLine.startsWith("```")) {
       insideCodeBlock = !insideCodeBlock;
@@ -455,6 +456,10 @@ function validateConsecutiveIfNumberedListItems(relativePath, content) {
 
     if (!trimmedLine) {
       previousIfListItem = null;
+      continue;
+    }
+
+    if (/^\s/.test(rawLine)) {
       continue;
     }
 
