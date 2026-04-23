@@ -45,9 +45,9 @@ Use the Bash runner when working in a Unix-like shell and you need to verify tha
 ## Workflow
 
 1. If the user asks to run all quality checks, start with the Docker Compose quality stack.
-2. If the task is security-driven or the user explicitly asks for CodeQL, run `codeql-check` in addition to `quality-check`.
+2. When the task is security-driven or the user explicitly asks for CodeQL, run `codeql-check` in addition to `quality-check`.
 3. If the task changes the PowerShell or Bash wrapper behavior, also run the affected wrapper directly after the Compose run.
-4. If the task changes instruction or documentation validation only, it is acceptable to run the narrower wrapper invocation first, for example `.\test\check-code-quality.ps1 -Instructions -Documentation`, but finish with the broader flow when the change touches shared quality infrastructure.
+4. For changes to instruction or documentation validation only, it is acceptable to run the narrower wrapper invocation first, for example `.\test\check-code-quality.ps1 -Instructions -Documentation`, but finish with the broader flow when the change touches shared quality infrastructure.
 5. Report whether the Compose flow passed, whether CodeQL was run, whether wrapper-specific flows passed, and any intentional differences between them.
 6. After a feature or fix is ready, run the relevant automated tests before finishing. At minimum, for quality-infrastructure changes, run the Docker Compose quality flow and any affected wrapper flow.
 7. When you learn something non-obvious and repo-specific while working, update `.agents/project-lessons.md` so the next pass does not have to rediscover it.

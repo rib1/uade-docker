@@ -132,9 +132,9 @@ docker compose run --rm --build zap-full-scan-seeded
 1. Pick the narrowest test stack that matches the changed behavior.
 2. Prefer the exact Docker Compose command from `docker-compose.yml` comments instead of reconstructing it from memory.
 3. Use the separate `quality-checks` skill when the request is about static validation rather than runtime behavior.
-4. If the change affects shared cache or filesystem behavior across containers, include the multi-instance flow.
-5. If the change affects security scan behavior or ZAP seeding, run the matching DAST flow.
-6. If the change affects `/test` exposure or prod/test mode separation, include the prod-mode flow.
+4. When changes affect shared cache or filesystem behavior across containers, include the multi-instance flow.
+5. For security scan behavior or ZAP seeding changes, run the matching DAST flow.
+6. When affecting `/test` exposure or prod/test mode separation, include the prod-mode flow.
 7. If the change affects performance or concurrency characteristics rather than correctness alone, consider the benchmark flow.
 8. Report exactly which Compose command was run and whether follow-up teardown is still needed.
 9. After a feature or fix is ready, run the relevant automated tests before finishing, using the narrowest Compose stack that still validates the changed behavior.

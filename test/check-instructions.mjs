@@ -67,7 +67,7 @@ function findSkillInstructionFiles() {
         stack.push(absolutePath);
         continue;
       }
-      if (entry.isFile() && entry.name === "SKILL.md") {
+      if (entry.isFile() && entry.name.endsWith(".md")) {
         skillFiles.push(path.relative(projectRoot, absolutePath).replace(/\\/g, "/"));
       }
     }
@@ -435,6 +435,46 @@ function validateNearDuplicatePolicyLines(relativePath, content) {
   }
 }
 
+function validateConsecutiveIfNumberedListItems(relativePath, content) {
+  const lines = content.split("\n");
+  let insideCodeBlock = false;
+  let previousIfListItem = null;
+
+  for (let index = 0; index < lines.length; index += 1) {
+    const trimmedLine = lines[index].trim();
+
+    if (trimmedLine.startsWith("```")) {
+      insideCodeBlock = !insideCodeBlock;
+      previousIfListItem = null;
+      continue;
+    }
+
+    if (insideCodeBlock) {
+      continue;
+    }
+
+    if (!trimmedLine) {
+      previousIfListItem = null;
+      continue;
+    }
+
+    const numberedIfMatch = trimmedLine.match(/^(\d+)\.\s+If\b/i);
+    if (!numberedIfMatch) {
+      previousIfListItem = null;
+      continue;
+    }
+
+    if (previousIfListItem !== null) {
+      addFailure(
+        relativePath,
+        `avoid starting consecutive numbered list items with "If" for readability: "${previousIfListItem}" then "${trimmedLine}"`,
+      );
+    }
+
+    previousIfListItem = trimmedLine;
+  }
+}
+
 function validatePlaywrightVersionAlignment() {
   const packageJsonPath = "test/package.json";
   const toolingComposePath = "test/docker-compose.tooling.yml";
@@ -496,8 +536,10 @@ for (const relativePath of instructionFiles) {
     validateCopilotInstructions(relativePath, content);
   } else if (relativePath === ".agents/README.md") {
     validateSkillInstructions(relativePath, content);
+    validateConsecutiveIfNumberedListItems(relativePath, content);
   } else if (relativePath.startsWith(".agents/skills/") && relativePath.endsWith("/SKILL.md")) {
     validateSkillInstructions(relativePath, content);
+    validateConsecutiveIfNumberedListItems(relativePath, content);
   } else if (relativePath === ".agents/project-lessons.md") {
     validateProjectLessons(relativePath, content);
   }
