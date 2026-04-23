@@ -448,7 +448,7 @@ test_probe_upload_path_traversal_filename() {
         exit 1
     fi
 
-    # Verify the filename was sanitized (Werkzeug secure_filename strips path traversal)
+    # Verify the filename was sanitized (_safe_client_filename strips path traversal)
     FILENAME=$(echo "$BODY" | jq -r .filename)
     if echo "$FILENAME" | grep -q "\.\."; then
         echo "ERROR: Probe upload filename contains path traversal: '$FILENAME'"
@@ -457,6 +457,29 @@ test_probe_upload_path_traversal_filename() {
     fi
 
     echo "SUCCESS: Probe upload sanitized path traversal filename to '$FILENAME'."
+    echo ""
+}
+
+test_probe_upload_oversized_payload_shape() {
+    TEST_NAME=$1
+    FILE_PATH=$2
+
+    echo "--- Testing Probe Upload Error Payload: $TEST_NAME ---"
+
+    RESPONSE_ALL=$(curl -s -w "\n%{http_code}" -X POST -F "file=@$FILE_PATH" "$BASE_URL/probe-upload")
+    HTTP_CODE=$(echo "$RESPONSE_ALL" | tail -n1)
+    BODY=$(echo "$RESPONSE_ALL" | sed '$d')
+
+    if [ "$HTTP_CODE" -ne 413 ]; then
+        echo "ERROR: Probe upload oversized payload test returned HTTP $HTTP_CODE (expected 413)"
+        echo "Response body: $BODY"
+        exit 1
+    fi
+
+    assert_request_entity_too_large_payload "$BODY" "$TEST_NAME"
+
+    echo "SUCCESS: Probe upload oversized file returned the shared 413 payload shape."
+    echo "Response body: $BODY"
     echo ""
 }
 
@@ -870,6 +893,59 @@ test_convert_probed_bad_request() {
     echo ""
 }
 
+test_convert_probed_non_string_filename() {
+    echo "--- Testing Convert-Probed Handles Non-String Filename ---"
+
+    PROBE_RESPONSE_ALL=$(curl -s -w "\n%{http_code}" -X POST -F "file=@fixtures/modules/space_debris.mod" "$BASE_URL/probe-upload")
+    PROBE_HTTP_CODE=$(echo "$PROBE_RESPONSE_ALL" | tail -n1)
+    PROBE_BODY=$(echo "$PROBE_RESPONSE_ALL" | sed '$d')
+
+    if [ "$PROBE_HTTP_CODE" -ne 200 ]; then
+        echo "ERROR: Probe returned HTTP $PROBE_HTTP_CODE"
+        echo "Response body: $PROBE_BODY"
+        exit 1
+    fi
+
+    MODULE_HASH=$(echo "$PROBE_BODY" | jq -r .module_hash)
+    if [ -z "$MODULE_HASH" ] || [ "$MODULE_HASH" == "null" ]; then
+        echo "ERROR: Probe response missing module_hash"
+        echo "Response body: $PROBE_BODY"
+        exit 1
+    fi
+
+    CONVERT_RESPONSE_ALL=$(curl -s -w "\n%{http_code}" -X POST \
+        -H "Content-Type: application/json" \
+        -d "{\"module_hash\":\"$MODULE_HASH\",\"filename\":{\"nested\":\"value\"}}" \
+        "$BASE_URL/convert-probed")
+    CONVERT_HTTP_CODE=$(echo "$CONVERT_RESPONSE_ALL" | tail -n1)
+    CONVERT_BODY=$(echo "$CONVERT_RESPONSE_ALL" | sed '$d')
+
+    if [ "$CONVERT_HTTP_CODE" -ne 200 ]; then
+        echo "ERROR: Convert-probed with non-string filename returned HTTP $CONVERT_HTTP_CODE"
+        echo "Response body: $CONVERT_BODY"
+        exit 1
+    fi
+
+    CONVERT_FILENAME=$(echo "$CONVERT_BODY" | jq -r .filename)
+    PLAY_URL=$(echo "$CONVERT_BODY" | jq -r .play_url)
+
+    if [ "$CONVERT_FILENAME" != "module" ]; then
+        echo "ERROR: Convert-probed did not normalize non-string filename to 'module'"
+        echo "Response body: $CONVERT_BODY"
+        exit 1
+    fi
+
+    if [ -z "$PLAY_URL" ] || [ "$PLAY_URL" == "null" ]; then
+        echo "ERROR: Convert-probed response missing play_url for non-string filename"
+        echo "Response body: $CONVERT_BODY"
+        exit 1
+    fi
+
+    echo "SUCCESS: Convert-probed normalized a non-string filename payload to '$CONVERT_FILENAME'."
+    echo "Response body: $CONVERT_BODY"
+    echo ""
+}
+
 # Test convert-probed error: wrong HTTP method (GET)
 test_convert_probed_wrong_method() {
     echo "--- Testing Convert-Probed Error: Wrong HTTP method (GET) ---"
@@ -1252,6 +1328,46 @@ test_upload_error() {
         echo "Response body: $BODY"
         exit 1
     fi
+    echo ""
+}
+
+assert_request_entity_too_large_payload() {
+    BODY=$1
+    TEST_NAME=$2
+
+    if ! echo "$BODY" | jq -e '
+        .code == 413
+        and .max_upload_size_bytes == 10485760
+        and (.max_upload_size_mb == 10 or .max_upload_size_mb == 10.0)
+        and (.error | type == "string")
+        and (.error | contains("maximum allowed size"))
+    ' > /dev/null; then
+        echo "ERROR: RequestEntityTooLarge payload shape mismatch for '$TEST_NAME'"
+        echo "Response body: $BODY"
+        exit 1
+    fi
+}
+
+test_upload_oversized_payload_shape() {
+    TEST_NAME=$1
+    FILE_PATH=$2
+
+    echo "--- Testing Upload Error Payload: $TEST_NAME ---"
+
+    RESPONSE_ALL=$(curl -s -w "\n%{http_code}" -X POST -F "file=@$FILE_PATH" "$BASE_URL/upload")
+    HTTP_CODE=$(echo "$RESPONSE_ALL" | tail -n1)
+    BODY=$(echo "$RESPONSE_ALL" | sed '$d')
+
+    if [ "$HTTP_CODE" -ne 413 ]; then
+        echo "ERROR: Upload oversized payload test returned HTTP $HTTP_CODE (expected 413)"
+        echo "Response body: $BODY"
+        exit 1
+    fi
+
+    assert_request_entity_too_large_payload "$BODY" "$TEST_NAME"
+
+    echo "SUCCESS: Upload oversized file returned the shared 413 payload shape."
+    echo "Response body: $BODY"
     echo ""
 }
 
@@ -2839,6 +2955,7 @@ test_upload_filename_extraction "Protracker module upload" "fixtures/modules/spa
 test_upload_negative_case "Non-module file upload" "fixtures/modules/gutenberg.txt"
 test_upload_error "Reject empty file upload" "fixtures/invalid/empty.bin" 400
 test_upload_error "Reject oversized file upload" "fixtures/invalid/too-large.bin" 413
+test_upload_oversized_payload_shape "Reject oversized file upload uses shared 413 payload" "fixtures/invalid/too-large.bin"
 
 # Probe-upload tests
 test_probe_upload "Probe upload Protracker module" "fixtures/modules/space_debris.mod"
@@ -2846,6 +2963,7 @@ test_probe_upload_error "Probe upload non-module file" "fixtures/modules/gutenbe
 test_probe_upload_preserves_negative_cache "Probe upload invalid file preserves negative cache" "fixtures/modules/gutenberg.txt"
 test_probe_upload_error "Probe upload empty file" "fixtures/invalid/empty.bin" 400 "Empty file provided"
 test_probe_upload_error "Probe upload oversized file" "fixtures/invalid/too-large.bin" 413
+test_probe_upload_oversized_payload_shape "Probe upload oversized file uses shared 413 payload" "fixtures/invalid/too-large.bin"
 test_probe_upload_no_file
 test_probe_upload_wrong_method
 test_probe_upload_path_traversal_filename "fixtures/modules/space_debris.mod"
@@ -2859,6 +2977,7 @@ test_convert_probed_404_then_upload_fallback "fixtures/modules/space_debris.mod"
 test_convert_probed_invalid_hash
 test_convert_probed_not_found
 test_convert_probed_bad_request
+test_convert_probed_non_string_filename
 test_convert_probed_wrong_method
 
 print_endpoint_coverage_summary

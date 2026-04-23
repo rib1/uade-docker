@@ -323,6 +323,22 @@ def ratelimit_handler(_e):
     )
 
 
+@app.errorhandler(RequestEntityTooLarge)
+def request_entity_too_large_handler(_e):
+    max_content_length = app.config.get("MAX_CONTENT_LENGTH")
+    payload = {
+        "error": "Upload exceeds the maximum allowed size.",
+        "code": 413,
+    }
+    if isinstance(max_content_length, int) and max_content_length > 0:
+        payload["error"] = (
+            f"Upload exceeds the maximum allowed size of {max_content_length / (1024 * 1024):g} MB."
+        )
+        payload["max_upload_size_bytes"] = max_content_length
+        payload["max_upload_size_mb"] = max_content_length / (1024 * 1024)
+    return json_response(payload, 413)
+
+
 @app.after_request
 def add_security_headers(response):
     """Add security headers to all responses."""
@@ -688,12 +704,12 @@ def validated_md5_hash(value):
     return value
 
 
-def _safe_client_filename(filename):
+def _safe_client_filename(filename, *, fallback="module"):
     """Normalize untrusted client filenames to a stable safe subset."""
     if not isinstance(filename, str):
-        return "module"
+        return fallback
     normalized = unicodedata.normalize("NFKC", filename)
-    return secure_filename(normalized)[:100] or "module"
+    return secure_filename(normalized)[:100] or fallback
 
 
 def _validated_managed_path(path, *roots):
@@ -2772,8 +2788,8 @@ def upload_file():
         log_request_user_agent()
         return convert_resolved_module_source(source)
 
-    except RequestEntityTooLarge:
-        raise
+    except RequestEntityTooLarge as exc:
+        return request_entity_too_large_handler(exc)
     except Exception:
         logger.error("Upload error", exc_info=True)
         return json_response({"error": "Internal server error during upload"}, 500)
@@ -2811,8 +2827,8 @@ def probe_upload():
             return json_response(data)
 
         return response
-    except RequestEntityTooLarge:
-        raise
+    except RequestEntityTooLarge as exc:
+        return request_entity_too_large_handler(exc)
     except Exception:
         logger.error("Probe upload error", exc_info=True)
         return json_response(
@@ -2843,11 +2859,8 @@ def convert_probed():
     """
     convert_probed_started_at = time.perf_counter()
     filename = None
-    module_hash = None
     try:
-        source, module_hash, error_response = prepare_probed_source_from_payload(
-            request.get_json(silent=True)
-        )
+        source, error_response = prepare_probed_source_from_payload(request.get_json(silent=True))
         if error_response is not None:
             return error_response
 
@@ -2868,7 +2881,6 @@ def convert_probed():
             "convert-probed request",
             convert_probed_started_at,
             filename=filename,
-            module_hash=module_hash,
         )
 
 
@@ -3176,28 +3188,20 @@ def probe_resolved_module_source(source: ResolvedModuleSource):
 def prepare_probed_source_from_payload(data):
     """Validate a convert-probed request payload and resolve its cached module source."""
     if not isinstance(data, dict) or not data:
-        return None, None, json_response({"error": "Invalid request body"}, 400)
+        return None, json_response({"error": "Invalid request body"}, 400)
 
     module_hash = validated_md5_hash(data.get("module_hash"))
     if module_hash is None:
-        return None, None, json_response({"error": "Invalid module hash"}, 400)
+        return None, json_response({"error": "Invalid module hash"}, 400)
 
-    filename = secure_filename(data.get("filename", "")) or "module"
+    filename = _safe_client_filename(data.get("filename"))
     probed_path = _find_probed_module_by_hash(module_hash)
 
     if probed_path is None or not probed_path.exists() or probed_path.stat().st_size == 0:
-        return (
-            None,
-            module_hash,
-            json_response({"error": "Module not found! Please re-upload"}, 404),
-        )
+        return None, json_response({"error": "Module not found! Please re-upload"}, 404)
 
     touch_for_lru(probed_path)
-    return (
-        ResolvedModuleSource(module_path=probed_path, filename=filename),
-        module_hash,
-        None,
-    )
+    return ResolvedModuleSource(module_path=probed_path, filename=filename), None
 
 
 def is_safe_url(u):
@@ -3904,8 +3908,7 @@ def extract_filename_from_url(url):
         )
     else:
         filename = url_for_filename.split("/")[-1].split("?")[0]
-    filename = filename[:100]  # Limit to 100 chars
-    return secure_filename(filename) or "module"
+    return _safe_client_filename(filename)
 
 
 @app.route("/play/<file_id>")
@@ -3931,8 +3934,7 @@ def download_file(file_id):
     """
     custom_filename = request.args.get("filename")
     if custom_filename:
-        custom_filename = unicodedata.normalize("NFKC", custom_filename)
-        custom_filename = secure_filename(custom_filename)[:100] or None
+        custom_filename = _safe_client_filename(custom_filename, fallback=None)
     return serve_audio_file(file_id, as_attachment=True, custom_filename=custom_filename)
 
 
