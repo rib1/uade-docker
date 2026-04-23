@@ -489,6 +489,48 @@ async function parseJsonResponse(response, fallbackMessage) {
   return response.json();
 }
 
+function handleSuccessfulConversionPlayback(
+  data,
+  {
+    moduleNameOverride = null,
+    successMessageTemplate = "✓ {moduleName} converted and ready to play",
+    playFileOptions = {},
+    onSuccessCallback = () => {},
+    activePlaylistTrackId = null,
+    button = null,
+    originalBtnText = null,
+  } = {},
+) {
+  const moduleName = moduleNameOverride || data.module_name || data.filename;
+  const statusMessage = getCacheStatusMessage(
+    data,
+    moduleName,
+    successMessageTemplate.replace("{moduleName}", moduleName),
+  );
+
+  showStatus(statusMessage, "success");
+  playFile(
+    data.file_id,
+    moduleName,
+    data.play_url,
+    data.download_url,
+    data.player_format || "Module",
+    data.audio_format || "wav",
+    data.module_format,
+    data.subsongs,
+    data.subsong_durations || [],
+    playFileOptions,
+  );
+  onSuccessCallback(data);
+
+  if (button && originalBtnText !== null) {
+    resetButtonAfterDelay(
+      getLivePlaylistPlayButton(activePlaylistTrackId, button),
+      originalBtnText,
+    );
+  }
+}
+
 async function fetchConversionResponseWithRetry(
   endpoint,
   options,
@@ -551,28 +593,15 @@ async function performConversion(
     const { response, data } = await fetchConversionResponseWithRetry(endpoint, options);
 
     if (response.ok) {
-      const moduleName = moduleNameOverride || data.module_name || data.filename;
-      const statusMessage = getCacheStatusMessage(data, moduleName, successMessageTemplate.replace("{moduleName}", moduleName));
-      showStatus(statusMessage, "success");
-      playFile(
-        data.file_id,
-        moduleName,
-        data.play_url,
-        data.download_url,
-        data.player_format || "Module",
-        data.audio_format || "wav",
-        data.module_format,
-        data.subsongs,
-        data.subsong_durations || [],
+      handleSuccessfulConversionPlayback(data, {
+        moduleNameOverride,
+        successMessageTemplate,
         playFileOptions,
-      );
-      if (onSuccessCallback) {
-        onSuccessCallback(data);
-      }
-      resetButtonAfterDelay(
-        getLivePlaylistPlayButton(activePlaylistTrackId, button),
+        onSuccessCallback,
+        activePlaylistTrackId,
+        button,
         originalBtnText,
-      );
+      });
       return; // on success, the function ends here.
     }
     showStatus(`✗ Error: ${data.error}`, "error");
@@ -585,56 +614,14 @@ async function performConversion(
   syncUiLockState(false);
 }
 
-async function performProbe(url, sampleUrl, button) {
-  syncUiLockState(true);
-  const originalBtnText = button ? showButtonLoadingAndGetOriginal(button, "Checking...") : null;
-  showStatus("Checking module metadata...", "info");
-
-  try {
-    const payload = { url };
-    if (sampleUrl) {
-      payload.sample_url = sampleUrl;
-    }
-
-    const response = await fetch("/probe-url", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
-    });
-    const contentType = response.headers.get("content-type") || "";
-    const isJsonResponse = contentType.includes("application/json");
-
-    if (!isJsonResponse) {
-      throw new Error("Probe returned a non-JSON response");
-    }
-
-    const data = await response.json();
-
-    if (!response.ok) {
-      showStatus(`✗ Error: ${data.error || "Probe failed"}`, "error");
-      return null;
-    }
-
-    if (!data.ok || !data.playable || !(data.module_name || data.filename)) {
-      throw new Error("Probe returned incomplete module metadata");
-    }
-
-    return data;
-  } catch (error) {
-    showStatus(`✗ Probe failed: ${error.message}`, "error");
-    return null;
-  } finally {
-    if (button && originalBtnText !== null) {
-      button.textContent = getButtonRestoreText(button, originalBtnText);
-    }
-    syncUiLockState(false);
-  }
-}
-
-async function performFileProbe(
-  file,
+async function performProbeRequest(
+  endpoint,
+  requestOptions,
   button,
-  { showInitialStatus = true, showErrorStatus = true } = {},
+  {
+    showInitialStatus = true,
+    showErrorStatus = true,
+  } = {},
 ) {
   syncUiLockState(true);
   const originalBtnText = button ? showButtonLoadingAndGetOriginal(button, "Checking...") : null;
@@ -644,13 +631,7 @@ async function performFileProbe(
   }
 
   try {
-    const formData = new FormData();
-    formData.append("file", file);
-
-    const response = await fetch("/probe-upload", {
-      method: "POST",
-      body: formData,
-    });
+    const response = await fetch(endpoint, requestOptions);
     const contentType = response.headers.get("content-type") || "";
     const isJsonResponse = contentType.includes("application/json");
 
@@ -683,6 +664,38 @@ async function performFileProbe(
     }
     syncUiLockState(false);
   }
+}
+
+async function performProbe(url, sampleUrl, button) {
+  const payload = { url };
+  if (sampleUrl) {
+    payload.sample_url = sampleUrl;
+  }
+
+  return performProbeRequest(
+    "/probe-url",
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    },
+    button,
+  );
+}
+
+async function performFileProbe(file, button, options = {}) {
+  const formData = new FormData();
+  formData.append("file", file);
+
+  return performProbeRequest(
+    "/probe-upload",
+    {
+      method: "POST",
+      body: formData,
+    },
+    button,
+    options,
+  );
 }
 
 // URL Form
@@ -1968,22 +1981,15 @@ async function playDeferredLocalTrack(
       });
 
       if (response.ok) {
-        const moduleName = track.name || data.module_name || data.filename;
-        const statusMessage = getCacheStatusMessage(
-          data, moduleName, `✓ ${moduleName} converted and ready to play`,
-        );
-        showStatus(statusMessage, "success");
-        playFile(
-          data.file_id, moduleName, data.play_url, data.download_url,
-          data.player_format || "Module", data.audio_format || "wav",
-          data.module_format, data.subsongs, data.subsong_durations || [],
-          { preservePlaylistSelection: true },
-        );
-        onConversionSuccess(data);
-        resetButtonAfterDelay(
-          getLivePlaylistPlayButton(trackId, button),
+        handleSuccessfulConversionPlayback(data, {
+          moduleNameOverride: track.name,
+          successMessageTemplate: "✓ {moduleName} converted and ready to play",
+          playFileOptions: { preservePlaylistSelection: true },
+          onSuccessCallback: onConversionSuccess,
+          activePlaylistTrackId: trackId,
+          button,
           originalBtnText,
-        );
+        });
         return;
       }
 
