@@ -37,6 +37,7 @@ import requests
 from flask import Flask, Response, jsonify, request, send_from_directory
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
+from werkzeug.exceptions import RequestEntityTooLarge  # type: ignore[import-not-found]
 from werkzeug.utils import secure_filename
 
 # Configure logging for cloud environments
@@ -754,6 +755,31 @@ def get_uploaded_request_file():
     return file, _safe_client_filename(file.filename), None
 
 
+def prepare_uploaded_request_source(*, content_addressed=False):
+    """Persist the standard multipart upload file and return a resolved module source."""
+    file, filename, error_message = get_uploaded_request_file()
+    if error_message is not None:
+        return None, None, error_message
+
+    temp_path = _managed_modules_path(filename=filename, suffix=str(uuid.uuid4()))
+    file.save(temp_path)
+
+    if not content_addressed:
+        return ResolvedModuleSource(module_path=temp_path, filename=filename), None, None
+
+    module_hash = get_file_hash(temp_path)
+    probed_path = _validated_managed_path(MODULES_DIR / f"probed_{module_hash}", MODULES_DIR)
+
+    if probed_path.exists():
+        temp_path.unlink(missing_ok=True)
+        if probed_path.stat().st_size > 0:
+            touch_for_lru(probed_path)
+    else:
+        temp_path.replace(probed_path)
+
+    return ResolvedModuleSource(module_path=probed_path, filename=filename), module_hash, None
+
+
 def _cleanup_old_files_impl():
     """
     Remove files older than CLEANUP_INTERVAL from local directories.
@@ -1018,6 +1044,12 @@ def load_cache_access_record(cache_hash):
             data = json.load(f)
         if isinstance(data, dict):
             return data
+    except FileNotFoundError:
+        return None
+    except OSError as exc:
+        if getattr(exc, "errno", None) == ENOENT_ERRNO:
+            return None
+        logger.warning(f"Could not load cache access record for {cache_hash}", exc_info=True)
     except Exception:
         logger.warning(f"Could not load cache access record for {cache_hash}", exc_info=True)
     return None
@@ -2729,24 +2761,19 @@ def get_examples():
 def upload_file():
     """Handle file upload and conversion"""
     upload_started_at = time.perf_counter()
-    file, filename, error_message = get_uploaded_request_file()
-    if error_message is not None:
-        return upload_error_response(error_message)
+    filename = None
 
     try:
+        source, _module_hash, error_message = prepare_uploaded_request_source()
+        if error_message is not None:
+            return upload_error_response(error_message)
+
+        filename = source.filename
         log_request_user_agent()
-        use_flac = True
+        return convert_resolved_module_source(source)
 
-        # Generate unique ID
-        file_id = str(uuid.uuid4())
-
-        # Save uploaded file
-        module_path = _managed_modules_path(filename=filename, suffix=file_id)
-        file.save(module_path)
-        return process_module_and_respond(
-            module_path, filename, use_flac, url_cached=False, sample_file_and_alias=None
-        )
-
+    except RequestEntityTooLarge:
+        raise
     except Exception:
         logger.error("Upload error", exc_info=True)
         return json_response({"error": "Internal server error during upload"}, 500)
@@ -2754,7 +2781,7 @@ def upload_file():
         _log_duration(
             "upload request",
             upload_started_at,
-            filename=filename if "filename" in locals() else None,
+            filename=filename,
         )
 
 
@@ -2767,29 +2794,15 @@ def probe_upload():
     Returns a module_hash that /convert-probed can use to convert without re-uploading.
     """
     probe_upload_started_at = time.perf_counter()
-    file, filename, error_message = get_uploaded_request_file()
-    if error_message is not None:
-        return upload_error_response(error_message, probe=True)
+    filename = None
 
     try:
-        file_id = str(uuid.uuid4())
-        temp_path = _managed_modules_path(filename=filename, suffix=file_id)
-        file.save(temp_path)
+        source, module_hash, error_message = prepare_uploaded_request_source(content_addressed=True)
+        if error_message is not None:
+            return upload_error_response(error_message, probe=True)
 
-        # Content-addressed storage: rename to hash-based path for dedup
-        module_hash = get_file_hash(temp_path)
-        probed_path = _validated_managed_path(MODULES_DIR / f"probed_{module_hash}", MODULES_DIR)
-
-        if probed_path.exists():
-            temp_path.unlink(missing_ok=True)
-            if probed_path.stat().st_size > 0:
-                touch_for_lru(probed_path)
-        else:
-            temp_path.replace(probed_path)
-
-        response = process_module_probe_response(
-            probed_path, filename, url_cached=False, sample_file_and_alias=None
-        )
+        filename = source.filename
+        response = probe_resolved_module_source(source)
 
         # Inject module_hash into successful probe responses
         if response.status_code < HTTP_CLIENT_ERROR_MIN:
@@ -2798,6 +2811,8 @@ def probe_upload():
             return json_response(data)
 
         return response
+    except RequestEntityTooLarge:
+        raise
     except Exception:
         logger.error("Probe upload error", exc_info=True)
         return json_response(
@@ -2812,7 +2827,7 @@ def probe_upload():
         _log_duration(
             "probe-upload request",
             probe_upload_started_at,
-            filename=filename if "filename" in locals() else None,
+            filename=filename,
         )
 
 
@@ -2830,36 +2845,22 @@ def convert_probed():
     filename = None
     module_hash = None
     try:
-        data = request.get_json(silent=True)
-        if not data:
-            return json_response({"error": "Invalid request body"}, 400)
-
-        module_hash = data.get("module_hash", "")
-        filename = secure_filename(data.get("filename", "")) or "module"
-
-        if not _MD5_HEX_RE.match(module_hash):
-            return json_response({"error": "Invalid module hash"}, 400)
-
-        probed_path = _find_probed_module_by_hash(module_hash)
-
-        if probed_path is None or not probed_path.exists() or probed_path.stat().st_size == 0:
-            return json_response({"error": "Module not found! Please re-upload"}, 404)
-
-        touch_for_lru(probed_path)
-
-        log_request_user_agent("Convert-probed User-Agent")
-        use_flac = True
-
-        response = process_module_and_respond(
-            probed_path, filename, use_flac, url_cached=False, sample_file_and_alias=None
+        source, module_hash, error_response = prepare_probed_source_from_payload(
+            request.get_json(silent=True)
         )
+        if error_response is not None:
+            return error_response
+
+        filename = source.filename
+        log_request_user_agent("Convert-probed User-Agent")
+        response = convert_resolved_module_source(source)
         response_data = response.get_json(silent=True) or {}
         if response.status_code == HTTP_SERVER_ERROR_MIN and str(
             response_data.get("error", "")
         ).startswith("File not found:"):
             return json_response({"error": "Module not found! Please re-upload"}, 404)
         return response
-    except Exception as exc:
+    except Exception:
         logger.error("Convert-probed error", exc_info=True)
         return json_response({"error": "Internal server error"}, 500)
     finally:
@@ -2983,6 +2984,16 @@ class PreparedModuleSource:
     module_path: Path
     filename: str
     extract_dir: Path
+
+
+@dataclass(slots=True)
+class ResolvedModuleSource:
+    """Source artifact plus response metadata needed by probe/convert routes."""
+
+    module_path: Path
+    filename: str
+    sample_file_and_alias: SampleFileAndAlias | None = None
+    url_cached: bool = False
 
 
 def invalid_module_response(*, probe=False):
@@ -3139,6 +3150,54 @@ def process_module_probe_response(
     finally:
         if prepared_source.extract_dir.exists():
             shutil.rmtree(prepared_source.extract_dir, ignore_errors=True)
+
+
+def convert_resolved_module_source(source: ResolvedModuleSource):
+    """Convert a resolved module source and return the standard playback payload."""
+    return process_module_and_respond(
+        source.module_path,
+        source.filename,
+        use_flac=True,
+        url_cached=source.url_cached,
+        sample_file_and_alias=source.sample_file_and_alias,
+    )
+
+
+def probe_resolved_module_source(source: ResolvedModuleSource):
+    """Probe a resolved module source and return the standard metadata payload."""
+    return process_module_probe_response(
+        source.module_path,
+        source.filename,
+        url_cached=source.url_cached,
+        sample_file_and_alias=source.sample_file_and_alias,
+    )
+
+
+def prepare_probed_source_from_payload(data):
+    """Validate a convert-probed request payload and resolve its cached module source."""
+    if not isinstance(data, dict) or not data:
+        return None, None, json_response({"error": "Invalid request body"}, 400)
+
+    module_hash = validated_md5_hash(data.get("module_hash"))
+    if module_hash is None:
+        return None, None, json_response({"error": "Invalid module hash"}, 400)
+
+    filename = secure_filename(data.get("filename", "")) or "module"
+    probed_path = _find_probed_module_by_hash(module_hash)
+
+    if probed_path is None or not probed_path.exists() or probed_path.stat().st_size == 0:
+        return (
+            None,
+            module_hash,
+            json_response({"error": "Module not found! Please re-upload"}, 404),
+        )
+
+    touch_for_lru(probed_path)
+    return (
+        ResolvedModuleSource(module_path=probed_path, filename=filename),
+        module_hash,
+        None,
+    )
 
 
 def is_safe_url(u):
@@ -3515,12 +3574,15 @@ def prepare_remote_module_source(url, sample_url=None):
         sample_alias=sample_alias_path.name if sample_alias_path else None,
         url_cache_hit=url_cache_hit,
     )
-    return {
-        "module_path": module_path,
-        "filename": filename,
-        "sample_file_and_alias": sample_file_and_alias,
-        "url_cache_hit": url_cache_hit,
-    }, None
+    return (
+        ResolvedModuleSource(
+            module_path=module_path,
+            filename=filename,
+            sample_file_and_alias=sample_file_and_alias,
+            url_cached=url_cache_hit,
+        ),
+        None,
+    )
 
 
 def prepare_remote_source_from_payload(data):
@@ -3541,14 +3603,7 @@ def convert_url_payload(data):
         if error_response:
             return error_response
 
-        use_flac = True
-        return process_module_and_respond(
-            remote_source["module_path"],
-            remote_source["filename"],
-            use_flac,
-            url_cached=remote_source["url_cache_hit"],
-            sample_file_and_alias=remote_source["sample_file_and_alias"],
-        )
+        return convert_resolved_module_source(remote_source)
     except Exception:
         logger.error("Convert URL error", exc_info=True)
         return json_response(
@@ -3584,12 +3639,7 @@ def probe_url_payload(data):
         remote_source, error_response = prepare_remote_source_from_payload(data)
         if error_response:
             return error_response
-        return process_module_probe_response(
-            remote_source["module_path"],
-            remote_source["filename"],
-            url_cached=remote_source["url_cache_hit"],
-            sample_file_and_alias=remote_source["sample_file_and_alias"],
-        )
+        return probe_resolved_module_source(remote_source)
     except Exception:
         logger.error("Probe URL error", exc_info=True)
         return json_response(
