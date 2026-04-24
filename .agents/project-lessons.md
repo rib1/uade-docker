@@ -227,6 +227,8 @@ This document contains project-specific learnings and regression-avoidance notes
 
 - **False Positives:** ZAP SQL injection findings on `/convert-url` were false positives caused by incorrect error classification, not evidence of a real SQL-backed issue.
 - **False Positives:** Once `/convert-url` stopped surfacing hostile remote-fetch failures as `500`, the SQL injection findings disappeared in both quick and full ZAP scans.
+- **Uploaded Invalid Content:** `/upload` and `/probe-upload` should return `400`, not `500`, when the uploaded bytes are not a supported module or archive. Keep local unsupported-fixture coverage on both endpoints so upload and queue-probe contracts stay aligned.
+- **Remote Invalid Content:** `/convert-url` and `/probe-url` should return `400`, not `500`, when the remote URL is reachable but the fetched bytes are not a supported module or archive. Keep endpoint coverage on local unsupported remote fixtures so DAST regressions are caught before security scans.
 - **False Positives:** Remaining ZAP noise is mostly low-signal warnings like HTTP-only scanning context or suspicious comments, not active queue-related vulnerabilities.
 - **Seed Fixtures:** Keep ZAP seed fixtures distinct from integration-test fixtures. Synthetic ZAP-only files should use unique names such as `zap-placeholder-*` so shared fixture volumes do not create confusing collisions.
 - **Seeded Scans:** Keep plain ZAP services and seeded ZAP services separate. Seeded scans are useful for coverage and regression checks, but the default scan path should still run without fixture-only setup.

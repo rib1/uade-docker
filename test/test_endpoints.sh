@@ -126,10 +126,6 @@ test_url() {
     if [ "$HTTP_CODE" -eq 200 ]; then
         echo "SUCCESS: Received HTTP 200"
         echo "Response body: $BODY"
-    # Allow 500 for the negative test case
-    elif [[ "$TEST_NAME" == "Negative case (non-module)" && "$HTTP_CODE" -eq 500 ]]; then
-        echo "SUCCESS: Received HTTP 500 as expected for negative test case"
-        echo "Response body: $BODY"
     else
         echo "ERROR: Received HTTP $HTTP_CODE for test '$TEST_NAME'"
         echo "Response body: $BODY"
@@ -352,8 +348,8 @@ test_probe_upload_preserves_negative_cache() {
         HTTP_CODE=$(echo "$RESPONSE_ALL" | tail -n1)
         BODY=$(echo "$RESPONSE_ALL" | sed '$d')
 
-        if [ "$HTTP_CODE" -ne 500 ]; then
-            echo "ERROR: Probe upload attempt $attempt returned HTTP $HTTP_CODE (expected 500) for '$TEST_NAME'"
+        if [ "$HTTP_CODE" -ne 400 ]; then
+            echo "ERROR: Probe upload attempt $attempt returned HTTP $HTTP_CODE (expected 400) for '$TEST_NAME'"
             echo "Response body: $BODY"
             exit 1
         fi
@@ -1381,7 +1377,7 @@ test_external_download_flow_with_oversized_file() {
     EXPECTED_STATUS_FIRST_CALL=413
     EXPECTED_ERROR_MESSAGE_FIRST_CALL="External module file size exceeds the maximum allowed limit of 10MB"
 
-    EXPECTED_STATUS_SECOND_CALL=500
+    EXPECTED_STATUS_SECOND_CALL=400
     EXPECTED_ERROR_MESSAGE_SECOND_CALL="Could not detect module metadata. The file may be corrupt or not a supported module."
 
     echo "--- Testing External Download Flow (Oversized File): $TEST_NAME ---"
@@ -1408,7 +1404,7 @@ test_external_download_flow_with_oversized_file() {
         exit 1
     fi
 
-    # --- Second Call: Should hit cached partial file and return 500 (metadata error) ---
+    # --- Second Call: Should hit cached partial file and return 400 (metadata error) ---
     echo "Making second request to the same URL (expecting HTTP $EXPECTED_STATUS_SECOND_CALL)..."
     HTTP_CODE_BODY_2=$(_perform_convert_url_call "$URL")
     HTTP_CODE_2=$(echo "$HTTP_CODE_BODY_2" | head -n1)
@@ -1975,21 +1971,21 @@ test_upload_negative_case() {
     UPLOAD_HTTP_CODE=$(echo "$UPLOAD_RESPONSE_ALL" | tail -n1)
     UPLOAD_BODY=$(echo "$UPLOAD_RESPONSE_ALL" | sed '$d')
 
-    if [ "$UPLOAD_HTTP_CODE" -eq 500 ]; then
+    if [ "$UPLOAD_HTTP_CODE" -eq 400 ]; then
         EXPECTED_ERROR_MESSAGE="Could not detect module metadata. The file may be corrupt or not a supported module."
         ACTUAL_ERROR_MESSAGE=$(echo "$UPLOAD_BODY" | jq -r .error)
         if [[ "$ACTUAL_ERROR_MESSAGE" == "$EXPECTED_ERROR_MESSAGE" ]]; then
-            echo "SUCCESS: Received HTTP 500 and expected error message for '$TEST_NAME'"
+            echo "SUCCESS: Received HTTP 400 and expected error message for '$TEST_NAME'"
             echo "Response body: $UPLOAD_BODY"
         else
-            echo "ERROR: Received HTTP 500 but unexpected error message for '$TEST_NAME'"
+            echo "ERROR: Received HTTP 400 but unexpected error message for '$TEST_NAME'"
             echo "Expected: '$EXPECTED_ERROR_MESSAGE'"
             echo "Got: '$ACTUAL_ERROR_MESSAGE'"
             echo "Response body: $UPLOAD_BODY"
             exit 1
         fi
     else
-        echo "ERROR: Received unexpected HTTP $UPLOAD_HTTP_CODE (expected 500) for test '$TEST_NAME'"
+        echo "ERROR: Received unexpected HTTP $UPLOAD_HTTP_CODE (expected 400) for test '$TEST_NAME'"
         echo "Response body: $UPLOAD_BODY"
         exit 1
     fi
@@ -2879,7 +2875,7 @@ test_probe_error "Probe local upstream transport failure" "http://uade-test-http
 test_probe_error "Probe reject mutated module URL" "$LOCAL_TEST_SERVER_URL/fixtures/modules/space_debris.mod;get-help" "" 400 "URL could not be fetched"
 test_probe_error "Probe reject mutated sample URL" "$LOCAL_TEST_SERVER_URL/fixtures/modules/mdat.turrican_2_level_0-intro" "$LOCAL_TEST_SERVER_URL/fixtures/modules/smpl.turrican_2_level_0-intro;sleep%2015.0;" 400 "URL could not be fetched"
 test_probe_oversized_remote_file "Probe oversized remote file" "$LOCAL_TEST_SERVER_URL/fixtures/invalid/too-large.bin"
-test_probe_error "Probe unsupported remote file" "$LOCAL_TEST_SERVER_URL/fixtures/modules/gutenberg.txt" "" 500 "Could not detect module metadata. The file may be corrupt or not a supported module."
+test_probe_error "Probe unsupported remote file" "$LOCAL_TEST_SERVER_URL/fixtures/modules/gutenberg.txt" "" 400 "Could not detect module metadata. The file may be corrupt or not a supported module."
 
 test_url "Protracker module" "https://modland.com/pub/modules/Protracker/Captain/space%20debris.mod"
 test_url "AHX module" "https://modland.com/pub/modules/AHX/Pink/stormlord.ahx"
@@ -2888,7 +2884,7 @@ test_url "TFMX module (Apidya)" "https://modland.com/pub/modules/TFMX/Chris%20Hu
 test_url "LHA archive" "http://files.exotica.org.uk/?file=exotica/media%2Faudio%2FUnExoticA%2FGame%2FBrimble_Allister%2FProject-X.lha"
 test_url "ZIP archive" "https://files.scene.org/get:fi-https/music/artists/4-mat/chip_shop.zip"
 test_url "RJP module" "https://modland.com/pub/modules/Richard%20Joseph/Richard%20Joseph/cannon%20fodder%20(intro).sng" "https://modland.com/pub/modules/Richard%20Joseph/Richard%20Joseph/cannon%20fodder%20(intro).ins"
-test_url "Negative case (non-module)" "$LOCAL_TEST_SERVER_URL/fixtures/modules/gutenberg.txt"
+test_convert_url_error "Convert URL unsupported remote file" "$LOCAL_TEST_SERVER_URL/fixtures/modules/gutenberg.txt" "" 400 "Could not detect module metadata. The file may be corrupt or not a supported module."
 test_download_filename_sanitization "Sanitize hostile download filename" "https://modland.com/pub/modules/Protracker/Lizardking/l.k%27s%20doskpop.mod" "" "%3Cimg%20src%3Dx%20onerror%3Dalert(1)%3E" "filename=\"uade_img_srcx_onerroralert1"
 
 # Security tests
@@ -2959,7 +2955,7 @@ test_upload_oversized_payload_shape "Reject oversized file upload uses shared 41
 
 # Probe-upload tests
 test_probe_upload "Probe upload Protracker module" "fixtures/modules/space_debris.mod"
-test_probe_upload_error "Probe upload non-module file" "fixtures/modules/gutenberg.txt" 500 "Could not detect module metadata"
+test_probe_upload_error "Probe upload non-module file" "fixtures/modules/gutenberg.txt" 400 "Could not detect module metadata"
 test_probe_upload_preserves_negative_cache "Probe upload invalid file preserves negative cache" "fixtures/modules/gutenberg.txt"
 test_probe_upload_error "Probe upload empty file" "fixtures/invalid/empty.bin" 400 "Empty file provided"
 test_probe_upload_error "Probe upload oversized file" "fixtures/invalid/too-large.bin" 413

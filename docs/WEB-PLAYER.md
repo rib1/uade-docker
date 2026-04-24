@@ -269,6 +269,10 @@ file: <module file>
 
 Like the URL conversion endpoints, this endpoint returns a `409 Conflict` response with `status: "processing"` if another request is currently converting the exact same module hash.
 
+If the uploaded content is not a supported module or archive, the endpoint returns HTTP `400`
+with the stable error message `Could not detect module metadata. The file may be corrupt or not a
+supported module.`.
+
 ### Convert from URL
 
 ```http
@@ -292,6 +296,10 @@ If another request is currently converting the exact same module (based on conte
 ```
 
 Clients should treat this as a short, retryable state.
+
+If the fetched remote content is reachable but not a supported module or archive, the endpoint
+returns HTTP `400` with the stable error message `Could not detect module metadata. The file may
+be corrupt or not a supported module.`.
 
 ### Probe URL Metadata
 
@@ -320,6 +328,9 @@ Typical response:
 ```
 
 This endpoint is used by the queue UI to confirm that a remote module is playable before adding it.
+If the fetched remote content is reachable but not a supported module or archive, the endpoint
+returns HTTP `400` with `ok: false`, `playable: false`, and the same stable invalid-module error
+message used by `/convert-url`.
 
 ### Probe Uploaded File Metadata
 
@@ -346,6 +357,10 @@ Typical response:
 ```
 
 Rate-limited to 40 requests/minute. Used by the queue UI to validate local files before adding them to the queue. Files dropped into the queue panel or selected via the "+ Files" button are probed with this endpoint; conversion is deferred until playback. Queue adds are capped at 20 files per drop or picker selection, and the `module_hash` (content-addressed MD5) is stored on the track object for later use by `/convert-probed`.
+
+If the uploaded content is not a supported module or archive, the endpoint returns HTTP `400`
+with `ok: false`, `playable: false`, and the same stable invalid-module error message used by
+`/upload`.
 
 ### Convert from Probed Module
 
