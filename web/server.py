@@ -28,6 +28,7 @@ import zipfile
 from contextlib import contextmanager
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
+from enum import Enum
 from functools import wraps
 from pathlib import Path
 from typing import Final
@@ -239,6 +240,21 @@ DISABLE_SSL_VERIFY: Final = os.getenv("DISABLE_SSL_VERIFY", "0") == "1"  # For c
 HTTP_CLIENT_ERROR_MIN: Final = 400
 HTTP_SERVER_ERROR_MIN: Final = 500
 HTTP_BAD_GATEWAY: Final = 502
+INVALID_MODULE_ERROR: Final = (
+    "Could not detect module metadata. The file may be corrupt or not a supported module."
+)
+
+
+class UnsupportedContentPolicy(Enum):
+    """How unsupported or invalid user-supplied content should be classified."""
+
+    SERVER_ERROR = HTTP_SERVER_ERROR_MIN
+    CLIENT_ERROR = HTTP_CLIENT_ERROR_MIN
+
+    @property
+    def status_code(self) -> int:
+        return int(self.value)
+
 
 # Local directories for processing
 TEMP_BASE: Final = tempfile.gettempdir()
@@ -2791,7 +2807,10 @@ def upload_file():
 
         filename = source.filename
         log_request_user_agent()
-        return convert_resolved_module_source(source)
+        return convert_resolved_module_source(
+            source,
+            unsupported_content_policy=UnsupportedContentPolicy.CLIENT_ERROR,
+        )
 
     except RequestEntityTooLarge as exc:
         return request_entity_too_large_handler(exc)
@@ -2823,7 +2842,10 @@ def probe_upload():
             return upload_error_response(error_message, probe=True)
 
         filename = source.filename
-        response = probe_resolved_module_source(source)
+        response = probe_resolved_module_source(
+            source,
+            unsupported_content_policy=UnsupportedContentPolicy.CLIENT_ERROR,
+        )
 
         # Inject module_hash into successful probe responses
         if response.status_code < HTTP_CLIENT_ERROR_MIN:
@@ -2890,12 +2912,23 @@ def convert_probed():
 
 
 def process_module_and_respond(
-    module_path, filename, use_flac, *, url_cached=False, sample_file_and_alias=None
+    module_path,
+    filename,
+    use_flac,
+    *,
+    url_cached=False,
+    sample_file_and_alias=None,
+    unsupported_content_policy: UnsupportedContentPolicy = UnsupportedContentPolicy.SERVER_ERROR,
 ):
     """
     Shared logic for archive detection, extraction, conversion, metadata, cleanup, and response.
     """
-    prepared_source, error_response = prepare_module_source(module_path, filename, mode="convert")
+    prepared_source, error_response = prepare_module_source(
+        module_path,
+        filename,
+        mode="convert",
+        unsupported_content_policy=unsupported_content_policy,
+    )
     if error_response is not None:
         return error_response
 
@@ -2913,6 +2946,8 @@ def process_module_and_respond(
         if not conversion_result.success:
             if conversion_result.error == "Conversion in progress.":
                 return processing_response(conversion_result.error)
+            if conversion_result.error == INVALID_MODULE_ERROR:
+                return invalid_module_response(policy=unsupported_content_policy)
             return json_response({"error": conversion_result.error}, 500)
 
         return conversion_success_response(
@@ -3013,23 +3048,27 @@ class ResolvedModuleSource:
     url_cached: bool = False
 
 
-def invalid_module_response(*, probe=False):
+def invalid_module_response(
+    *, probe=False, policy: UnsupportedContentPolicy = UnsupportedContentPolicy.SERVER_ERROR
+):
     """Return the standard invalid-module error payload."""
-    payload: dict[str, object] = {
-        "error": "Could not detect module metadata. "
-        "The file may be corrupt or not a supported module."
-    }
+    payload: dict[str, object] = {"error": INVALID_MODULE_ERROR}
     if probe:
         payload = {"ok": False, "playable": False, **payload}
-    return json_response(payload, 500)
+    return json_response(payload, policy.status_code)
 
 
-def archive_processing_error_response(error, *, probe=False):
+def archive_processing_error_response(
+    error,
+    *,
+    probe=False,
+    policy: UnsupportedContentPolicy = UnsupportedContentPolicy.SERVER_ERROR,
+):
     """Return the standard archive-processing error payload."""
     payload: dict[str, object] = {"error": error}
     if probe:
         payload = {"ok": False, "playable": False, **payload}
-    return json_response(payload, 500)
+    return json_response(payload, policy.status_code)
 
 
 def resolve_archive_module(module_path, filename, extract_dir, *, mode):
@@ -3053,7 +3092,13 @@ def resolve_archive_module(module_path, filename, extract_dir, *, mode):
     return ArchiveResolutionResult(module_path=module_path, filename=filename)
 
 
-def prepare_module_source(module_path, filename, *, mode):
+def prepare_module_source(
+    module_path,
+    filename,
+    *,
+    mode,
+    unsupported_content_policy: UnsupportedContentPolicy = UnsupportedContentPolicy.SERVER_ERROR,
+):
     """Prepare a module path/name for convert or probe processing."""
     module_path = _validated_managed_path(module_path, MODULES_DIR)
     filename = _safe_client_filename(filename)
@@ -3064,7 +3109,10 @@ def prepare_module_source(module_path, filename, *, mode):
         logger.info(
             f"Skipping {mode} for known invalid zero-byte module: {_safe_log_name(module_path)}"
         )
-        return None, invalid_module_response(probe=(mode == "probe"))
+        return None, invalid_module_response(
+            probe=(mode == "probe"),
+            policy=unsupported_content_policy,
+        )
 
     archive_result = resolve_archive_module(module_path, filename, extract_dir, mode=mode)
     if archive_result.error:
@@ -3072,6 +3120,7 @@ def prepare_module_source(module_path, filename, *, mode):
         return None, archive_processing_error_response(
             archive_result.error,
             probe=(mode == "probe"),
+            policy=unsupported_content_policy,
         )
 
     return (
@@ -3137,10 +3186,20 @@ def probe_success_response(
 
 
 def process_module_probe_response(
-    module_path, filename, *, url_cached=False, sample_file_and_alias=None
+    module_path,
+    filename,
+    *,
+    url_cached=False,
+    sample_file_and_alias=None,
+    unsupported_content_policy: UnsupportedContentPolicy = UnsupportedContentPolicy.SERVER_ERROR,
 ):
     """Shared logic for archive handling and metadata-only probe responses."""
-    prepared_source, error_response = prepare_module_source(module_path, filename, mode="probe")
+    prepared_source, error_response = prepare_module_source(
+        module_path,
+        filename,
+        mode="probe",
+        unsupported_content_policy=unsupported_content_policy,
+    )
     if error_response is not None:
         return error_response
 
@@ -3153,7 +3212,7 @@ def process_module_probe_response(
         )
 
         if not metadata.success:
-            return invalid_module_response(probe=True)
+            return invalid_module_response(probe=True, policy=unsupported_content_policy)
 
         return probe_success_response(
             filename=filename,
@@ -3169,7 +3228,11 @@ def process_module_probe_response(
             shutil.rmtree(prepared_source.extract_dir, ignore_errors=True)
 
 
-def convert_resolved_module_source(source: ResolvedModuleSource):
+def convert_resolved_module_source(
+    source: ResolvedModuleSource,
+    *,
+    unsupported_content_policy: UnsupportedContentPolicy = UnsupportedContentPolicy.SERVER_ERROR,
+):
     """Convert a resolved module source and return the standard playback payload."""
     return process_module_and_respond(
         source.module_path,
@@ -3177,16 +3240,22 @@ def convert_resolved_module_source(source: ResolvedModuleSource):
         use_flac=True,
         url_cached=source.url_cached,
         sample_file_and_alias=source.sample_file_and_alias,
+        unsupported_content_policy=unsupported_content_policy,
     )
 
 
-def probe_resolved_module_source(source: ResolvedModuleSource):
+def probe_resolved_module_source(
+    source: ResolvedModuleSource,
+    *,
+    unsupported_content_policy: UnsupportedContentPolicy = UnsupportedContentPolicy.SERVER_ERROR,
+):
     """Probe a resolved module source and return the standard metadata payload."""
     return process_module_probe_response(
         source.module_path,
         source.filename,
         url_cached=source.url_cached,
         sample_file_and_alias=source.sample_file_and_alias,
+        unsupported_content_policy=unsupported_content_policy,
     )
 
 
@@ -3618,7 +3687,10 @@ def convert_url_payload(data):
         if error_response:
             return error_response
 
-        return convert_resolved_module_source(remote_source)
+        return convert_resolved_module_source(
+            remote_source,
+            unsupported_content_policy=UnsupportedContentPolicy.CLIENT_ERROR,
+        )
     except Exception:
         logger.error("Convert URL error", exc_info=True)
         return json_response(
@@ -3654,7 +3726,10 @@ def probe_url_payload(data):
         remote_source, error_response = prepare_remote_source_from_payload(data)
         if error_response:
             return error_response
-        return probe_resolved_module_source(remote_source)
+        return probe_resolved_module_source(
+            remote_source,
+            unsupported_content_policy=UnsupportedContentPolicy.CLIENT_ERROR,
+        )
     except Exception:
         logger.error("Probe URL error", exc_info=True)
         return json_response(
