@@ -1287,7 +1287,7 @@ def extract_lha(lha_path, extract_dir):
     """
     Extract LHA archive and return first music file found
 
-    Returns: (success, error_message, music_file_path or None)
+    Returns: (success, error_message, music_file_path or None, client_fault)
     """
     try:
         extract_dir.mkdir(parents=True, exist_ok=True)
@@ -1300,27 +1300,27 @@ def extract_lha(lha_path, extract_dir):
 
         if result.returncode != 0:
             logger.error(f"LHA extraction error: {result.stderr}")
-            return False, "LHA extraction failed", None
+            return False, "LHA extraction failed", None, False
 
         music_file, count = find_music_file(extract_dir)
         if not music_file:
-            return False, "No music files found in LHA archive", None
+            return False, "No music files found in LHA archive", None, True
 
         logger.info(f"Extracted LHA archive, found {count} music file(s), using: {music_file.name}")
-        return True, None, music_file
+        return True, None, music_file, False
 
     except subprocess.TimeoutExpired:
-        return False, "LHA extraction timeout", None
+        return False, "LHA extraction timeout", None, False
     except Exception:
         logger.error("LHA extraction exception", exc_info=True)
-        return False, "LHA extraction failed", None
+        return False, "LHA extraction failed", None, False
 
 
 def extract_zip(zip_path, extract_dir):
     """
     Extract ZIP archive and return first music file found
 
-    Returns: (success, error_message, music_file_path or None)
+    Returns: (success, error_message, music_file_path or None, client_fault)
     """
     try:
         extract_dir.mkdir(parents=True, exist_ok=True)
@@ -1329,16 +1329,16 @@ def extract_zip(zip_path, extract_dir):
 
         music_file, count = find_music_file(extract_dir)
         if not music_file:
-            return False, "No music files found in ZIP archive", None
+            return False, "No music files found in ZIP archive", None, True
 
         logger.info(f"Extracted ZIP archive, found {count} music file(s), using: {music_file.name}")
-        return True, None, music_file
+        return True, None, music_file, False
 
     except zipfile.BadZipFile:
-        return False, "ZIP extraction failed: Bad ZIP file", None
+        return False, "ZIP extraction failed: Bad ZIP file", None, True
     except Exception:
         logger.error("ZIP extraction exception", exc_info=True)
-        return False, "ZIP extraction failed", None
+        return False, "ZIP extraction failed", None, False
 
 
 def save_to_cache(cache_hash, file, ext):
@@ -3027,6 +3027,7 @@ class ArchiveResolutionResult:
     module_path: Path
     filename: str
     error: str | None = None
+    client_fault: bool = False
 
 
 @dataclass(slots=True)
@@ -3063,12 +3064,16 @@ def archive_processing_error_response(
     *,
     probe=False,
     policy: UnsupportedContentPolicy = UnsupportedContentPolicy.SERVER_ERROR,
+    client_fault=False,
 ):
     """Return the standard archive-processing error payload."""
     payload: dict[str, object] = {"error": error}
     if probe:
         payload = {"ok": False, "playable": False, **payload}
-    return json_response(payload, policy.status_code)
+    status_code = (
+        policy.status_code if client_fault else UnsupportedContentPolicy.SERVER_ERROR.status_code
+    )
+    return json_response(payload, status_code)
 
 
 def resolve_archive_module(module_path, filename, extract_dir, *, mode):
@@ -3084,9 +3089,14 @@ def resolve_archive_module(module_path, filename, extract_dir, *, mode):
             continue
 
         logger.info(f"Detected {archive_label} archive{mode_suffix}: {_safe_log_name(filename)}")
-        success, error, music_file = extractor(module_path, extract_dir)
+        success, error, music_file, client_fault = extractor(module_path, extract_dir)
         if not success:
-            return ArchiveResolutionResult(module_path=module_path, filename=filename, error=error)
+            return ArchiveResolutionResult(
+                module_path=module_path,
+                filename=filename,
+                error=error,
+                client_fault=client_fault,
+            )
         return ArchiveResolutionResult(module_path=music_file, filename=music_file.name)
 
     return ArchiveResolutionResult(module_path=module_path, filename=filename)
@@ -3121,6 +3131,7 @@ def prepare_module_source(
             archive_result.error,
             probe=(mode == "probe"),
             policy=unsupported_content_policy,
+            client_fault=archive_result.client_fault,
         )
 
     return (

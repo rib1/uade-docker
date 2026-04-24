@@ -237,6 +237,42 @@ test_probe_error() {
     echo ""
 }
 
+test_probe_unsupported() {
+    TEST_NAME=$1
+    URL=$2
+    SAMPLE_URL=$3
+    EXPECTED_STATUS=$4
+    EXPECTED_ERROR_SUBSTRING=$5
+
+    echo "--- Testing Probe Unsupported Content: $TEST_NAME ---"
+
+    HTTP_CODE_BODY=$(_perform_probe_url_call "$URL" "$SAMPLE_URL")
+    HTTP_CODE=$(echo "$HTTP_CODE_BODY" | head -n1)
+    BODY=$(echo "$HTTP_CODE_BODY" | tail -n1)
+
+    if [ "$HTTP_CODE" -ne "$EXPECTED_STATUS" ]; then
+        echo "ERROR: Probe returned HTTP $HTTP_CODE (expected $EXPECTED_STATUS) for '$TEST_NAME'"
+        echo "Response body: $BODY"
+        exit 1
+    fi
+
+    if ! echo "$BODY" | jq -e --arg expected "$EXPECTED_ERROR_SUBSTRING" '
+        .ok == false
+        and .playable == false
+        and (.error | type == "string")
+        and (.error | contains($expected))
+    ' > /dev/null; then
+        echo "ERROR: Probe unsupported payload mismatch for '$TEST_NAME'"
+        echo "Expected substring: '$EXPECTED_ERROR_SUBSTRING'"
+        echo "Response body: $BODY"
+        exit 1
+    fi
+
+    echo "SUCCESS: Probe returned expected unsupported-content payload."
+    echo "Response body: $BODY"
+    echo ""
+}
+
 # Function to test a successful file probe-upload
 # Arguments:
 # 1. Test name (string)
@@ -2875,7 +2911,7 @@ test_probe_error "Probe local upstream transport failure" "http://uade-test-http
 test_probe_error "Probe reject mutated module URL" "$LOCAL_TEST_SERVER_URL/fixtures/modules/space_debris.mod;get-help" "" 400 "URL could not be fetched"
 test_probe_error "Probe reject mutated sample URL" "$LOCAL_TEST_SERVER_URL/fixtures/modules/mdat.turrican_2_level_0-intro" "$LOCAL_TEST_SERVER_URL/fixtures/modules/smpl.turrican_2_level_0-intro;sleep%2015.0;" 400 "URL could not be fetched"
 test_probe_oversized_remote_file "Probe oversized remote file" "$LOCAL_TEST_SERVER_URL/fixtures/invalid/too-large.bin"
-test_probe_error "Probe unsupported remote file" "$LOCAL_TEST_SERVER_URL/fixtures/modules/gutenberg.txt" "" 400 "Could not detect module metadata. The file may be corrupt or not a supported module."
+test_probe_unsupported "Probe unsupported remote file" "$LOCAL_TEST_SERVER_URL/fixtures/modules/gutenberg.txt" "" 400 "Could not detect module metadata. The file may be corrupt or not a supported module."
 
 test_url "Protracker module" "https://modland.com/pub/modules/Protracker/Captain/space%20debris.mod"
 test_url "AHX module" "https://modland.com/pub/modules/AHX/Pink/stormlord.ahx"
@@ -2885,6 +2921,7 @@ test_url "LHA archive" "http://files.exotica.org.uk/?file=exotica/media%2Faudio%
 test_url "ZIP archive" "https://files.scene.org/get:fi-https/music/artists/4-mat/chip_shop.zip"
 test_url "RJP module" "https://modland.com/pub/modules/Richard%20Joseph/Richard%20Joseph/cannon%20fodder%20(intro).sng" "https://modland.com/pub/modules/Richard%20Joseph/Richard%20Joseph/cannon%20fodder%20(intro).ins"
 test_convert_url_error "Convert URL unsupported remote file" "$LOCAL_TEST_SERVER_URL/fixtures/modules/gutenberg.txt" "" 400 "Could not detect module metadata. The file may be corrupt or not a supported module."
+test_convert_url_error "Convert URL corrupt ZIP archive" "$LOCAL_TEST_SERVER_URL/fixtures/invalid/invalid-archive.zip" "" 400 "ZIP extraction failed: Bad ZIP file"
 test_download_filename_sanitization "Sanitize hostile download filename" "https://modland.com/pub/modules/Protracker/Lizardking/l.k%27s%20doskpop.mod" "" "%3Cimg%20src%3Dx%20onerror%3Dalert(1)%3E" "filename=\"uade_img_srcx_onerroralert1"
 
 # Security tests

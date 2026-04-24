@@ -16,6 +16,11 @@ if [ ! -f "${INVALID_DIR}/too-large.bin" ] || [ "$(wc -c < "${INVALID_DIR}/too-l
   head -c "$TOO_LARGE_BYTES" /dev/urandom > "${INVALID_DIR}/too-large.bin"
 fi
 
+if [ ! -s "${INVALID_DIR}/invalid-archive.zip" ]; then
+  echo "Creating invalid-archive.zip fixture..."
+  printf 'PKNOTAZIP\n' > "${INVALID_DIR}/invalid-archive.zip"
+fi
+
 download_fixture() {
   fixture_path="$1"
   fixture_url="$2"
