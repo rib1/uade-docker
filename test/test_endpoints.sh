@@ -256,11 +256,22 @@ test_probe_unsupported() {
         exit 1
     fi
 
-    if ! echo "$BODY" | jq -e --arg expected "$EXPECTED_ERROR_SUBSTRING" '
+    if [ -n "$EXPECTED_ERROR_SUBSTRING" ]; then
+        if ! echo "$BODY" | jq -e --arg expected "$EXPECTED_ERROR_SUBSTRING" '
+            .ok == false
+            and .playable == false
+            and (.error | type == "string")
+            and (.error | contains($expected))
+        ' > /dev/null; then
+            echo "ERROR: Probe unsupported payload mismatch for '$TEST_NAME'"
+            echo "Expected substring: '$EXPECTED_ERROR_SUBSTRING'"
+            echo "Response body: $BODY"
+            exit 1
+        fi
+    elif ! echo "$BODY" | jq -e '
         .ok == false
         and .playable == false
         and (.error | type == "string")
-        and (.error | contains($expected))
     ' > /dev/null; then
         echo "ERROR: Probe unsupported payload mismatch for '$TEST_NAME'"
         echo "Expected substring: '$EXPECTED_ERROR_SUBSTRING'"
