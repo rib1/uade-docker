@@ -19,6 +19,7 @@
 #   .\test\check-code-quality.ps1 -HTMLHint    # HTMLHint only
 #   .\test\check-code-quality.ps1 -Knip        # knip dead-code audit only
 #   .\test\check-code-quality.ps1 -PlaywrightSync # Playwright tooling version sync only
+#   .\test\check-code-quality.ps1 -PythonSync  # Python tooling version sync only
 #   .\test\check-code-quality.ps1 -MyPy        # mypy only
 #   .\test\check-code-quality.ps1 -Vulture     # Vulture dead-code audit only
 #   .\test\check-code-quality.ps1 -PurgeCSS    # PurgeCSS unused CSS check only
@@ -43,6 +44,7 @@ param(
     [switch]$HTMLHint,
     [switch]$Knip,
     [switch]$PlaywrightSync,
+    [switch]$PythonSync,
     [switch]$MyPy,
     [switch]$Vulture,
     [switch]$Instructions,
@@ -76,6 +78,7 @@ function Show-Usage {
     Write-Host "  -HTMLHint"
     Write-Host ""
     Write-Host "Backend Python Checks:"
+    Write-Host "  -PythonSync"
     Write-Host "  -Black"
     Write-Host "  -Ruff"
     Write-Host "  -MyPy"
@@ -187,12 +190,13 @@ if ($Help) {
 }
 
 # Default to run all if no specific tool selected
-if (-not $ESLint -and -not $Black -and -not $Ruff -and -not $ActionLint -and -not $Hadolint -and -not $Compose -and -not $ShellCheck -and -not $Yamllint -and -not $Stylelint -and -not $HTMLHint -and -not $Knip -and -not $PlaywrightSync -and -not $MyPy -and -not $Vulture -and -not $Instructions -and -not $Documentation -and -not $PurgeCSS) {
+if (-not $ESLint -and -not $Black -and -not $Ruff -and -not $ActionLint -and -not $Hadolint -and -not $Compose -and -not $ShellCheck -and -not $Yamllint -and -not $Stylelint -and -not $HTMLHint -and -not $Knip -and -not $PlaywrightSync -and -not $PythonSync -and -not $MyPy -and -not $Vulture -and -not $Instructions -and -not $Documentation -and -not $PurgeCSS) {
     $ESLint = $true
     $Stylelint = $true
     $HTMLHint = $true
     $Knip = $true
     $PlaywrightSync = $true
+    $PythonSync = $true
     $Black = $true
     $Ruff = $true
     $ActionLint = $true
@@ -429,9 +433,32 @@ if ($HTMLHint) {
     }
 }
 
+# Python tooling sync check
+if ($PythonSync) {
+    Write-GroupHeader "Backend Python Checks"
+    Write-Header "Python Tooling Sync"
+
+    Write-Host "Checking Python target and CodeQL/fallback image version alignment..."
+
+    $output = & docker run --rm `
+        -v "${ProjectRoot}:/workspace" `
+        --workdir /workspace `
+        node:25-alpine node test/check-python-version-sync.mjs 2>&1
+
+    $exitCode = $LASTEXITCODE
+
+    if ($exitCode -eq 0) {
+        Write-Result "Python Sync" 0
+    } else {
+        Write-Result "Python Sync" 1 $output
+    }
+}
+
 # Black Check
 if ($Black) {
-    Write-GroupHeader "Backend Python Checks"
+    if (-not $PythonSync) {
+        Write-GroupHeader "Backend Python Checks"
+    }
     Write-Header "Black - Python Code Formatting"
 
     Write-Host "Running Black on /web, /test/report_endpoint_coverage.py, and /test/zap_seed_targets.py..."
