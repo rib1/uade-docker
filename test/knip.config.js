@@ -11,6 +11,7 @@ const toolingEntries = [
   "./bench/streaming.js",
   "./check-documentation.mjs",
   "./check-instructions.mjs",
+  "./check-python-version-sync.mjs",
   "./check-purgecss.mjs",
   "./check-playwright-version-sync.mjs",
 ];

@@ -76,6 +76,7 @@ max-line-length = 100
 
 [tool.mypy]
 python_version = "3.13"
+local_partial_types = true
 files = ["web/server.py"]
 follow_imports = "silent"
 check_untyped_defs = true

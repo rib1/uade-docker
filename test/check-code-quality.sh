@@ -21,6 +21,7 @@
 #   ./test/check-code-quality.sh --htmlhint   # HTMLHint only
 #   ./test/check-code-quality.sh --knip       # knip dead-code audit only
 #   ./test/check-code-quality.sh --playwright-sync # Playwright tooling version sync only
+#   ./test/check-code-quality.sh --python-sync # Python tooling version sync only
 #   ./test/check-code-quality.sh --mypy       # mypy only
 #   ./test/check-code-quality.sh --vulture    # Vulture dead-code audit only
 #   ./test/check-code-quality.sh --purgecss      # PurgeCSS unused CSS check only
@@ -165,6 +166,7 @@ HTML Checks:
   --htmlhint
 
 Backend Python Checks:
+  --python-sync
   --black
   --ruff
   --mypy
@@ -197,6 +199,7 @@ enable_only_check() {
     RUN_HTMLHINT=false
     RUN_KNIP=false
     RUN_PLAYWRIGHT_SYNC=false
+    RUN_PYTHON_SYNC=false
     RUN_MYPY=false
     RUN_VULTURE=false
     RUN_INSTRUCTIONS=false
@@ -216,6 +219,7 @@ enable_only_check() {
         htmlhint) RUN_HTMLHINT=true ;;
         knip) RUN_KNIP=true ;;
         playwright-sync) RUN_PLAYWRIGHT_SYNC=true ;;
+        python-sync) RUN_PYTHON_SYNC=true ;;
         mypy) RUN_MYPY=true ;;
         vulture) RUN_VULTURE=true ;;
         instructions) RUN_INSTRUCTIONS=true ;;
@@ -240,6 +244,7 @@ RUN_HTMLHINT=true
 RUN_KNIP=true
 RUN_PLAYWRIGHT_SYNC=true
 RUN_PURGECSS=true
+RUN_PYTHON_SYNC=true
 RUN_MYPY=true
 RUN_VULTURE=true
 RUN_INSTRUCTIONS=true
@@ -301,6 +306,10 @@ for arg in "$@"; do
             ;;
         --playwright-sync)
             enable_only_check playwright-sync
+            shift
+            ;;
+        --python-sync)
+            enable_only_check python-sync
             shift
             ;;
         --mypy)
@@ -579,9 +588,36 @@ if [ "$RUN_HTMLHINT" = true ]; then
     fi
 fi
 
+# Python tooling sync check
+if [ "$RUN_PYTHON_SYNC" = true ]; then
+    print_group_header "Backend Python Checks"
+    print_header "Python Tooling Sync"
+
+    echo "Checking Python target and CodeQL/fallback image version alignment..."
+
+    if command -v node >/dev/null 2>&1; then
+        OUTPUT=$(cd "${PROJECT_ROOT}" && node test/check-python-version-sync.mjs 2>&1)
+        EXIT_CODE=$?
+    else
+        OUTPUT=$(docker run --rm \
+               -v "${PROJECT_ROOT}:/workspace" \
+               --workdir /workspace \
+               node:25-alpine node test/check-python-version-sync.mjs 2>&1)
+        EXIT_CODE=$?
+    fi
+
+    if [ $EXIT_CODE -eq 0 ]; then
+        print_result "Python Sync" 0
+    else
+        print_result "Python Sync" $EXIT_CODE "$OUTPUT"
+    fi
+fi
+
 # Black Check
 if [ "$RUN_BLACK" = true ]; then
-    print_group_header "Backend Python Checks"
+    if [ "$RUN_PYTHON_SYNC" != true ]; then
+        print_group_header "Backend Python Checks"
+    fi
     print_header "Black - Python Code Formatting"
 
     echo "Running Black on /web, /test/report_endpoint_coverage.py, and /test/zap_seed_targets.py..."
