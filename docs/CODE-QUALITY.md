@@ -37,6 +37,7 @@ The quality suite covers:
 - CSS dead selector audit: `PurgeCSS`
 - HTML: `HTMLHint`
 - JavaScript dead code: `knip`
+- Runtime JavaScript dead code: `knip --production`
 - Playwright tooling alignment: package/image sync check
 - Python formatting: `Black`
 - Python linting and formatting: `Ruff`
