@@ -10,7 +10,7 @@ docker build -t uade-cli .
 **Convert a module to WAV (works on Windows):**
 
 ```powershell
-docker run --rm -v "$env:USERPROFILE\Music:/output" --entrypoint /bin/sh uade-cli -c "curl -k -o /tmp/space-debris.mod 'https://modland.com/pub/modules/Protracker/Captain/space%20debris.mod' && /usr/local/bin/uade123 -c -f /output/space-debris.wav /tmp/space-debris.mod"
+docker run --rm -v "$env:USERPROFILE\Music:/output" --entrypoint /bin/sh uade-cli -c "curl -k -o /tmp/space-debris.mod 'https://modland.com/pub/modules/Protracker/Captain/space_debris.mod' && /usr/local/bin/uade123 -c -f /output/space-debris.wav /tmp/space-debris.mod"
 ```
 
 _Output: `$env:USERPROFILE\Music\space-debris.wav`_
@@ -229,7 +229,7 @@ docker run --rm -v "$env:USERPROFILE\Music:/output" --entrypoint uade-convert ua
 
 ```powershell
 # Download and convert Space Debris → space-debris.wav
-docker run --rm -v "$env:USERPROFILE\Music:/output" --entrypoint /bin/sh uade-cli -c "curl -k -o /tmp/space-debris.mod 'https://modland.com/pub/modules/Protracker/Captain/space%20debris.mod' && /usr/local/bin/uade123 -c -f /output/space-debris.wav /tmp/space-debris.mod"
+docker run --rm -v "$env:USERPROFILE\Music:/output" --entrypoint /bin/sh uade-cli -c "curl -k -o /tmp/space-debris.mod 'https://modland.com/pub/modules/Protracker/Captain/space_debris.mod' && /usr/local/bin/uade123 -c -f /output/space-debris.wav /tmp/space-debris.mod"
 ```
 
 _Output: `$env:USERPROFILE\Music\space-debris.wav` (306 seconds)_

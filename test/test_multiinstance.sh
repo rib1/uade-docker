@@ -54,7 +54,7 @@ prepare_fixtures() {
     if [ ! -f "fixtures/modules/space_debris.mod" ]; then
         echo "Downloading space_debris.mod fixture..."
         curl -fsS --insecure -o fixtures/modules/space_debris.mod \
-            "https://modland.com/pub/modules/Protracker/Captain/space%20debris.mod"
+            "https://modland.com/pub/modules/Protracker/Captain/space_debris.mod"
     fi
 }
 

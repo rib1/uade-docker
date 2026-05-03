@@ -549,7 +549,7 @@ EXAMPLES: Final = [
         "name": "Captain - Space Debris",
         "format": "Protracker",
         "duration": "5:06",
-        "url": "https://modland.com/pub/modules/Protracker/Captain/space%20debris.mod",
+        "url": "https://modland.com/pub/modules/Protracker/Captain/space_debris.mod",
         "type": "mod",
     },
     {
@@ -1451,7 +1451,7 @@ def detect_module_metadata(input_path):
         # Parse output to extract metadata
         # Example uade123 output:
         # formatname: type: Protracker
-        # modulename: space debris
+        # modulename: space_debris
         # playername: Protracker and family
         # subsongs: cur 1 min 1 max 1
         for line in result.stdout.splitlines():
