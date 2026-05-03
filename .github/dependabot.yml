@@ -23,6 +23,12 @@ updates:
     directory: "/test"
     ignore:
       - dependency-name: "mcr.microsoft.com/playwright"
+      # Python runtime minor/major bumps must be coordinated across pyproject,
+      # CodeQL, and quality fallback images instead of single Docker PRs.
+      - dependency-name: "python"
+        update-types:
+          - "version-update:semver-major"
+          - "version-update:semver-minor"
     schedule:
       interval: "weekly"
     open-pull-requests-limit: 5
