@@ -38,7 +38,7 @@ download_fixture() {
   mv "$tmp_path" "$fixture_path"
 }
 
-download_fixture "${MODULES_DIR}/space_debris.mod" "https://modland.com/pub/modules/Protracker/Captain/space%20debris.mod"
+download_fixture "${MODULES_DIR}/space_debris.mod" "https://modland.com/pub/modules/Protracker/Captain/space_debris.mod"
 download_fixture "${MODULES_DIR}/stormlord.ahx" "https://modland.com/pub/modules/AHX/Pink/stormlord.ahx"
 download_fixture "${MODULES_DIR}/gutenberg.txt" "https://www.gutenberg.org/files/1342/1342-0.txt"
 download_fixture "${MODULES_DIR}/mdat.turrican_2_level_0-intro" "https://modland.com/pub/modules/TFMX/Chris%20Huelsbeck/mdat.turrican%202%20level%200-intro"

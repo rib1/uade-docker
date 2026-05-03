@@ -2820,10 +2820,10 @@ test_cleanup_status_and_timestamp_transitions
 test_cache_hit_url "Server-side cache hit for convert-url" "https://modland.com/pub/modules/Protracker/Lizardking/l.k%27s%20doskpop.mod"
 test_url_cache_logic "URL download cache" "https://modland.com/pub/modules/Protracker/Lizardking/l.k%27s%20doskpop.mod"
 test_url_cache_normalizes_cache_busters "URL cache ignores known cache-buster params" "$LOCAL_TEST_SERVER_URL/fixtures/modules/space_debris.mod"
-test_remote_cache_access_record_refresh "Sidecar access record refresh" "https://modland.com/pub/modules/Protracker/Captain/space%20debris.mod"
-test_no_orphaned_cache_access_temp_files_under_parallel_hits "No orphaned sidecar temp files" "https://modland.com/pub/modules/Protracker/Captain/space%20debris.mod"
+test_remote_cache_access_record_refresh "Sidecar access record refresh" "https://modland.com/pub/modules/Protracker/Captain/space_debris.mod"
+test_no_orphaned_cache_access_temp_files_under_parallel_hits "No orphaned sidecar temp files" "https://modland.com/pub/modules/Protracker/Captain/space_debris.mod"
 test_convert_url_uses_canonical_flac "Canonical FLAC conversion has no WAV sibling" "https://modland.com/pub/modules/Protracker/4-Mat/agony-beginning.mod"
-test_play_endpoint_serves_existing_flac "Play endpoint serves existing FLAC" "https://modland.com/pub/modules/Protracker/Captain/space%20debris.mod"
+test_play_endpoint_serves_existing_flac "Play endpoint serves existing FLAC" "https://modland.com/pub/modules/Protracker/Captain/space_debris.mod"
 test_local_cleanup_preserves_refreshed_flac "Local cleanup preserves refreshed canonical FLAC" "https://modland.com/pub/modules/Protracker/Captain/beyond%20music.mod"
 
 _create_stale_conversion_lock() {
@@ -2911,9 +2911,9 @@ test_stale_conversion_lock_reclamation() {
 
 test_stale_conversion_lock_reclamation "Stale lock is reclaimed" "${LOCAL_TEST_SERVER_URL}/fixtures/modules/stormlord.ahx?case=stale-lock-reclaimed"
 
-test_probe_url "Probe Protracker module" "https://modland.com/pub/modules/Protracker/Captain/space%20debris.mod"
+test_probe_url "Probe Protracker module" "https://modland.com/pub/modules/Protracker/Captain/space_debris.mod"
 test_probe_url "Probe TFMX module" "https://modland.com/pub/modules/TFMX/Chris%20Huelsbeck/mdat.turrican%202%20level%200-intro" "https://modland.com/pub/modules/TFMX/Chris%20Huelsbeck/smpl.turrican%202%20level%200-intro"
-test_probe_has_no_conversion_fields "Probe metadata only response" "https://modland.com/pub/modules/Protracker/Captain/space%20debris.mod"
+test_probe_has_no_conversion_fields "Probe metadata only response" "https://modland.com/pub/modules/Protracker/Captain/space_debris.mod"
 test_probe_error "Probe reject localhost URL" "http://localhost:5000/health" "" 400 "Unsafe or disallowed URL provided"
 test_probe_missing_url
 test_probe_malformed_json
@@ -2924,7 +2924,7 @@ test_probe_error "Probe reject mutated sample URL" "$LOCAL_TEST_SERVER_URL/fixtu
 test_probe_oversized_remote_file "Probe oversized remote file" "$LOCAL_TEST_SERVER_URL/fixtures/invalid/too-large.bin"
 test_probe_unsupported "Probe unsupported remote file" "$LOCAL_TEST_SERVER_URL/fixtures/modules/gutenberg.txt" "" 400 "Could not detect module metadata. The file may be corrupt or not a supported module."
 
-test_url "Protracker module" "https://modland.com/pub/modules/Protracker/Captain/space%20debris.mod"
+test_url "Protracker module" "https://modland.com/pub/modules/Protracker/Captain/space_debris.mod"
 test_url "AHX module" "https://modland.com/pub/modules/AHX/Pink/stormlord.ahx"
 test_url "TFMX module" "https://modland.com/pub/modules/TFMX/Chris%20Huelsbeck/mdat.turrican%202%20level%200-intro" "https://modland.com/pub/modules/TFMX/Chris%20Huelsbeck/smpl.turrican%202%20level%200-intro"
 test_url "TFMX module (Apidya)" "https://modland.com/pub/modules/TFMX/Chris%20Huelsbeck/mdat.apidya%20%28level%201%29" "https://modland.com/pub/modules/TFMX/Chris%20Huelsbeck/smpl.apidya%20%28level%201%29"
@@ -2944,7 +2944,7 @@ test_security_url "Reject localhost URL" "http://localhost:5000/health"
 test_security_url "Reject private IP URL" "http://192.168.1.1/internal"
 test_security_url "Reject URL with command injection attempt" "https://example.com/file%60%20rm%20-rf%20/%60"
 test_security_url "Reject URL with newlines" "https://example.com/file%0a%0ainjected"
-test_security_url "Reject dual-file module with unsafe sample_url" "https://modland.com/pub/modules/Protracker/Captain/space%20debris.mod" "http://192.168.1.1/internal"
+test_security_url "Reject dual-file module with unsafe sample_url" "https://modland.com/pub/modules/Protracker/Captain/space_debris.mod" "http://192.168.1.1/internal"
 test_security_url "Reject TFMX modules sample_url with newlines" "https://modland.com/pub/modules/TFMX/Chris%20Huelsbeck/mdat.apidya%20%28level%201%29" "https://example.com/file%0a%0ainjected"
 test_security_url "Reject RJP modules unsafe url when sample_url is safe" "https://example.com/file%60%20rm%20-rf%20/%60" "https://modland.com/pub/modules/Richard%20Joseph/Richard%20Joseph/cannon%20fodder%20(intro).ins"
 test_security_url "Reject convert-url with no URL" "$BASE_URL/convert-url" "{}"
@@ -2954,7 +2954,7 @@ test_security_url "Reject path traversal in URL" "https://example.com/../../etc/
 test_security_url "Reject encoded localhost IP" "http://2130706433:5000/health"
 # SSRF with IPv6 localhost (should be rejected)
 test_security_url "Reject IPv6 localhost" "http://[::1]/admin"
-test_security_url "Reject convert-url with quoted module URL" "https://modland.com/pub/modules/Protracker/Captain/space%20debris.mod'"
+test_security_url "Reject convert-url with quoted module URL" "https://modland.com/pub/modules/Protracker/Captain/space_debris.mod'"
 test_security_url "Reject convert-url with quoted sample URL" "https://modland.com/pub/modules/TFMX/Chris%20Huelsbeck/mdat.turrican%202%20level%200-intro" "https://modland.com/pub/modules/TFMX/Chris%20Huelsbeck/smpl.turrican%202%20level%200-intro'"
 test_security_url "Reject convert-url with mutated module URL" "$LOCAL_TEST_SERVER_URL/fixtures/modules/space_debris.mod;get-help"
 test_security_url "Reject convert-url with mutated sample URL" "$LOCAL_TEST_SERVER_URL/fixtures/modules/mdat.turrican_2_level_0-intro" "$LOCAL_TEST_SERVER_URL/fixtures/modules/smpl.turrican_2_level_0-intro;sleep%2015.0;"
@@ -2974,27 +2974,27 @@ test_range_request "Range request for large TFMX module" "https://modland.com/pu
 
 test_security_malformed_range "Reject malformed range" "https://modland.com/pub/modules/TFMX/Chris%20Huelsbeck/mdat.turrican%202%20level%200-intro" "https://modland.com/pub/modules/TFMX/Chris%20Huelsbeck/smpl.turrican%202%20level%200-intro"
 
-test_download_functionality "Download Protracker module" "https://modland.com/pub/modules/Protracker/Captain/space%20debris.mod"
+test_download_functionality "Download Protracker module" "https://modland.com/pub/modules/Protracker/Captain/space_debris.mod"
 test_external_download_flow_with_oversized_file "Download file exceeding 10MB limit" "$LOCAL_TEST_SERVER_URL/fixtures/invalid/too-large.bin"
 
 # Metadata extraction tests
-test_metadata_extraction "Full metadata" "https://modland.com/pub/modules/Protracker/Captain/space%20debris.mod" "" "space debris" "Protracker" "Protracker and family" 1
+test_metadata_extraction "Full metadata" "https://modland.com/pub/modules/Protracker/Captain/space_debris.mod" "" "space_debris" "Protracker" "Protracker and family" 1
 test_metadata_extraction "Custom module" "https://zakalwe.fi/uade/amiga-music/customs/WingsOfDeath-Levels1-7/cust.WingsOfDeath-Levels1-7" "" "" "Custom" "Custom" 8
 test_metadata_extraction "Partial metadata" "https://modland.com/pub/modules/Richard%20Joseph/Richard%20Joseph/cannon%20fodder%20(intro).sng" "https://modland.com/pub/modules/Richard%20Joseph/Richard%20Joseph/cannon%20fodder%20(intro).ins" "" "" "Richard Joseph Player" 2
 
 # Subsong duration tests
 test_subsong_durations "Multi-subsong TFMX module" "https://modland.com/pub/modules/TFMX/Chris%20Huelsbeck/mdat.turrican%202%20level%200-intro" "https://modland.com/pub/modules/TFMX/Chris%20Huelsbeck/smpl.turrican%202%20level%200-intro" 3
-test_subsong_durations "Single subsong module" "https://modland.com/pub/modules/Protracker/Captain/space%20debris.mod" "" 1
+test_subsong_durations "Single subsong module" "https://modland.com/pub/modules/Protracker/Captain/space_debris.mod" "" 1
 
 # Filename extraction tests
 test_filename_extraction "ModArchive URL" "https://api.modarchive.org/downloads.php?moduleid=188875#way_too_rude.mod" "way_too_rude.mod"
-test_filename_extraction "Modland URL" "https://modland.com/pub/modules/Protracker/Captain/space%20debris.mod" "space_debris.mod"
+test_filename_extraction "Modland URL" "https://modland.com/pub/modules/Protracker/Captain/space_debris.mod" "space_debris.mod"
 test_filename_extraction "Exotica URL" "http://files.exotica.org.uk/?file=exotica/media%2Faudio%2FUnExoticA%2FGame%2FBrimble_Allister%2FProject-X.lha" "mod.thesmophoria"
 test_filename_extraction "Scene.org URL" "https://files.scene.org/get:fi-https/music/artists/4-mat/chip_shop.zip" "Chip_Shop.mod"
 
 # Upload tests
 test_upload_conversion "Protracker module upload" "fixtures/modules/space_debris.mod"
-test_upload_metadata_extraction "Protracker module upload" "fixtures/modules/space_debris.mod" "space debris" "Protracker" "Protracker and family" 1
+test_upload_metadata_extraction "Protracker module upload" "fixtures/modules/space_debris.mod" "space_debris" "Protracker" "Protracker and family" 1
 test_upload_filename_extraction "Protracker module upload" "fixtures/modules/space_debris.mod" "space_debris.mod"
 test_upload_negative_case "Non-module file upload" "fixtures/modules/gutenberg.txt"
 test_upload_error "Reject empty file upload" "fixtures/invalid/empty.bin" 400
@@ -3013,7 +3013,7 @@ test_probe_upload_wrong_method
 test_probe_upload_path_traversal_filename "fixtures/modules/space_debris.mod"
 
 # Convert-probed tests (probe → convert-probed → play workflow)
-test_probe_convert_play_flow "Protracker module" "fixtures/modules/space_debris.mod" "space debris" "Protracker and family"
+test_probe_convert_play_flow "Protracker module" "fixtures/modules/space_debris.mod" "space_debris" "Protracker and family"
 test_probe_upload_dedup "fixtures/modules/space_debris.mod"
 test_probe_upload_dedup_concurrent "fixtures/modules/space_debris.mod"
 test_convert_probed_reconverts_after_cache_removal "fixtures/modules/space_debris.mod"

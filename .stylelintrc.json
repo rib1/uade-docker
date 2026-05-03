@@ -25,6 +25,7 @@
     "no-invalid-double-slash-comments": true,
     "property-no-unknown": true,
     "selector-anb-no-unmatchable": true,
+    "selector-no-invalid": true,
     "selector-class-pattern": "^[a-z][a-z0-9-]*$",
     "selector-pseudo-class-no-unknown": true,
     "selector-pseudo-element-no-unknown": true,

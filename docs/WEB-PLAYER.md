@@ -166,7 +166,7 @@ For dual-file modules (e.g., TFMX, RJP), you can expand the details section to p
 **Example URLs:**
 
 ```url
-https://modland.com/pub/modules/Protracker/Captain/space%20debris.mod
+https://modland.com/pub/modules/Protracker/Captain/space_debris.mod
 https://modland.com/pub/modules/AHX/Pink/stormlord.ahx
 http://files.exotica.org.uk/?file=exotica%2Fmedia%2Faudio%2FUnExoticA%2FGame%2FFollin_Tim%2FL_E_D_Storm.lha
 https://example.com/amiga-collection.zip
@@ -195,7 +195,7 @@ After converting a module from URL or playing an example, click the **🔗 Share
 
 ```url
 # Single file
-https://your-uade-instance.com/?url=https://modland.com/pub/modules/Protracker/Captain/space%20debris.mod
+https://your-uade-instance.com/?url=https://modland.com/pub/modules/Protracker/Captain/space_debris.mod
 
 # Dual-file (TFMX with sample)
 https://your-uade-instance.com/?url=https://modland.com/.../mdat.turrican&sample=https://modland.com/.../smpl.turrican
@@ -321,9 +321,9 @@ Typical response:
 {
   "ok": true,
   "playable": true,
-  "module_name": "space debris.mod",
+  "module_name": "space_debris",
   "module_format": "Protracker",
-  "player_format": "Protracker"
+  "player_format": "Protracker and family"
 }
 ```
 
@@ -349,7 +349,7 @@ Typical response:
 {
   "ok": true,
   "playable": true,
-  "module_name": "space debris",
+  "module_name": "space_debris",
   "module_format": "Protracker",
   "player_format": "Protracker and family",
   "module_hash": "cc7d1ae43d10dddfca6d411bc484a489"
@@ -405,7 +405,7 @@ POST /convert-url
 Content-Type: application/json
 
 {
-  "url": "https://modland.com/pub/modules/Protracker/Captain/space%20debris.mod"
+  "url": "https://modland.com/pub/modules/Protracker/Captain/space_debris.mod"
 }
 ```
 
