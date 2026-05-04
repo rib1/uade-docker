@@ -328,6 +328,35 @@ Implemented fixes and outcomes:
   - net gain on the FLAC stage: about `17.90s` faster, or `~82.1%`
   - net gain on the full pipeline: about `38.43s` faster, or `~57.4%`
   - caveat: the FLAC-stage reduction is attributable to the compression-level change; the full-pipeline gain also includes run-to-run UADE variance on this very heavy module
+- Direct `uade123` runtime-flag spot check on April 24, 2026
+  - purpose:
+    - check whether simple UADE CLI flags are worth changing before touching the app render path
+    - use local fixture modules only, outside the web stack, to isolate UADE render cost
+  - method:
+    - `uade123 3.05`
+    - local fixtures: `space_debris.mod`, `stormlord.ahx`, `mdat.turrican_2_level_0-intro`
+    - `1` warm-up run plus `3` measured runs per flag/module pair
+    - measured wall-clock render time only; not a quality judgment
+  - average wall time by option:
+
+    | Variant | `space_debris.mod` | `stormlord.ahx` | `mdat.turrican_2_level_0-intro` | Read |
+    | --- | ---: | ---: | ---: | --- |
+    | `default` | `4.91s` | `8.16s` | `15.39s` | baseline |
+    | `--frequency=32000` | `3.86s` | `6.93s` | `14.22s` | decent middle ground |
+    | `--frequency=22050` | `3.24s` | `5.65s` | `13.52s` | strongest single flag |
+    | `--resampler=none` | `4.24s` | `7.63s` | `16.59s` | mixed; slower on TFMX |
+    | `--filter=NONE` | `4.36s` | `7.80s` | `15.51s` | small and inconsistent |
+    | `--frequency=22050 --resampler=none --filter=NONE` | `2.88s` | `5.30s` | `11.32s` | fastest; biggest quality tradeoff |
+
+  - conclusions:
+    - `--speed-hack` was also tested separately and was slower on the same local fixtures, while changing the rendered WAV output
+    - sample-rate reduction is the only simple flag change that showed consistent, material wins across all tested formats
+    - `--resampler=none` and `--filter=NONE` are not good default candidates on their own
+    - the aggressive combo is an upper-bound speed test, not a safe default recommendation
+    - every non-default flag set changed the rendered WAV hash, so these are audio-behavior changes, not free render optimizations
+    - keep the current app defaults unless product requirements explicitly accept lower fidelity
+  - implementation note:
+    - if a non-default UADE render profile is ever adopted, the cache key must incorporate that profile because the current cache hash is based on input bytes only
 
 Remaining dominant spikes:
 
