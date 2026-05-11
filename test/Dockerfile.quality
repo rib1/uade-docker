@@ -4,7 +4,7 @@
 # Use with: docker compose -f docker-compose.yml -f test/docker-compose.quality.yml up quality-check
 #
 # This allows developers to run: docker compose up quality-check
-FROM node:25-alpine
+FROM node:26-alpine
 
 # Install bash, Python, Docker CLI, and other utilities
 # Use version-family pins so Alpine revision bumps (for example `-r1` -> `-r2`)

@@ -83,6 +83,7 @@ check_untyped_defs = true
 warn_return_any = true
 no_implicit_optional = true
 strict_equality = true
+strict_equality_for_none = true
 warn_unreachable = true
 warn_redundant_casts = true
 warn_no_return = true
@@ -94,6 +95,11 @@ warn_unused_configs = true
 disallow_subclassing_any = true
 disallow_any_unimported = true
 warn_unused_ignores = true
+enable_error_code = [
+    "deprecated",
+    "explicit-override",
+    "exhaustive-match",
+]
 show_error_codes = true
 pretty = true
 

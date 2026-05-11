@@ -19,7 +19,9 @@
 #   .\test\check-code-quality.ps1 -HTMLHint    # HTMLHint only
 #   .\test\check-code-quality.ps1 -Knip        # knip dead-code audit only
 #   .\test\check-code-quality.ps1 -KnipProduction # knip production dead-code audit only
+#   .\test\check-code-quality.ps1 -KnipNamespace # knip namespace export audit only
 #   .\test\check-code-quality.ps1 -PlaywrightSync # Playwright tooling version sync only
+#   .\test\check-code-quality.ps1 -NodeQualitySync # Node quality helper image sync only
 #   .\test\check-code-quality.ps1 -PythonSync  # Python tooling version sync only
 #   .\test\check-code-quality.ps1 -MyPy        # mypy only
 #   .\test\check-code-quality.ps1 -Vulture     # Vulture dead-code audit only
@@ -45,7 +47,9 @@ param(
     [switch]$HTMLHint,
     [switch]$Knip,
     [switch]$KnipProduction,
+    [switch]$KnipNamespace,
     [switch]$PlaywrightSync,
+    [switch]$NodeQualitySync,
     [switch]$PythonSync,
     [switch]$MyPy,
     [switch]$Vulture,
@@ -75,7 +79,9 @@ function Show-Usage {
     Write-Host "  -ESLint"
     Write-Host "  -Knip"
     Write-Host "  -KnipProduction"
+    Write-Host "  -KnipNamespace"
     Write-Host "  -PlaywrightSync"
+    Write-Host "  -NodeQualitySync"
     Write-Host ""
     Write-Host "HTML Checks:"
     Write-Host "  -HTMLHint"
@@ -193,13 +199,15 @@ if ($Help) {
 }
 
 # Default to run all if no specific tool selected
-if (-not $ESLint -and -not $Black -and -not $Ruff -and -not $ActionLint -and -not $Hadolint -and -not $Compose -and -not $ShellCheck -and -not $Yamllint -and -not $Stylelint -and -not $HTMLHint -and -not $Knip -and -not $KnipProduction -and -not $PlaywrightSync -and -not $PythonSync -and -not $MyPy -and -not $Vulture -and -not $Instructions -and -not $Documentation -and -not $PurgeCSS) {
+if (-not $ESLint -and -not $Black -and -not $Ruff -and -not $ActionLint -and -not $Hadolint -and -not $Compose -and -not $ShellCheck -and -not $Yamllint -and -not $Stylelint -and -not $HTMLHint -and -not $Knip -and -not $KnipProduction -and -not $KnipNamespace -and -not $PlaywrightSync -and -not $NodeQualitySync -and -not $PythonSync -and -not $MyPy -and -not $Vulture -and -not $Instructions -and -not $Documentation -and -not $PurgeCSS) {
     $ESLint = $true
     $Stylelint = $true
     $HTMLHint = $true
     $Knip = $true
     $KnipProduction = $true
+    $KnipNamespace = $true
     $PlaywrightSync = $true
+    $NodeQualitySync = $true
     $PythonSync = $true
     $Black = $true
     $Ruff = $true
@@ -286,7 +294,7 @@ if ($PurgeCSS) {
     $output = & docker run --rm `
         -v "${ProjectRoot}:/workspace" `
         --workdir /workspace/test `
-        node:24-alpine sh -lc $purgeCssCommand 2>&1
+        node:26-alpine sh -lc $purgeCssCommand 2>&1
     $exitCode = $LASTEXITCODE
 
     if ($exitCode -eq 0) {
@@ -310,7 +318,7 @@ if ($Stylelint) {
     $output = & docker run --rm `
         -v "${ProjectRoot}:/workspace" `
         --workdir /workspace `
-        node:24-alpine sh -lc "npm install -g stylelint@$STYLELINT_VERSION >/dev/null && stylelint $($stylelintArgs -join ' ')" 2>&1
+        node:26-alpine sh -lc "npm install -g stylelint@$STYLELINT_VERSION >/dev/null && stylelint $($stylelintArgs -join ' ')" 2>&1
 
     $exitCode = $LASTEXITCODE
 
@@ -339,13 +347,13 @@ if ($ESLint) {
     $webOutput = & docker run --rm `
         -v "${ProjectRoot}:/workspace" `
         --workdir /workspace/web/static `
-        node:24-alpine sh -lc "npm install -g eslint@$ESLINT_VERSION >/dev/null && eslint $($eslintArgs -join ' ')" 2>&1
+        node:26-alpine sh -lc "npm install -g eslint@$ESLINT_VERSION >/dev/null && eslint $($eslintArgs -join ' ')" 2>&1
     $webExitCode = $LASTEXITCODE
 
     $testOutput = & docker run --rm `
         -v "${ProjectRoot}:/workspace" `
         --workdir /workspace/test `
-        node:24-alpine sh -lc "npm install -g eslint@$ESLINT_VERSION >/dev/null && eslint $($eslintArgs -join ' ')" 2>&1
+        node:26-alpine sh -lc "npm install -g eslint@$ESLINT_VERSION >/dev/null && eslint $($eslintArgs -join ' ')" 2>&1
     $testExitCode = $LASTEXITCODE
 
     $output = @()
@@ -378,7 +386,7 @@ if ($Knip) {
     $output = & docker run --rm `
         -v "${ProjectRoot}:/workspace" `
         --workdir /workspace/test `
-        node:24-alpine sh -lc "npm install -g knip@$KNIP_VERSION >/dev/null && knip --config knip.config.js --no-progress --treat-config-hints-as-errors --include-entry-exports" 2>&1
+        node:26-alpine sh -lc "npm install -g knip@$KNIP_VERSION >/dev/null && knip --config knip.config.js --no-progress --treat-config-hints-as-errors --include-entry-exports" 2>&1
 
     $exitCode = $LASTEXITCODE
 
@@ -402,7 +410,7 @@ if ($KnipProduction) {
     $output = & docker run --rm `
         -v "${ProjectRoot}:/workspace" `
         --workdir /workspace/test `
-        node:24-alpine sh -lc "npm install -g knip@$KNIP_VERSION >/dev/null && knip --config knip.config.js --no-progress --treat-config-hints-as-errors --include-entry-exports --production" 2>&1
+        node:26-alpine sh -lc "npm install -g knip@$KNIP_VERSION >/dev/null && knip --config knip.config.js --no-progress --treat-config-hints-as-errors --include-entry-exports --production" 2>&1
 
     $exitCode = $LASTEXITCODE
 
@@ -413,9 +421,33 @@ if ($KnipProduction) {
     }
 }
 
+# knip namespace export audit
+if ($KnipNamespace) {
+    if (-not $PurgeCSS -and -not $Stylelint -and -not $ESLint -and -not $Knip -and -not $KnipProduction) {
+        Write-GroupHeader "Frontend Checks"
+        Write-SubgroupHeader "JavaScript Checks"
+    }
+    Write-Header "knip - JavaScript Namespace Export Audit"
+
+    Write-Host "Running knip namespace export audit on /web/static and /test..."
+
+    $output = & docker run --rm `
+        -v "${ProjectRoot}:/workspace" `
+        --workdir /workspace/test `
+        node:26-alpine sh -lc "npm install -g knip@$KNIP_VERSION >/dev/null && knip --config knip.config.js --no-progress --treat-config-hints-as-errors --include nsExports,nsTypes --include-entry-exports" 2>&1
+
+    $exitCode = $LASTEXITCODE
+
+    if ($exitCode -eq 0) {
+        Write-Result "knip namespace exports" 0
+    } else {
+        Write-Result "knip namespace exports" 1 $output
+    }
+}
+
 # Playwright tooling sync check
 if ($PlaywrightSync) {
-    if (-not $PurgeCSS -and -not $Stylelint -and -not $ESLint -and -not $Knip -and -not $KnipProduction) {
+    if (-not $PurgeCSS -and -not $Stylelint -and -not $ESLint -and -not $Knip -and -not $KnipProduction -and -not $KnipNamespace) {
         Write-GroupHeader "Frontend Checks"
         Write-SubgroupHeader "JavaScript Checks"
     }
@@ -426,7 +458,7 @@ if ($PlaywrightSync) {
     $output = & docker run --rm `
         -v "${ProjectRoot}:/workspace" `
         --workdir /workspace `
-        node:25-alpine node test/check-playwright-version-sync.mjs 2>&1
+        node:26-alpine node test/check-playwright-version-sync.mjs 2>&1
 
     $exitCode = $LASTEXITCODE
 
@@ -437,9 +469,33 @@ if ($PlaywrightSync) {
     }
 }
 
+# Node quality tooling sync check
+if ($NodeQualitySync) {
+    if (-not $PurgeCSS -and -not $Stylelint -and -not $ESLint -and -not $Knip -and -not $KnipProduction -and -not $KnipNamespace -and -not $PlaywrightSync) {
+        Write-GroupHeader "Frontend Checks"
+        Write-SubgroupHeader "JavaScript Checks"
+    }
+    Write-Header "Node Quality Tooling Sync"
+
+    Write-Host "Checking Node quality helper image version alignment..."
+
+    $output = & docker run --rm `
+        -v "${ProjectRoot}:/workspace" `
+        --workdir /workspace `
+        node:26-alpine node test/check-node-quality-version-sync.mjs 2>&1
+
+    $exitCode = $LASTEXITCODE
+
+    if ($exitCode -eq 0) {
+        Write-Result "Node Quality Sync" 0
+    } else {
+        Write-Result "Node Quality Sync" 1 $output
+    }
+}
+
 # HTMLHint Check
 if ($HTMLHint) {
-    if (-not $PurgeCSS -and -not $Stylelint -and -not $ESLint -and -not $Knip -and -not $KnipProduction -and -not $PlaywrightSync) {
+    if (-not $PurgeCSS -and -not $Stylelint -and -not $ESLint -and -not $Knip -and -not $KnipProduction -and -not $KnipNamespace -and -not $PlaywrightSync -and -not $NodeQualitySync) {
         Write-GroupHeader "Frontend Checks"
     }
     Write-SubgroupHeader "HTML Checks"
@@ -450,7 +506,7 @@ if ($HTMLHint) {
     $output = & docker run --rm `
         -v "${ProjectRoot}:/workspace" `
         --workdir /workspace `
-        node:24-alpine sh -lc "npm install -g htmlhint@$HTMLHINT_VERSION >/dev/null && htmlhint --config .htmlhintrc web/static/index.html" 2>&1
+        node:26-alpine sh -lc "npm install -g htmlhint@$HTMLHINT_VERSION >/dev/null && htmlhint --config .htmlhintrc web/static/index.html" 2>&1
 
     $exitCode = $LASTEXITCODE
 
@@ -471,7 +527,7 @@ if ($PythonSync) {
     $output = & docker run --rm `
         -v "${ProjectRoot}:/workspace" `
         --workdir /workspace `
-        node:25-alpine node test/check-python-version-sync.mjs 2>&1
+        node:26-alpine node test/check-python-version-sync.mjs 2>&1
 
     $exitCode = $LASTEXITCODE
 
@@ -828,7 +884,7 @@ if ($Instructions) {
     $output = & docker run --rm `
         -v "${ProjectRoot}:/workspace" `
         --workdir /workspace `
-        node:25-alpine node test/check-instructions.mjs 2>&1
+        node:26-alpine node test/check-instructions.mjs 2>&1
     $exitCode = $LASTEXITCODE
 
     if ($exitCode -eq 0) {
@@ -847,7 +903,7 @@ if ($Documentation) {
     $output = & docker run --rm `
         -v "${ProjectRoot}:/workspace" `
         --workdir /workspace `
-        node:25-alpine node test/check-documentation.mjs 2>&1
+        node:26-alpine node test/check-documentation.mjs 2>&1
     $exitCode = $LASTEXITCODE
 
     if ($exitCode -eq 0) {
