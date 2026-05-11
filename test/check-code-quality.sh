@@ -22,6 +22,7 @@
 #   ./test/check-code-quality.sh --knip       # knip dead-code audit only
 #   ./test/check-code-quality.sh --knip-production # knip production dead-code audit only
 #   ./test/check-code-quality.sh --playwright-sync # Playwright tooling version sync only
+#   ./test/check-code-quality.sh --node-quality-sync # Node quality helper image sync only
 #   ./test/check-code-quality.sh --python-sync # Python tooling version sync only
 #   ./test/check-code-quality.sh --mypy       # mypy only
 #   ./test/check-code-quality.sh --vulture    # Vulture dead-code audit only
@@ -163,6 +164,7 @@ JavaScript Checks:
   --knip
   --knip-production
   --playwright-sync
+  --node-quality-sync
 
 HTML Checks:
   --htmlhint
@@ -202,6 +204,7 @@ enable_only_check() {
     RUN_KNIP=false
     RUN_KNIP_PRODUCTION=false
     RUN_PLAYWRIGHT_SYNC=false
+    RUN_NODE_QUALITY_SYNC=false
     RUN_PYTHON_SYNC=false
     RUN_MYPY=false
     RUN_VULTURE=false
@@ -223,6 +226,7 @@ enable_only_check() {
         knip) RUN_KNIP=true ;;
         knip-production) RUN_KNIP_PRODUCTION=true ;;
         playwright-sync) RUN_PLAYWRIGHT_SYNC=true ;;
+        node-quality-sync) RUN_NODE_QUALITY_SYNC=true ;;
         python-sync) RUN_PYTHON_SYNC=true ;;
         mypy) RUN_MYPY=true ;;
         vulture) RUN_VULTURE=true ;;
@@ -248,6 +252,7 @@ RUN_HTMLHINT=true
 RUN_KNIP=true
 RUN_KNIP_PRODUCTION=true
 RUN_PLAYWRIGHT_SYNC=true
+RUN_NODE_QUALITY_SYNC=true
 RUN_PURGECSS=true
 RUN_PYTHON_SYNC=true
 RUN_MYPY=true
@@ -315,6 +320,10 @@ for arg in "$@"; do
             ;;
         --playwright-sync)
             enable_only_check playwright-sync
+            shift
+            ;;
+        --node-quality-sync)
+            enable_only_check node-quality-sync
             shift
             ;;
         --python-sync)
@@ -408,7 +417,7 @@ if [ "$RUN_PURGECSS" = true ]; then
         OUTPUT=$(docker run --rm \
             -v "${PROJECT_ROOT}:/workspace" \
             --workdir /workspace/test \
-            node:24-alpine sh -lc "npm install -g purgecss@${PURGECSS_VERSION} >/dev/null && node check-purgecss.mjs ${PURGECSS_FIX_ARG}" 2>&1)
+            node:26-alpine sh -lc "npm install -g purgecss@${PURGECSS_VERSION} >/dev/null && node check-purgecss.mjs ${PURGECSS_FIX_ARG}" 2>&1)
         EXIT_CODE=$?
     fi
 
@@ -437,7 +446,7 @@ if [ "$RUN_STYLELINT" = true ]; then
         OUTPUT=$(docker run --rm \
                -v "${PROJECT_ROOT}:/workspace" \
                --workdir /workspace \
-               node:24-alpine sh -lc "npm install -g stylelint@${STYLELINT_VERSION} >/dev/null && stylelint ${STYLELINT_ARGS[*]}" 2>&1)
+               node:26-alpine sh -lc "npm install -g stylelint@${STYLELINT_VERSION} >/dev/null && stylelint ${STYLELINT_ARGS[*]}" 2>&1)
         EXIT_CODE=$?
     fi
 
@@ -480,7 +489,7 @@ if [ "$RUN_ESLINT" = true ]; then
             output=$(docker run --rm \
                    -v "${PROJECT_ROOT}:/workspace" \
                    --workdir "$target" \
-                   node:24-alpine sh -lc "npm install -g eslint@${ESLINT_VERSION} >/dev/null && eslint . $FIX_MODE_ARG" 2>&1)
+                   node:26-alpine sh -lc "npm install -g eslint@${ESLINT_VERSION} >/dev/null && eslint . $FIX_MODE_ARG" 2>&1)
             exit_code=$?
         fi
 
@@ -530,7 +539,7 @@ if [ "$RUN_KNIP" = true ]; then
         OUTPUT=$(docker run --rm \
                -v "${PROJECT_ROOT}:/workspace" \
                --workdir /workspace/test \
-               node:24-alpine sh -lc "npm install -g knip@${KNIP_VERSION} >/dev/null && knip --config knip.config.js --no-progress --treat-config-hints-as-errors --include-entry-exports" 2>&1)
+               node:26-alpine sh -lc "npm install -g knip@${KNIP_VERSION} >/dev/null && knip --config knip.config.js --no-progress --treat-config-hints-as-errors --include-entry-exports" 2>&1)
         EXIT_CODE=$?
     fi
 
@@ -558,7 +567,7 @@ if [ "$RUN_KNIP_PRODUCTION" = true ]; then
         OUTPUT=$(docker run --rm \
                -v "${PROJECT_ROOT}:/workspace" \
                --workdir /workspace/test \
-               node:24-alpine sh -lc "npm install -g knip@${KNIP_VERSION} >/dev/null && knip --config knip.config.js --no-progress --treat-config-hints-as-errors --include-entry-exports --production" 2>&1)
+               node:26-alpine sh -lc "npm install -g knip@${KNIP_VERSION} >/dev/null && knip --config knip.config.js --no-progress --treat-config-hints-as-errors --include-entry-exports --production" 2>&1)
         EXIT_CODE=$?
     fi
 
@@ -586,7 +595,7 @@ if [ "$RUN_PLAYWRIGHT_SYNC" = true ]; then
         OUTPUT=$(docker run --rm \
                -v "${PROJECT_ROOT}:/workspace" \
                --workdir /workspace \
-               node:25-alpine node test/check-playwright-version-sync.mjs 2>&1)
+               node:26-alpine node test/check-playwright-version-sync.mjs 2>&1)
         EXIT_CODE=$?
     fi
 
@@ -597,9 +606,37 @@ if [ "$RUN_PLAYWRIGHT_SYNC" = true ]; then
     fi
 fi
 
+# Node quality tooling sync check
+if [ "$RUN_NODE_QUALITY_SYNC" = true ]; then
+    if [ "$RUN_PURGECSS" != true ] && [ "$RUN_STYLELINT" != true ] && [ "$RUN_ESLINT" != true ] && [ "$RUN_KNIP" != true ] && [ "$RUN_KNIP_PRODUCTION" != true ] && [ "$RUN_PLAYWRIGHT_SYNC" != true ]; then
+        print_group_header "Frontend Checks"
+        print_subgroup_header "JavaScript Checks"
+    fi
+    print_header "Node Quality Tooling Sync"
+
+    echo "Checking Node quality helper image version alignment..."
+
+    if command -v node >/dev/null 2>&1; then
+        OUTPUT=$(cd "${PROJECT_ROOT}" && node test/check-node-quality-version-sync.mjs 2>&1)
+        EXIT_CODE=$?
+    else
+        OUTPUT=$(docker run --rm \
+               -v "${PROJECT_ROOT}:/workspace" \
+               --workdir /workspace \
+               node:26-alpine node test/check-node-quality-version-sync.mjs 2>&1)
+        EXIT_CODE=$?
+    fi
+
+    if [ $EXIT_CODE -eq 0 ]; then
+        print_result "Node Quality Sync" 0
+    else
+        print_result "Node Quality Sync" $EXIT_CODE "$OUTPUT"
+    fi
+fi
+
 # HTMLHint
 if [ "$RUN_HTMLHINT" = true ]; then
-    if [ "$RUN_PURGECSS" != true ] && [ "$RUN_STYLELINT" != true ] && [ "$RUN_ESLINT" != true ] && [ "$RUN_KNIP" != true ] && [ "$RUN_KNIP_PRODUCTION" != true ] && [ "$RUN_PLAYWRIGHT_SYNC" != true ]; then
+    if [ "$RUN_PURGECSS" != true ] && [ "$RUN_STYLELINT" != true ] && [ "$RUN_ESLINT" != true ] && [ "$RUN_KNIP" != true ] && [ "$RUN_KNIP_PRODUCTION" != true ] && [ "$RUN_PLAYWRIGHT_SYNC" != true ] && [ "$RUN_NODE_QUALITY_SYNC" != true ]; then
         print_group_header "Frontend Checks"
     fi
     print_subgroup_header "HTML Checks"
@@ -614,7 +651,7 @@ if [ "$RUN_HTMLHINT" = true ]; then
         OUTPUT=$(docker run --rm \
                -v "${PROJECT_ROOT}:/workspace" \
                --workdir /workspace \
-               node:24-alpine sh -lc "npm install -g htmlhint@${HTMLHINT_VERSION} >/dev/null && htmlhint --config .htmlhintrc web/static/index.html" 2>&1)
+               node:26-alpine sh -lc "npm install -g htmlhint@${HTMLHINT_VERSION} >/dev/null && htmlhint --config .htmlhintrc web/static/index.html" 2>&1)
         EXIT_CODE=$?
     fi
 
@@ -639,7 +676,7 @@ if [ "$RUN_PYTHON_SYNC" = true ]; then
         OUTPUT=$(docker run --rm \
                -v "${PROJECT_ROOT}:/workspace" \
                --workdir /workspace \
-               node:25-alpine node test/check-python-version-sync.mjs 2>&1)
+               node:26-alpine node test/check-python-version-sync.mjs 2>&1)
         EXIT_CODE=$?
     fi
 
@@ -1028,7 +1065,7 @@ if [ "$RUN_INSTRUCTIONS" = true ]; then
         OUTPUT=$(docker run --rm \
                -v "${PROJECT_ROOT}:/workspace" \
                --workdir /workspace \
-               node:25-alpine node test/check-instructions.mjs 2>&1)
+               node:26-alpine node test/check-instructions.mjs 2>&1)
         EXIT_CODE=$?
     fi
 
@@ -1052,7 +1089,7 @@ if [ "$RUN_DOCUMENTATION" = true ]; then
         OUTPUT=$(docker run --rm \
                -v "${PROJECT_ROOT}:/workspace" \
                --workdir /workspace \
-               node:25-alpine node test/check-documentation.mjs 2>&1)
+               node:26-alpine node test/check-documentation.mjs 2>&1)
         EXIT_CODE=$?
     fi
 

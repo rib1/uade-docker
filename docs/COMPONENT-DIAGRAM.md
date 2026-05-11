@@ -200,7 +200,7 @@ The Web Player Container is built using multi-stage Docker build with `FROM uade
 - **Base**: CLI Player Container (inherits all UADE components)
 - **Frontend**: HTML5, CSS3, Vanilla JavaScript
 - **Backend**: Python 3.13, Flask 3.1.3
-- **Server**: Gunicorn 25.3.0 (`1` worker, `8` threads, `gthread`)
+- **Server**: Gunicorn 26.0.0 (`1` worker, `8` threads, `gthread`)
 - **Container**: Multi-stage build (FROM uade-cli)
 - **Additional Components**: Flask app, static assets, Python wrapper
 - **Client-Side Cache Support**: Converted audio is cached in the browser for one month for instant repeat playback.
