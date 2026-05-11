@@ -14,7 +14,9 @@ function formatNodeImage(version) {
 }
 
 function extractQualityBaseVersion(dockerfileText) {
-  const match = dockerfileText.match(/^FROM node:(\d+)-alpine$/m);
+  const match = dockerfileText.match(
+    /^\s*FROM\s+(?:--platform=\S+\s+)?node:(\d+)[^\s#]*(?:\s+AS\s+\S+)?\s*(?:#.*)?$/im,
+  );
   if (!match) {
     fail("Could not read the Node base image from test/Dockerfile.quality.");
   }
