@@ -1,6 +1,6 @@
 FROM alpine:latest
 
-RUN apk add --no-cache curl=~8.17 jq=~1.8 bash=~5.3 python3=~3.12
+RUN apk add --no-cache curl=~8.19 jq=~1.8 bash=~5.3 python3=~3.12
 
 # Create a non-root user and group
 RUN addgroup -S tester && adduser -S tester -G tester
