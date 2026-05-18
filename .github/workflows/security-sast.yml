@@ -152,6 +152,9 @@ jobs:
   hadolint:
     name: Dockerfile Linting
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
     strategy:
       matrix:
         include:
@@ -182,7 +185,10 @@ jobs:
 
       - name: Upload Hadolint results
         uses: github/codeql-action/upload-sarif@v4
-        if: always()
+        if: >-
+          always() &&
+          (github.event_name != 'pull_request' ||
+          github.event.pull_request.head.repo.full_name == github.repository)
         with:
           sarif_file: hadolint-${{ matrix.label }}.sarif
           category: hadolint-${{ matrix.label }}
