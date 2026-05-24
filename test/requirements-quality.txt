@@ -1,5 +1,5 @@
 black==26.5.0
-ruff==0.15.13
+ruff==0.15.14
 mypy==2.1.0
 vulture==2.16
 types-requests==2.33.0.20260513
