@@ -2154,7 +2154,7 @@ def process_audio_conversion(
     cache_hash = None
 
     overall_started_at = time.perf_counter()
-    try:
+    try:  # noqa: PLW0717 - central conversion failure boundary
         input_path = Path(input_path)
         if not input_path.exists() and not _wait_for_managed_file(input_path):
             return _conversion_failure("File not found: source module not available yet")

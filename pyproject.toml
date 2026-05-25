@@ -59,9 +59,12 @@ select = [
     "PLW", # pylint warnings
     "PLR2004", # magic-value-comparison
     "LOG004", # logging.exception outside exception handlers
+    "PLW0717", # too-many-statements-in-try-clause
     "RUF050", # unnecessary-if
     "RUF072", # useless-finally
     "RUF073", # f-string-percent-format
+    "RUF074", # incorrect-decorator-order
+    "RUF075", # fallible-context-manager
 ]
 ignore = [
     "S101", # Ignore `assert` statements, which are used in test scripts
@@ -70,6 +73,9 @@ ignore = [
 
 [tool.ruff.lint.flake8-bandit]
 check-typed-exception = true
+
+[tool.ruff.lint.pylint]
+max-statements-in-try = 50
 
 [tool.pylint]
 max-line-length = 100
