@@ -1,4 +1,4 @@
-# UADE CLI Base Image v3.05-base.3
+# UADE CLI Base Image v3.05-base.4
 # Versioning: UADE_VERSION-base.BUILD_NUMBER
 # This Dockerfile builds UADE 3.05 (stable) from source
 # Binary version: uade123 3.05
@@ -66,8 +66,8 @@ RUN rm -rf /usr/src/uade-build && \
 # 7. Install curl, rsync, unzip, lhasa, and runtime libraries for UADE file output
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
-        curl=8.14.1-2+deb13u2 \
-        rsync=3.4.1+ds1-5+deb13u1 \
+        curl=8.14.1-2+deb13u* \
+        rsync=3.4.1+ds1-5+deb13u* \
         unzip=6.0-29 \
         lhasa=0.4.0-1+b2 \
         libao4=1.2.2+20180113-1.2 && \

@@ -13,9 +13,9 @@ FROM debian:stable-slim
 # Install runtime dependencies + Python + tools for cloud environments
 RUN apt-get update && apt-get install -y --no-install-recommends \
     libao4=1.2.2+20180113-1.2 \
-    curl=8.14.1-2+deb13u2 \
+    curl=8.14.1-2+deb13u* \
     ca-certificates=20250419 \
-    rsync=3.4.1+ds1-5+deb13u1 \
+    rsync=3.4.1+ds1-5+deb13u* \
     unzip=6.0-29 \
     lhasa=0.4.0-1+b2 \
     python3=3.13.5-1 \
