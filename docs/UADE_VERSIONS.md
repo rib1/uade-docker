@@ -4,11 +4,44 @@ This file tracks all published versions of the `uade-cli` base Docker image and 
 
 ## Current Stable Version
 
-**`3.05-base.3`** (security/compliance package pinning)
+**`3.05-base.4`** (Debian runtime package revision resilience)
 
 ---
 
 ## Version History
+
+### 3.05-base.4 (2026-05-25) [DEBIAN RUNTIME PACKAGE REVISION RESILIENCE]
+
+- **Image:** `ghcr.io/rib1/uade-cli:3.05-base.4`
+- **UADE Binary Version:** 3.05 (stable)
+- **Status:** Stable version
+- **Base Image:** `debian:stable-slim`
+
+**Changes:**
+
+- Changed runtime `curl` and `rsync` pins in `Dockerfile` to Debian security-revision wildcard pins
+- Allows Debian `deb13u*` security revision updates without breaking image builds when a single revision leaves the current package index
+- Keeps package families constrained while avoiding stale exact runtime pins
+- Version bump to `3.05-base.4`
+
+**Features:**
+
+- All features from `3.05-base.3`
+- More resilient CLI image rebuilds when Debian stable publishes new `curl` or `rsync` security revisions
+
+**Testing:**
+
+- ✅ Repository code quality suite passes after the Dockerfile update
+- ✅ Endpoint integration suite passes
+- ✅ CLI image builds locally with `docker build -f Dockerfile -t uade-cli:3.05-base.4 .`
+- ✅ CLI image reports `uade123 3.05` and the help command works
+
+**Deployment Status:**
+
+- Available as: `ghcr.io/rib1/uade-cli:3.05-base.4`, `ghcr.io/rib1/uade-cli:3.05-base`, `ghcr.io/rib1/uade-cli:latest`
+- Verified binary: `uade123 3.05`
+
+---
 
 ### 3.05-base.3 (2026-03-16) [SECURITY/COMPLIANCE PACKAGE PINNING]
 
