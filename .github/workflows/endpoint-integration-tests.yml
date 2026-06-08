@@ -1,0 +1,112 @@
+name: Endpoint Integration Tests
+
+on:
+  pull_request:
+    branches:
+      - main
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: endpoint-integration-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  changes:
+    name: Detect Endpoint Test Scope
+    runs-on: ubuntu-latest
+    outputs:
+      run_tests: ${{ steps.scope.outputs.run_tests }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Detect relevant changes
+        id: scope
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          run_tests=false
+
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            run_tests=true
+          else
+            if [[ "${{ github.event_name }}" == "pull_request" ]]; then
+              base_sha="${{ github.event.pull_request.base.sha }}"
+              head_sha="${{ github.sha }}"
+            else
+              base_sha="${{ github.event.before }}"
+              head_sha="${{ github.sha }}"
+            fi
+
+            if [[ "${base_sha}" =~ ^0+$ ]]; then
+              base_sha="${head_sha}^"
+            fi
+
+            git diff --name-only "${base_sha}" "${head_sha}" > changed-files.txt
+
+            if grep -Eq '^(web/|Dockerfile\.web$|docker-compose\.yml$|test/(Dockerfile\.test|docker-compose\.endpoints\.yml|test_endpoints\.sh|prepare-endpoint-fixtures\.sh|report_endpoint_coverage\.py)$|\.github/workflows/endpoint-integration-tests\.yml$)' changed-files.txt; then
+              run_tests=true
+            fi
+          fi
+
+          echo "run_tests=${run_tests}" >> "${GITHUB_OUTPUT}"
+          echo "Endpoint integration tests required: ${run_tests}"
+
+  endpoint-integration:
+    name: Run Endpoint Integration Tests
+    needs: changes
+    if: needs.changes.outputs.run_tests == 'true'
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
+
+      - name: Run endpoint integration tests
+        run: |
+          GIT_COMMIT="${GITHUB_SHA}" docker compose -f docker-compose.yml -f test/docker-compose.endpoints.yml run --rm --build uade-test-runner
+
+      - name: Tear down endpoint test stack
+        if: always()
+        run: |
+          docker compose -f docker-compose.yml -f test/docker-compose.endpoints.yml down -v
+
+  endpoint-integration-gate:
+    name: Endpoint Integration Gate
+    needs:
+      - changes
+      - endpoint-integration
+    if: always()
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check endpoint integration result
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if [[ "${{ needs.changes.outputs.run_tests }}" != "true" ]]; then
+            echo "Endpoint integration tests were not required for this change set."
+            exit 0
+          fi
+
+          if [[ "${{ needs.endpoint-integration.result }}" == "success" ]]; then
+            echo "Endpoint integration tests passed."
+            exit 0
+          fi
+
+          echo "Endpoint integration tests did not pass: ${{ needs.endpoint-integration.result }}"
+          exit 1
