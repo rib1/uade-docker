@@ -253,6 +253,7 @@ This document contains project-specific learnings and regression-avoidance notes
 - **Cache Integrity:** Use a `HASH.cache-access.json` sidecar file for more reliable LRU cache management than `mtime`.
 - **Cache Integrity:** Sidecar access-record updates must tolerate concurrent writers. Handle `ENOENT` on file replacement as an expected condition.
 - **Cache Integrity:** Implement cleanup logic for orphaned `*.tmp` files to prevent cache pollution from failed sidecar updates.
+- **Cache Integrity:** Remote cache cleanup must preserve managed cache subdirectories such as `/tmp/cache/conversion-locks`, but it may remove expired `*.lock` files inside them through the stale-lock reclamation path. Calling `rm_file` on the directory itself raises `IsADirectoryError` on local `fsspec`.
 - **Cache Behavior:** Playback is now read-only against already-prepared artifacts. Do not reintroduce lazy WAV-to-FLAC promotion on `/play/*` or `/download/*`; conversion endpoints are responsible for producing the canonical FLAC artifact.
 - **Cache Behavior:** Under scanner-style concurrent load, cache health is better judged by leftover temp files and missing sidecars than by raw warning count in logs.
 - **Cache Behavior:** After the sidecar hardening patch, a healthy post-scan cache check is no `*.tmp` files in `/tmp/cache` and every cached audio object has a matching `.cache-access.json`.

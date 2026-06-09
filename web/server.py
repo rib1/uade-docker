@@ -924,16 +924,36 @@ def maybe_run_local_cleanup():
     run_local_cleanup_locked(source="request")
 
 
+def iter_conversion_lock_paths():
+    """Yield conversion lock files from the shared lock backend."""
+    if CONVERSION_LOCKS_ROOT_LOCAL is not None:
+        yield from CONVERSION_LOCKS_ROOT_LOCAL.glob("*.lock")
+        return
+    yield from fs_cache.glob(f"{CONVERSION_LOCKS_ROOT_REMOTE}/*.lock")
+
+
+def cleanup_stale_conversion_locks():
+    """Remove expired conversion locks while preserving the managed lock directory."""
+    removed = 0
+    for lock_path in iter_conversion_lock_paths():
+        if _clear_stale_conversion_lock(lock_path):
+            removed += 1
+    return removed
+
+
 def cleanup_cache_files():
     """Remove files older than CACHE_CLEANUP_INTERVAL from remote cache (supports file, s3, gcs)"""
     logger.info("cleanup_cache_files called at startup")
     try:
         cutoff = time.time() - CACHE_CLEANUP_INTERVAL
         removed = 0
+        removed += cleanup_stale_conversion_locks()
         stale_cache_hashes = set()
         # List all files in cache root
         for cache_file in fs_cache.glob(f"{root_cache}/*"):
             try:
+                if is_cache_directory(cache_file):
+                    continue
                 if is_cache_access_temp_file(cache_file):
                     fs_cache.rm_file(cache_file)
                     logger.info(f"Cleaned up orphaned cache access temp file: {cache_file}")
@@ -1030,6 +1050,19 @@ def is_cache_access_temp_file(remote_path):
     """Return True when the remote cache path points to a temporary sidecar access record."""
     path_str = str(remote_path)
     return CACHE_ACCESS_RECORD_SUFFIX in path_str and path_str.endswith(".tmp")
+
+
+def is_cache_directory(remote_path):
+    """Return True when the remote cache path points to a cache subdirectory."""
+    try:
+        return bool(fs_cache.isdir(remote_path))
+    except (FileNotFoundError, OSError):
+        return False
+    except AttributeError:
+        try:
+            return fs_cache.info(remote_path).get("type") == "directory"
+        except (FileNotFoundError, OSError):
+            return False
 
 
 def get_cache_hash_from_remote_path(remote_path):
@@ -1151,6 +1184,8 @@ def summarize_cache_debug_times():
     access_times = []
     try:
         for cache_file in fs_cache.glob(f"{root_cache}/*"):
+            if is_cache_directory(cache_file):
+                continue
             if is_cache_access_record(cache_file):
                 continue
             cache_hash = get_cache_hash_from_remote_path(cache_file)

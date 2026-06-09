@@ -272,6 +272,9 @@ This is why `/convert-probed` is documented as a best-effort optimization rather
   - Converted audio files are stored in a content-addressable cache (local or remote S3/GCS, see Infrastructure) for deduplication and instant serving.
   - Remote cache cleanup prefers sidecar `last_accessed_at` timestamps over backend object mtimes,
     with object mtime used as fallback when a sidecar is missing.
+  - Remote cache cleanup preserves managed cache subdirectories such as `conversion-locks`;
+    cleanup may remove expired `*.lock` files inside them, but the directories themselves
+    hold coordination state rather than removable audio artifacts.
 - Single Gunicorn worker (memory optimization)
 - 4 threads per worker
 - Connection pooling
