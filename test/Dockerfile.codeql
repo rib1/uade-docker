@@ -4,7 +4,7 @@ ARG CODEQL_VERSION=2.25.2
 
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
-        bash=5.2.15-2+b10 \
+        bash=5.2.15-2+b* \
         ca-certificates=20230311+deb12u1 \
         curl=7.88.1-10+deb12u14 \
         tar=1.34+dfsg-1.2+deb12u1 \
