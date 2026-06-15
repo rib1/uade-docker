@@ -13,11 +13,11 @@ RUN apk add --no-cache \
     bash=~5.3 \
     grep=~3.12 \
     findutils=~4.10.0 \
-    coreutils=~9.8 \
-    curl=~8.19 \
+    coreutils=~9.11 \
+    curl=~8.20 \
     shellcheck=~0.11 \
-    python3=~3.12 \
-    py3-pip=~25.1 \
+    python3=~3.14 \
+    py3-pip=~26.1 \
     docker-cli=~29.5
 
 # Copy manifests individually so a change in one does not bust the
