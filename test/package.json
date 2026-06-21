@@ -6,7 +6,7 @@
     "eslint": "10",
     "stylelint": "17.13.0",
     "htmlhint": "1.9.2",
-    "knip": "6.16.1",
+    "knip": "6.17.1",
     "pa11y-ci": "4.1.1",
     "playwright-core": "1.60.0",
     "purgecss": "8.0.0"
