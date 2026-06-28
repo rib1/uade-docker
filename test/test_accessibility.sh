@@ -44,7 +44,7 @@ node /workspace/test/accessibility-preflight.js \
     --chrome-path="${CHROME_PATH}"
 
 # Run Pa11y CI audit against the generated configuration.
-npm install -g "pa11y-ci@${PA11Y_CI_VERSION}" >/dev/null
+PUPPETEER_SKIP_DOWNLOAD=true npm install -g "pa11y-ci@${PA11Y_CI_VERSION}" >/dev/null
 echo "Using Pa11y CI version: $(pa11y-ci --version)"
 
 pa11y-ci --config /tmp/pa11yci.json
