@@ -73,7 +73,7 @@ jobs:
           category: semgrep
 
       - name: Dismiss suppressed Semgrep alerts
-        uses: advanced-security/dismiss-alerts@v2.0.2
+        uses: advanced-security/dismiss-alerts@v2.0.3
         if: always() && github.ref == 'refs/heads/main'
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
