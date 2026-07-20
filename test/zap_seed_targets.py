@@ -39,7 +39,10 @@ def allowlisted_urlopen(
     full_url = getattr(request_or_url, "full_url", request_or_url)
     if not full_url.startswith(allowed_prefixes):
         raise ValueError(f"Refusing to open non-allowlisted URL: {full_url}")
-    return urllib.request.urlopen(request_or_url, timeout=timeout)  # noqa: S310
+    return urllib.request.urlopen(  # ruff:ignore[suspicious-url-open-usage]
+        request_or_url,
+        timeout=timeout,
+    )
 
 
 def wait_for_url(url: str, *, timeout_seconds: int = 30) -> None:
@@ -70,7 +73,7 @@ def request(
     if content_type is not None:
         headers["Content-Type"] = content_type
 
-    req = urllib.request.Request(  # noqa: S310
+    req = urllib.request.Request(  # ruff:ignore[suspicious-url-open-usage]
         f"{BASE_URL}{path}",
         data=data,
         headers=headers,

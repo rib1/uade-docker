@@ -79,7 +79,7 @@ def get_git_commit():
     """Get current git commit hash"""
     try:
         # Trusted fixed binary path and static args; falls back to env var if git is unavailable.
-        result = subprocess.run(  # noqa: S603
+        result = subprocess.run(  # ruff:ignore[subprocess-without-shell-equals-true]
             [GIT_BIN, "rev-parse", "--short", "HEAD"],
             capture_output=True,
             text=True,
@@ -100,7 +100,7 @@ def get_uade_version():
     """Get UADE version from the uade123 binary"""
     try:
         # Trusted fixed binary path and static args.
-        result = subprocess.run(  # noqa: S603
+        result = subprocess.run(  # ruff:ignore[subprocess-without-shell-equals-true]
             [UADE123_BIN, "--version"],
             capture_output=True,
             text=True,
@@ -1245,7 +1245,7 @@ def compress_to_flac(wav_path, flac_path):
             str(temp_flac_output_path),
             str(wav_path),
         ]
-        result = subprocess.run(  # noqa: S603
+        result = subprocess.run(  # ruff:ignore[subprocess-without-shell-equals-true]
             cmd, capture_output=True, text=True, check=False, timeout=60
         )
 
@@ -1329,7 +1329,7 @@ def extract_lha(lha_path, extract_dir):
 
         # Change to extract directory and run lha extraction
         cmd = [LHA_BIN, "x", str(lha_path)]
-        result = subprocess.run(  # noqa: S603
+        result = subprocess.run(  # ruff:ignore[subprocess-without-shell-equals-true]
             cmd, capture_output=True, text=True, check=False, timeout=30, cwd=str(extract_dir)
         )
 
@@ -1465,7 +1465,7 @@ def detect_module_metadata(input_path):
     try:
         cmd = [UADE123_BIN, "-g", str(input_path)]
         # Use encoding='latin1' to avoid decode errors with non-UTF-8 bytes in output
-        result = subprocess.run(  # noqa: S603
+        result = subprocess.run(  # ruff:ignore[subprocess-without-shell-equals-true]
             cmd, capture_output=True, text=True, check=False, timeout=5, encoding="latin1"
         )
         if result.returncode != 0:
@@ -2189,7 +2189,7 @@ def process_audio_conversion(
     cache_hash = None
 
     overall_started_at = time.perf_counter()
-    try:  # noqa: PLW0717 - central conversion failure boundary
+    try:  # ruff:ignore[too-many-statements-in-try-clause] - central conversion failure boundary
         input_path = Path(input_path)
         if not input_path.exists() and not _wait_for_managed_file(input_path):
             return _conversion_failure("File not found: source module not available yet")
@@ -2354,7 +2354,7 @@ def process_audio_conversion(
 
                 uade_started_at = time.perf_counter()
                 with Path(stderr_log_path).open("wb") as stderr_log:
-                    result = subprocess.run(  # noqa: S603
+                    result = subprocess.run(  # ruff:ignore[subprocess-without-shell-equals-true]
                         full_cmd,
                         stdout=subprocess.DEVNULL,
                         stderr=stderr_log,

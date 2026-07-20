@@ -10,6 +10,8 @@ BASE_URL="${TEST_BASE_URL:-http://uade-web-player:5000}"
 LOCAL_TEST_SERVER_PORT=8000
 LOCAL_TEST_SERVER_URL="http://uade-test-http-server:$LOCAL_TEST_SERVER_PORT"
 SKIP_MODARCHIVE_TESTS="${SKIP_MODARCHIVE_TESTS:-0}"
+AMINET_LHA_ARCHIVE_URL="https://aminet.net/mods/pop/spacedebris.lha"
+PROJECT_X_THESMOPHORIA_URL="https://ftp.modland.com/pub/modules/Protracker/Allister%20Brimble/project%20x%20-%20thesmophoria.mod"
 
 ./prepare-endpoint-fixtures.sh
 
@@ -2928,7 +2930,8 @@ test_url "Protracker module" "https://modland.com/pub/modules/Protracker/Captain
 test_url "AHX module" "https://modland.com/pub/modules/AHX/Pink/stormlord.ahx"
 test_url "TFMX module" "https://modland.com/pub/modules/TFMX/Chris%20Huelsbeck/mdat.turrican%202%20level%200-intro" "https://modland.com/pub/modules/TFMX/Chris%20Huelsbeck/smpl.turrican%202%20level%200-intro"
 test_url "TFMX module (Apidya)" "https://modland.com/pub/modules/TFMX/Chris%20Huelsbeck/mdat.apidya%20%28level%201%29" "https://modland.com/pub/modules/TFMX/Chris%20Huelsbeck/smpl.apidya%20%28level%201%29"
-test_url "LHA archive" "http://files.exotica.org.uk/?file=exotica/media%2Faudio%2FUnExoticA%2FGame%2FBrimble_Allister%2FProject-X.lha"
+test_url "LHA archive" "$AMINET_LHA_ARCHIVE_URL"
+test_url "Project-X module" "$PROJECT_X_THESMOPHORIA_URL"
 test_url "ZIP archive" "https://files.scene.org/get:fi-https/music/artists/4-mat/chip_shop.zip"
 test_url "RJP module" "https://modland.com/pub/modules/Richard%20Joseph/Richard%20Joseph/cannon%20fodder%20(intro).sng" "https://modland.com/pub/modules/Richard%20Joseph/Richard%20Joseph/cannon%20fodder%20(intro).ins"
 test_convert_url_error "Convert URL unsupported remote file" "$LOCAL_TEST_SERVER_URL/fixtures/modules/gutenberg.txt" "" 400 "Could not detect module metadata. The file may be corrupt or not a supported module."
@@ -2989,7 +2992,8 @@ test_subsong_durations "Single subsong module" "https://modland.com/pub/modules/
 # Filename extraction tests
 test_filename_extraction "ModArchive URL" "https://api.modarchive.org/downloads.php?moduleid=188875#way_too_rude.mod" "way_too_rude.mod"
 test_filename_extraction "Modland URL" "https://modland.com/pub/modules/Protracker/Captain/space_debris.mod" "space_debris.mod"
-test_filename_extraction "Exotica URL" "http://files.exotica.org.uk/?file=exotica/media%2Faudio%2FUnExoticA%2FGame%2FBrimble_Allister%2FProject-X.lha" "mod.thesmophoria"
+test_filename_extraction "Aminet LHA archive URL" "$AMINET_LHA_ARCHIVE_URL" "mod.space_debris"
+test_filename_extraction "Project-X module URL" "$PROJECT_X_THESMOPHORIA_URL" "project_x_-_thesmophoria.mod"
 test_filename_extraction "Scene.org URL" "https://files.scene.org/get:fi-https/music/artists/4-mat/chip_shop.zip" "Chip_Shop.mod"
 
 # Upload tests

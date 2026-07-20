@@ -1,6 +1,6 @@
 FROM alpine:3.24
 
-RUN apk add --no-cache curl=~8.20 bash=~5.3
+RUN apk add --no-cache curl=~8.21 bash=~5.3
 
 # Install k6 from the shared tooling manifest so Dependabot tracks the
 # benchmark runner the same way it tracks the other test/quality tool images.
