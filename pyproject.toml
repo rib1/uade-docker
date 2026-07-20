@@ -57,6 +57,7 @@ select = [
     "PTH", # pathlib best practices
     "PLE", # pylint errors
     "PLW", # pylint warnings
+    "D421", # property-docstring-starts-with-verb
     "PLR2004", # magic-value-comparison
     "LOG004", # logging.exception outside exception handlers
     "PLW0717", # too-many-statements-in-try-clause
