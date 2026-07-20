@@ -11,6 +11,8 @@ updates:
     directory: "/"
     schedule:
       interval: "weekly"
+    cooldown:
+      default-days: 7
     open-pull-requests-limit: 5
   - package-ecosystem: "docker"
     directory: "/test"
@@ -19,6 +21,8 @@ updates:
     multi-ecosystem-group: "test-playwright"
     schedule:
       interval: "weekly"
+    cooldown:
+      default-days: 7
   - package-ecosystem: "docker"
     directory: "/test"
     ignore:
@@ -31,6 +35,8 @@ updates:
           - "version-update:semver-minor"
     schedule:
       interval: "weekly"
+    cooldown:
+      default-days: 7
     open-pull-requests-limit: 5
 
   # Monitor Python dependencies
@@ -38,6 +44,8 @@ updates:
     directory: "/web"
     schedule:
       interval: "weekly"
+    cooldown:
+      default-days: 7
     open-pull-requests-limit: 5
     groups:
       filesystems:
@@ -49,6 +57,8 @@ updates:
     directory: "/test"
     schedule:
       interval: "weekly"
+    cooldown:
+      default-days: 7
     open-pull-requests-limit: 5
 
   # Monitor Node.js quality tooling
@@ -59,12 +69,16 @@ updates:
     multi-ecosystem-group: "test-playwright"
     schedule:
       interval: "weekly"
+    cooldown:
+      default-days: 7
   - package-ecosystem: "npm"
     directory: "/test"
     ignore:
       - dependency-name: "playwright-core"
     schedule:
       interval: "weekly"
+    cooldown:
+      default-days: 7
     open-pull-requests-limit: 5
 
   # Monitor GitHub Actions
@@ -72,4 +86,6 @@ updates:
     directory: "/"
     schedule:
       interval: "weekly"
+    cooldown:
+      default-days: 7
     open-pull-requests-limit: 5
