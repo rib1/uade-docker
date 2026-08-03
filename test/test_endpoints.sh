@@ -2686,6 +2686,49 @@ _remove_cache_artifact() {
     echo "$BODY"
 }
 
+test_local_cleanup_preserves_recent_child_in_old_directory() {
+    echo "--- Testing Local Cleanup Preserves Recent Child In Old Directory ---"
+
+    STALE_DIR="/uade-tmp/modules/cleanup-old-parent-recent-child_extracted_regression"
+    RECENT_CHILD="$STALE_DIR/recent-child.mod"
+    OLD_CHILD="$STALE_DIR/old-child.tmp"
+
+    rm -rf "$STALE_DIR"
+    mkdir -p "$STALE_DIR"
+    printf '%s\n' "recent" > "$RECENT_CHILD"
+    printf '%s\n' "old" > "$OLD_CHILD"
+    chmod 777 "$STALE_DIR"
+    chmod 666 "$RECENT_CHILD" "$OLD_CHILD"
+    touch -t 202001010101 "$OLD_CHILD"
+    touch -t 202001010101 "$STALE_DIR"
+
+    LOCAL_RESPONSE=$(_run_cleanup_scope "local")
+    LOCAL_STATUS=$(echo "$LOCAL_RESPONSE" | jq -r .local.cleanup_status)
+
+    if [ "$LOCAL_STATUS" != "old_entries_removed" ]; then
+        echo "ERROR: Expected local cleanup to remove only stale descendants, got '$LOCAL_STATUS'"
+        echo "Response body: $LOCAL_RESPONSE"
+        exit 1
+    fi
+
+    if [ ! -d "$STALE_DIR" ] || [ ! -f "$RECENT_CHILD" ]; then
+        echo "ERROR: Local cleanup removed an old directory with a recent child"
+        echo "Directory exists: $( [ -d "$STALE_DIR" ] && echo yes || echo no )"
+        echo "Recent child exists: $( [ -f "$RECENT_CHILD" ] && echo yes || echo no )"
+        exit 1
+    fi
+
+    if [ -e "$OLD_CHILD" ]; then
+        echo "ERROR: Local cleanup kept a stale child inside the old directory"
+        exit 1
+    fi
+
+    rm -rf "$STALE_DIR"
+
+    echo "SUCCESS: Local cleanup preserved the recent child and removed only stale descendants."
+    echo ""
+}
+
 test_cleanup_status_and_timestamp_transitions() {
     echo "--- Testing Cleanup Status And Timestamp Transitions ---"
 
@@ -2818,6 +2861,7 @@ test_queue_probe_uses_status_instead_of_queue_button_label
 # Cache behavior tests run early to reduce interference from warmed cache state.
 # Individual tests may still use unique URLs or explicit cache-reset helpers when
 # they need a precise starting condition.
+test_local_cleanup_preserves_recent_child_in_old_directory
 test_cleanup_status_and_timestamp_transitions
 test_cache_hit_url "Server-side cache hit for convert-url" "https://modland.com/pub/modules/Protracker/Lizardking/l.k%27s%20doskpop.mod"
 test_url_cache_logic "URL download cache" "https://modland.com/pub/modules/Protracker/Lizardking/l.k%27s%20doskpop.mod"
@@ -2830,10 +2874,15 @@ test_local_cleanup_preserves_refreshed_flac "Local cleanup preserves refreshed c
 
 _create_stale_conversion_lock() {
     LOCAL_CACHE_HASH=$1
+    LOCAL_METADATA_SHAPE=${2:-object}
+    JSON_PAYLOAD=$(jq -n \
+        --arg cache_hash "$LOCAL_CACHE_HASH" \
+        --arg metadata_shape "$LOCAL_METADATA_SHAPE" \
+        '{cache_hash: $cache_hash, metadata_shape: $metadata_shape}')
 
     RESPONSE_ALL=$(curl -s -w "\n%{http_code}" -X POST \
         -H "Content-Type: application/json" \
-        -d "{\"cache_hash\":\"$LOCAL_CACHE_HASH\"}" \
+        -d "$JSON_PAYLOAD" \
         "$BASE_URL/test/create-stale-conversion-lock")
 
     HTTP_CODE=$(echo "$RESPONSE_ALL" | tail -n1)
@@ -2912,6 +2961,58 @@ test_stale_conversion_lock_reclamation() {
 }
 
 test_stale_conversion_lock_reclamation "Stale lock is reclaimed" "${LOCAL_TEST_SERVER_URL}/fixtures/modules/stormlord.ahx?case=stale-lock-reclaimed"
+
+test_stale_conversion_lock_invalid_metadata_reclamation() {
+    TEST_NAME=$1
+    URL=$2
+
+    echo "--- Testing Stale Conversion Lock Invalid Metadata Reclamation: $TEST_NAME ---"
+
+    HTTP_CODE_BODY=$(_perform_convert_url_call "$URL")
+    HTTP_CODE=$(echo "$HTTP_CODE_BODY" | head -n1)
+    BODY=$(echo "$HTTP_CODE_BODY" | tail -n1)
+
+    if [ "$HTTP_CODE" -ne 200 ]; then
+        echo "ERROR: Warm-up convert-url call failed with HTTP $HTTP_CODE for '$TEST_NAME'"
+        echo "Response body: $BODY"
+        exit 1
+    fi
+
+    FILE_ID=$(echo "$BODY" | jq -r .file_id)
+    AUDIO_FORMAT=$(echo "$BODY" | jq -r .audio_format)
+
+    if [ -z "$FILE_ID" ] || [ "$FILE_ID" = "null" ]; then
+        echo "ERROR: Warm-up response missing file_id for '$TEST_NAME'"
+        echo "Response body: $BODY"
+        exit 1
+    fi
+
+    if [ "$AUDIO_FORMAT" != "flac" ]; then
+        echo "ERROR: Warm-up response did not establish canonical FLAC for '$TEST_NAME'"
+        echo "Response body: $BODY"
+        exit 1
+    fi
+
+    _remove_cache_artifact "$FILE_ID" ".flac" > /dev/null
+
+    _create_stale_conversion_lock "$FILE_ID" "list" > /dev/null
+
+    HTTP_CODE_BODY=$(_perform_convert_url_call "$URL")
+    HTTP_CODE=$(echo "$HTTP_CODE_BODY" | head -n1)
+    BODY=$(echo "$HTTP_CODE_BODY" | tail -n1)
+
+    if [ "$HTTP_CODE" -ne 200 ]; then
+        echo "ERROR: convert-url failed when stale lock metadata was a non-object for '$TEST_NAME'"
+        echo "HTTP Code: $HTTP_CODE"
+        echo "Response body: $BODY"
+        exit 1
+    fi
+
+    echo "SUCCESS: Stale lock with invalid metadata was reclaimed and conversion succeeded."
+    echo ""
+}
+
+test_stale_conversion_lock_invalid_metadata_reclamation "Stale lock invalid metadata is ignored" "${LOCAL_TEST_SERVER_URL}/fixtures/modules/stormlord.ahx?case=stale-lock-invalid-metadata"
 
 test_probe_url "Probe Protracker module" "https://modland.com/pub/modules/Protracker/Captain/space_debris.mod"
 test_probe_url "Probe TFMX module" "https://modland.com/pub/modules/TFMX/Chris%20Huelsbeck/mdat.turrican%202%20level%200-intro" "https://modland.com/pub/modules/TFMX/Chris%20Huelsbeck/smpl.turrican%202%20level%200-intro"

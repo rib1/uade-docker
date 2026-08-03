@@ -218,7 +218,7 @@ Amiga modules often come in **LHA archives** (classic Amiga compression). The sy
 
 **Supported module extensions** are defined in `MODULE_FILE_EXTENSIONS`:
 ```python
-MODULE_FILE_EXTENSIONS = {'mod', 's3m', 'it', 'xm', 'tfmx', 'ahx', 'hvl', 'mdat', 'smp', ...}
+MODULE_FILE_EXTENSIONS = {"mod", "s3m", "it", "xm", "tfmx", "ahx", "hvl", "mdat", "smp", ...}
 ```
 
 ## Testing Structure

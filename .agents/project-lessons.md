@@ -166,6 +166,7 @@ This document contains project-specific learnings and regression-avoidance notes
 - **Toolchain:** Keep Knip namespace-export auditing as a separate targeted pass. The `nsExports` and `nsTypes` issue types are not included in Knip's default report, and using `--include` in the main Knip command would narrow the report instead of adding those issue types to it.
 - **Toolchain:** When tightening Knip with entry-export checks, expect dynamic config loads to need explicit ignores. In this repo, `test/purgecss.config.js` is loaded via a runtime `require(configPath)`, so Knip should ignore that file instead of flagging its default export as unused.
 - **Toolchain:** The Ruff portion of the quality check should run both `ruff format --check` and `ruff check`.
+- **Toolchain:** Include Markdown instruction files in Ruff format targets when they contain Python code blocks. Ruff can check fenced Python examples there, and keeping those examples formatted prevents instruction drift from bypassing the normal Python quality gate.
 - **Toolchain:** Keep Ruff preview-rule enablement explicit and low-noise. In this repo, `LOG004` is a good fit because the app uses logging heavily and the stricter `logging.exception` guard passes cleanly on the current Python targets.
 - **Toolchain:** For Python dead-code auditing, prefer `vulture` as the dedicated check and keep its scope plus `min_confidence` threshold in `pyproject.toml` so the runners and CI share the same source of truth.
 - **Toolchain:** For mypy, keep optional strictness flags enabled when they pass cleanly: `strict_equality_for_none` and the `deprecated`, `explicit-override`, and `exhaustive-match` error codes add useful future-facing coverage without changing runtime dependencies.
@@ -272,6 +273,7 @@ This document contains project-specific learnings and regression-avoidance notes
 - **Hook Interactions:** When cleanup moves into a global `before_request` hook, exclude the full `/test/` namespace, not just one maintenance route. Otherwise new test helpers can accidentally pick up an extra cleanup pass and skew status or timestamp expectations.
 - **Fast Path Guard:** A lock-free fast-path check before acquiring the cleanup lock is fine as an optimization, but the actual interval decision must be re-checked inside the lock.
 - **State Scope:** For this app, a lock is the real concurrency control. Extra cleanup state such as `in_progress` is optional observability, not a correctness requirement.
+- **Directory Cleanup:** Do not remove a local temp directory based only on the parent directory mtime. Walk descendants, skip active lock/registry paths, remove stale children individually, and keep directories that still contain recent or in-flight entries.
 - **Shared-Volume Test Helpers:** In Docker-based tests, cache artifacts may be owned by another container or an earlier run. Test-only helpers that mutate cache-file mtimes should handle `PermissionError` and can fall back to atomic rewrite plus `utime`.
 - **Docs Accuracy:** If cleanup moves from route-local calls to a gated request hook, update docs to say it is request-triggered and not a background hourly job.
 
