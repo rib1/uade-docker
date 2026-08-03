@@ -53,6 +53,8 @@ CLEANUP_TIMESTAMPS: dict[str, datetime | None] = {"local": None, "cache": None}
 CLEANUP_STATUSES: dict[str, str] = {"local": "not_run_yet", "cache": "not_run_yet"}
 LOCAL_CLEANUP_STATE = {"last_check_monotonic": 0.0}
 LOCAL_CLEANUP_LOCK = threading.Lock()
+ACTIVE_LOCAL_CLEANUP_PATHS: set[Path] = set()
+ACTIVE_LOCAL_CLEANUP_PATHS_LOCK = threading.Lock()
 FLAC_COMPRESSION_COUNTS: dict[str, int] = {}
 FLAC_COMPRESSION_COUNTS_LOCK = threading.Lock()
 UADE_VERSION_TOKEN_PARTS_MIN: Final = 2
@@ -769,6 +771,136 @@ def upload_error_response(message, *, probe=False):
     return json_response({"error": message}, 400)
 
 
+def normalized_cleanup_path(path):
+    """Return a comparable absolute path without requiring the target to exist."""
+    return Path(os.fspath(path)).resolve(strict=False)
+
+
+def path_contains(parent, child):
+    """Return True when child is at or below parent."""
+    try:
+        normalized_cleanup_path(child).relative_to(normalized_cleanup_path(parent))
+    except ValueError:
+        return False
+    return True
+
+
+def register_active_local_cleanup_path(path):
+    """Mark a local managed path as in-use so cleanup will not remove it."""
+    with ACTIVE_LOCAL_CLEANUP_PATHS_LOCK:
+        ACTIVE_LOCAL_CLEANUP_PATHS.add(normalized_cleanup_path(path))
+
+
+def unregister_active_local_cleanup_path(path):
+    """Remove a local managed path from the cleanup in-use registry."""
+    with ACTIVE_LOCAL_CLEANUP_PATHS_LOCK:
+        ACTIVE_LOCAL_CLEANUP_PATHS.discard(normalized_cleanup_path(path))
+
+
+def has_active_local_cleanup_registry_entry(directory):
+    """Return True when an active managed path is at or below directory."""
+    directory = normalized_cleanup_path(directory)
+    with ACTIVE_LOCAL_CLEANUP_PATHS_LOCK:
+        return any(
+            path_contains(directory, active_path) for active_path in ACTIVE_LOCAL_CLEANUP_PATHS
+        )
+
+
+def is_local_lock_marker(path):
+    """Return True for local lock files that signal in-flight work."""
+    name = Path(path).name
+    return name.endswith(".lock") or ".metadatalock." in name
+
+
+def is_active_local_lock_marker(path, cutoff):
+    """Return True when a local lock marker is still inside the cleanup window."""
+    try:
+        return is_local_lock_marker(path) and Path(path).lstat().st_mtime >= cutoff
+    except FileNotFoundError:
+        return False
+
+
+def directory_has_active_local_lock(directory, cutoff):
+    """Return True when directory contains or is paired with an active lock marker."""
+    directory = Path(directory)
+    if is_active_local_lock_marker(directory, cutoff):
+        return True
+
+    if "_extracted_" in directory.name:
+        source_name = directory.name.split("_extracted_", maxsplit=1)[0]
+        if is_active_local_lock_marker(directory.with_name(f"{source_name}.lock"), cutoff):
+            return True
+
+    try:
+        return any(
+            is_active_local_lock_marker(descendant, cutoff) for descendant in directory.rglob("*")
+        )
+    except OSError:
+        return True
+
+
+def should_skip_local_directory_cleanup(directory, cutoff):
+    """Return True when a directory is known to contain in-flight work."""
+    return has_active_local_cleanup_registry_entry(directory) or directory_has_active_local_lock(
+        directory, cutoff
+    )
+
+
+def cleanup_old_file_entry(filepath, cutoff):
+    """Remove one stale local file or symlink entry."""
+    try:
+        if is_active_local_lock_marker(filepath, cutoff):
+            return 0
+        if filepath.lstat().st_mtime >= cutoff:
+            return 0
+        filepath.unlink(missing_ok=True)
+        logger.info(f"Cleaned up old file/symlink: {filepath}")
+        return 1
+    except FileNotFoundError:
+        logger.info(f"File not found during cleanup (likely race condition): {filepath}")
+        return 0
+
+
+def cleanup_empty_old_directory(directory, cutoff):
+    """Remove an empty directory only when its own mtime is stale."""
+    try:
+        if should_skip_local_directory_cleanup(directory, cutoff):
+            return 0
+        if directory.lstat().st_mtime >= cutoff:
+            return 0
+        if any(directory.iterdir()):
+            return 0
+        directory.rmdir()
+        logger.info(f"Cleaned up old empty directory: {directory}")
+        return 1
+    except FileNotFoundError:
+        logger.info(f"Directory not found during cleanup (likely race condition): {directory}")
+    except OSError:
+        logger.info(f"Directory not empty or unavailable during cleanup: {directory}")
+    return 0
+
+
+def cleanup_old_directory_entries(directory, cutoff):
+    """Remove stale descendants without deleting recent or active directory contents."""
+    if should_skip_local_directory_cleanup(directory, cutoff):
+        logger.info(f"Skipping local cleanup for active directory: {directory}")
+        return 0
+
+    removed = 0
+    for root, dirs, files in os.walk(directory, topdown=False, followlinks=False):
+        root_path = Path(root)
+        for filename in files:
+            removed += cleanup_old_file_entry(root_path / filename, cutoff)
+        for dirname in dirs:
+            child_dir = root_path / dirname
+            if child_dir.is_symlink():
+                removed += cleanup_old_file_entry(child_dir, cutoff)
+            else:
+                removed += cleanup_empty_old_directory(child_dir, cutoff)
+    removed += cleanup_empty_old_directory(directory, cutoff)
+    return removed
+
+
 def get_uploaded_request_file():
     """Validate the standard multipart upload field and return the file plus safe filename."""
     if "file" not in request.files:
@@ -828,15 +960,10 @@ def _cleanup_old_files_impl():
         for directory in [MODULES_DIR, CONVERTED_DIR]:
             for filepath in directory.glob("*"):
                 try:
-                    # Use lstat to avoid following symlinks and get info about the link itself
-                    if filepath.lstat().st_mtime < cutoff:
-                        if not filepath.is_symlink() and filepath.is_dir():
-                            shutil.rmtree(filepath)
-                            logger.info(f"Cleaned up old directory: {filepath}")
-                        else:
-                            filepath.unlink(missing_ok=True)
-                            logger.info(f"Cleaned up old file/symlink: {filepath}")
-                        removed += 1
+                    if not filepath.is_symlink() and filepath.is_dir():
+                        removed += cleanup_old_directory_entries(filepath, cutoff)
+                    else:
+                        removed += cleanup_old_file_entry(filepath, cutoff)
                 except FileNotFoundError:
                     # File was deleted by another process/thread after glob and before lstat/unlink
                     logger.info(
@@ -1699,11 +1826,15 @@ def _read_lock_metadata(lock_path):
     try:
         lock_path = _validated_conversion_lock_path(lock_path)
         if isinstance(lock_path, Path):
-            return json.loads(lock_path.read_text(encoding="utf-8"))
-        with fs_cache.open(lock_path, "r") as f:
-            return json.load(f)
+            metadata = json.loads(lock_path.read_text(encoding="utf-8"))
+        else:
+            with fs_cache.open(lock_path, "r") as f:
+                metadata = json.load(f)
     except (OSError, TypeError, ValueError):
         return None
+    if isinstance(metadata, dict):
+        return metadata
+    return None
 
 
 def _pid_is_alive(pid):
@@ -2710,9 +2841,12 @@ def test_create_stale_conversion_lock():
     data = request_json_or_empty()
     cache_hash = validated_md5_hash(data.get("cache_hash"))
     age_seconds = data.get("age_seconds", CONVERSION_TIMEOUT_SECONDS + 1)
+    metadata_shape = data.get("metadata_shape", "object")
 
     if cache_hash is None:
         return json_response({"error": "Invalid cache_hash"}, 400)
+    if metadata_shape not in {"object", "list"}:
+        return json_response({"error": "Invalid metadata shape"}, 400)
 
     try:
         lock_path = get_conversion_lock_path(cache_hash)
@@ -2727,12 +2861,13 @@ def test_create_stale_conversion_lock():
             "hostname": socket.gethostname(),
             "created_at": mtime_epoch,
         }
+        metadata_payload = payload if metadata_shape == "object" else [payload]
         if isinstance(validated_lock_path, Path):
-            validated_lock_path.write_text(json.dumps(payload), encoding="utf-8")
+            validated_lock_path.write_text(json.dumps(metadata_payload), encoding="utf-8")
             os.utime(validated_lock_path, (mtime_epoch, mtime_epoch))
         else:
             with fs_cache.open(validated_lock_path, "w") as f:
-                f.write(json.dumps(payload))
+                f.write(json.dumps(metadata_payload))
 
         return json_response(
             {
@@ -2740,6 +2875,7 @@ def test_create_stale_conversion_lock():
                 "lock_file": str(validated_lock_path),
                 "mtime_epoch": mtime_epoch,
                 "age_seconds": age_seconds,
+                "metadata_shape": metadata_shape,
             }
         )
     except Exception as e:
@@ -2997,8 +3133,7 @@ def process_module_and_respond(
 
     finally:
         # Clean up extracted files only (do not delete cached files)
-        if prepared_source.extract_dir.exists():
-            shutil.rmtree(prepared_source.extract_dir, ignore_errors=True)
+        cleanup_prepared_module_source(prepared_source)
 
 
 def detect_cached_module_metadata(input_path, sample_file_and_alias=None):
@@ -3078,6 +3213,15 @@ class PreparedModuleSource:
     extract_dir: Path
 
 
+def cleanup_prepared_module_source(prepared_source):
+    """Clean up and unregister a prepared module source's extraction directory."""
+    try:
+        if prepared_source.extract_dir.exists():
+            shutil.rmtree(prepared_source.extract_dir, ignore_errors=True)
+    finally:
+        unregister_active_local_cleanup_path(prepared_source.extract_dir)
+
+
 @dataclass(slots=True)
 class ResolvedModuleSource:
     """Source artifact plus response metadata needed by probe/convert routes."""
@@ -3153,34 +3297,41 @@ def prepare_module_source(
     filename = _safe_client_filename(filename)
     unique_id = str(uuid.uuid4())
     extract_dir = Path(f"{module_path}_extracted_{unique_id}")
+    register_active_local_cleanup_path(extract_dir)
+    source_prepared = False
 
-    if module_path.exists() and module_path.stat().st_size == 0:
-        logger.info(
-            f"Skipping {mode} for known invalid zero-byte module: {_safe_log_name(module_path)}"
-        )
-        return None, invalid_module_response(
-            probe=(mode == "probe"),
-            policy=unsupported_content_policy,
-        )
+    try:
+        if module_path.exists() and module_path.stat().st_size == 0:
+            logger.info(
+                f"Skipping {mode} for known invalid zero-byte module: {_safe_log_name(module_path)}"
+            )
+            return None, invalid_module_response(
+                probe=(mode == "probe"),
+                policy=unsupported_content_policy,
+            )
 
-    archive_result = resolve_archive_module(module_path, filename, extract_dir, mode=mode)
-    if archive_result.error:
-        module_path.unlink(missing_ok=True)
-        return None, archive_processing_error_response(
-            archive_result.error,
-            probe=(mode == "probe"),
-            policy=unsupported_content_policy,
-            client_fault=archive_result.client_fault,
-        )
+        archive_result = resolve_archive_module(module_path, filename, extract_dir, mode=mode)
+        if archive_result.error:
+            module_path.unlink(missing_ok=True)
+            return None, archive_processing_error_response(
+                archive_result.error,
+                probe=(mode == "probe"),
+                policy=unsupported_content_policy,
+                client_fault=archive_result.client_fault,
+            )
 
-    return (
-        PreparedModuleSource(
-            module_path=archive_result.module_path,
-            filename=archive_result.filename,
-            extract_dir=extract_dir,
-        ),
-        None,
-    )
+        source_prepared = True
+        return (
+            PreparedModuleSource(
+                module_path=archive_result.module_path,
+                filename=archive_result.filename,
+                extract_dir=extract_dir,
+            ),
+            None,
+        )
+    finally:
+        if not source_prepared:
+            unregister_active_local_cleanup_path(extract_dir)
 
 
 def conversion_success_response(conversion_result, filename, *, url_cached):
@@ -3274,8 +3425,7 @@ def process_module_probe_response(
             sample_file_and_alias=sample_file_and_alias,
         )
     finally:
-        if prepared_source.extract_dir.exists():
-            shutil.rmtree(prepared_source.extract_dir, ignore_errors=True)
+        cleanup_prepared_module_source(prepared_source)
 
 
 def convert_resolved_module_source(

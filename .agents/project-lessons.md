@@ -273,6 +273,7 @@ This document contains project-specific learnings and regression-avoidance notes
 - **Hook Interactions:** When cleanup moves into a global `before_request` hook, exclude the full `/test/` namespace, not just one maintenance route. Otherwise new test helpers can accidentally pick up an extra cleanup pass and skew status or timestamp expectations.
 - **Fast Path Guard:** A lock-free fast-path check before acquiring the cleanup lock is fine as an optimization, but the actual interval decision must be re-checked inside the lock.
 - **State Scope:** For this app, a lock is the real concurrency control. Extra cleanup state such as `in_progress` is optional observability, not a correctness requirement.
+- **Directory Cleanup:** Do not remove a local temp directory based only on the parent directory mtime. Walk descendants, skip active lock/registry paths, remove stale children individually, and keep directories that still contain recent or in-flight entries.
 - **Shared-Volume Test Helpers:** In Docker-based tests, cache artifacts may be owned by another container or an earlier run. Test-only helpers that mutate cache-file mtimes should handle `PermissionError` and can fall back to atomic rewrite plus `utime`.
 - **Docs Accuracy:** If cleanup moves from route-local calls to a gated request hook, update docs to say it is request-triggered and not a background hourly job.
 
