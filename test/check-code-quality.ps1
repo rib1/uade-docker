@@ -158,6 +158,7 @@ $MYPY_VERSION = $PyPins["mypy"]
 $VULTURE_VERSION = $PyPins["vulture"]
 $YAMLLINT_VERSION = $PyPins["yamllint"]
 $PythonQualityTargets = @("web", "test/report_endpoint_coverage.py", "test/zap_seed_targets.py")
+$RuffFormatTargets = $PythonQualityTargets + @(".agents/AGENTS.md")
 
 $ToolingCompose = Get-Content -Path $ToolingImageManifest -Raw
 $HadolintImageMatch = [regex]::Match($ToolingCompose, "(?ms)^  hadolint:\s*$.*?^    image:\s*([^\r\n]+)")
@@ -570,13 +571,13 @@ if ($Black) {
 if ($Ruff) {
     Write-Header "Ruff - Python Linting and Formatting"
 
-    Write-Host "Running Ruff on /web, /test/report_endpoint_coverage.py, and /test/zap_seed_targets.py..."
+    Write-Host "Running Ruff on Python targets and Markdown Python code blocks..."
 
     $ruffCheckArgs = @("check") + $PythonQualityTargets
-    $ruffFormatArgs = @("format") + $PythonQualityTargets + @("--check")
+    $ruffFormatArgs = @("format") + $RuffFormatTargets + @("--check")
     if ($Fix) {
         $ruffCheckArgs += "--fix"
-        $ruffFormatArgs = @("format") + $PythonQualityTargets
+        $ruffFormatArgs = @("format") + $RuffFormatTargets
     }
 
     # Run format check

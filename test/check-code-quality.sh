@@ -132,6 +132,7 @@ HADOLINT_IMAGE="$(read_tool_image hadolint)"
 ACTIONLINT_IMAGE="$(read_tool_image actionlint)"
 SHELLCHECK_IMAGE="$(read_tool_image shellcheck)"
 PYTHON_QUALITY_TARGETS=(web test/report_endpoint_coverage.py test/zap_seed_targets.py)
+RUFF_FORMAT_TARGETS=("${PYTHON_QUALITY_TARGETS[@]}" .agents/AGENTS.md)
 
 # Keep these pin reads explicit even when some fallback installs come from
 # requirements-quality.txt as a whole rather than per-tool pip commands.
@@ -761,7 +762,7 @@ fi
 if [ "$RUN_RUFF" = true ]; then
     print_header "Ruff - Python Linting and Formatting"
 
-    echo "Running Ruff on /web, /test/report_endpoint_coverage.py, and /test/zap_seed_targets.py..."
+    echo "Running Ruff on Python targets and Markdown Python code blocks..."
 
     RUFF_CHECK_ARGS=()
     RUFF_FORMAT_ARGS=(--check)
@@ -771,7 +772,7 @@ if [ "$RUN_RUFF" = true ]; then
     fi
 
     if command -v ruff >/dev/null 2>&1; then
-        OUTPUT_FORMAT=$(cd "${PROJECT_ROOT}" && ruff format "${PYTHON_QUALITY_TARGETS[@]}" "${RUFF_FORMAT_ARGS[@]}" 2>&1)
+        OUTPUT_FORMAT=$(cd "${PROJECT_ROOT}" && ruff format "${RUFF_FORMAT_TARGETS[@]}" "${RUFF_FORMAT_ARGS[@]}" 2>&1)
         EXIT_CODE_FORMAT=$?
         OUTPUT_CHECK=$(cd "${PROJECT_ROOT}" && ruff check "${PYTHON_QUALITY_TARGETS[@]}" "${RUFF_CHECK_ARGS[@]}" 2>&1)
         EXIT_CODE_CHECK=$?

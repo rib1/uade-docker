@@ -12,4 +12,4 @@ services:
   playwright:
     # Keep this Playwright image version aligned with
     # test/package.json devDependencies.playwright-core.
-    image: mcr.microsoft.com/playwright:v1.61.1-jammy
+    image: mcr.microsoft.com/playwright:v1.62.0-jammy

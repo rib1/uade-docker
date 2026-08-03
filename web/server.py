@@ -88,7 +88,7 @@ def get_git_commit():
         )
         if result.returncode == 0:
             return result.stdout.strip()
-    except Exception:
+    except (OSError, subprocess.SubprocessError):
         # Ignore errors (e.g., not a git repo, git not installed); fallback to env var
         logger.info(
             "Could not get git commit via command line, using environment variable fallback"
@@ -118,7 +118,7 @@ def get_uade_version():
                         return parts[1]  # e.g., "3.05"
             return output.split()[0] if output else "unknown"
         return "unknown"
-    except Exception:
+    except (OSError, subprocess.SubprocessError):
         return "unknown"
 
 
@@ -830,8 +830,12 @@ def _cleanup_old_files_impl():
                 try:
                     # Use lstat to avoid following symlinks and get info about the link itself
                     if filepath.lstat().st_mtime < cutoff:
-                        filepath.unlink(missing_ok=True)
-                        logger.info(f"Cleaned up old file/symlink: {filepath}")
+                        if not filepath.is_symlink() and filepath.is_dir():
+                            shutil.rmtree(filepath)
+                            logger.info(f"Cleaned up old directory: {filepath}")
+                        else:
+                            filepath.unlink(missing_ok=True)
+                            logger.info(f"Cleaned up old file/symlink: {filepath}")
                         removed += 1
                 except FileNotFoundError:
                     # File was deleted by another process/thread after glob and before lstat/unlink
@@ -842,7 +846,7 @@ def _cleanup_old_files_impl():
         if removed == 0:
             logger.info("No old files to clean up in local directories.")
     except Exception:
-        logger.error("Cleanup error", exc_info=True)
+        logger.exception("Cleanup error")
         CLEANUP_STATUSES["local"] = "cleanup_error"
     else:
         CLEANUP_TIMESTAMPS["local"] = datetime.now(UTC)
@@ -987,7 +991,7 @@ def cleanup_cache_files():
         if removed == 0:
             logger.info("No old files to clean up in remote cache.")
     except Exception:
-        logger.error("Cache cleanup error", exc_info=True)
+        logger.exception("Cache cleanup error")
         CLEANUP_STATUSES["cache"] = "cleanup_error"
     else:
         CLEANUP_TIMESTAMPS["cache"] = datetime.now(UTC)
@@ -1088,7 +1092,7 @@ def parse_timestamp_to_epoch(timestamp_value):
                 from dateutil.parser import parse as dtparse
 
                 return dtparse(timestamp_value).timestamp()
-            except Exception:
+            except (OverflowError, TypeError, ValueError):
                 return 0
     if timestamp_value is None:
         return 0
@@ -1265,7 +1269,7 @@ def compress_to_flac(wav_path, flac_path):
         logger.error(f"FLAC compression failed: {result.stderr}")
         return False
     except Exception:
-        logger.error("FLAC compression exception", exc_info=True)
+        logger.exception("FLAC compression exception")
         return False
     finally:
         temp_flac_output_path.unlink(missing_ok=True)  # Clean up temp file
@@ -1303,7 +1307,7 @@ def is_lha_file(file_path):
                 signature = header[2:5]
                 return signature == b"-lh" or signature == b"-lz"
         return False
-    except Exception:
+    except (OSError, TypeError):
         return False
 
 
@@ -1314,7 +1318,7 @@ def is_zip_file(file_path):
             header = f.read(4)
             # ZIP files start with PK\x03\x04 or PK\x05\x06 or PK\x07\x08
             return header[:2] == b"PK"
-    except Exception:
+    except (OSError, TypeError):
         return False
 
 
@@ -1347,7 +1351,7 @@ def extract_lha(lha_path, extract_dir):
     except subprocess.TimeoutExpired:
         return False, "LHA extraction timeout", None, False
     except Exception:
-        logger.error("LHA extraction exception", exc_info=True)
+        logger.exception("LHA extraction exception")
         return False, "LHA extraction failed", None, False
 
 
@@ -1372,7 +1376,7 @@ def extract_zip(zip_path, extract_dir):
     except zipfile.BadZipFile:
         return False, "ZIP extraction failed: Bad ZIP file", None, True
     except Exception:
-        logger.error("ZIP extraction exception", exc_info=True)
+        logger.exception("ZIP extraction exception")
         return False, "ZIP extraction failed", None, False
 
 
@@ -1698,7 +1702,7 @@ def _read_lock_metadata(lock_path):
             return json.loads(lock_path.read_text(encoding="utf-8"))
         with fs_cache.open(lock_path, "r") as f:
             return json.load(f)
-    except Exception:
+    except (OSError, TypeError, ValueError):
         return None
 
 
@@ -1745,7 +1749,7 @@ def _validated_local_conversion_lock_path(lock_path):
 def _validated_remote_conversion_lock_path(lock_path):
     """Validate and normalize a remote conversion lock path."""
     if not isinstance(lock_path, str):
-        raise ValueError("Invalid conversion lock path type")
+        raise TypeError("Invalid conversion lock path type")
 
     normalized_remote_path = posixpath.normpath(lock_path)
     expected_prefix = f"{CONVERSION_LOCKS_ROOT_REMOTE}/"
@@ -1821,7 +1825,7 @@ def _lock_age_seconds(lock_path, metadata=None):
 def _conversion_lock_filename(cache_hash):
     """Build a safe shared lock filename from a validated cache hash."""
     if not isinstance(cache_hash, str):
-        raise ValueError("Invalid cache hash for conversion lock")
+        raise TypeError("Invalid cache hash for conversion lock")
     sanitized_cache_hash = secure_filename(cache_hash).lower()
     if not _MD5_HEX_RE.fullmatch(sanitized_cache_hash):
         raise ValueError("Invalid cache hash for conversion lock")
@@ -2010,7 +2014,7 @@ def _clear_stale_conversion_lock(lock_path):
         age_seconds = _lock_age_seconds(lock_path, metadata=metadata)
     except FileNotFoundError:
         return False
-    except Exception:
+    except (OSError, TypeError, ValueError):
         return False
 
     if age_seconds <= CONVERSION_TIMEOUT_SECONDS:
@@ -2033,7 +2037,7 @@ def _clear_stale_conversion_lock(lock_path):
             f"Removed stale conversion lock after {age_seconds:.1f}s: {_lock_name(lock_path)}"
         )
         return True
-    except Exception:
+    except (OSError, TypeError, ValueError):
         logger.warning(f"Could not remove stale conversion lock: {_lock_name(lock_path)}")
         return False
 
@@ -2484,7 +2488,7 @@ def process_audio_conversion(
         return _conversion_failure(f"File not found: {input_path}")
 
     except subprocess.TimeoutExpired:
-        logger.error("Conversion timeout", exc_info=True)
+        logger.exception("Conversion timeout")
         return _conversion_failure(
             f"Conversion timeout ({CONVERSION_TIMEOUT_SECONDS} seconds exceeded)",
             player_format=metadata.player_format,
@@ -2494,7 +2498,7 @@ def process_audio_conversion(
             cache_hash=cache_hash,
         )
     except Exception:
-        logger.error("Conversion exception", exc_info=True)
+        logger.exception("Conversion exception")
         return _conversion_failure(
             "Internal server error during conversion",
             player_format=metadata.player_format,
@@ -2739,7 +2743,7 @@ def test_create_stale_conversion_lock():
             }
         )
     except Exception as e:
-        logger.error(f"Error creating stale lock: {e}", exc_info=True)
+        logger.exception("Error creating stale lock: %s", e)
         return json_response({"error": "Failed to create stale conversion lock"}, 500)
 
 
@@ -2850,7 +2854,7 @@ def upload_file():
     except RequestEntityTooLarge as exc:
         return request_entity_too_large_handler(exc)
     except Exception:
-        logger.error("Upload error", exc_info=True)
+        logger.exception("Upload error")
         return json_response({"error": "Internal server error during upload"}, 500)
     finally:
         _log_duration(
@@ -2892,7 +2896,7 @@ def probe_upload():
     except RequestEntityTooLarge as exc:
         return request_entity_too_large_handler(exc)
     except Exception:
-        logger.error("Probe upload error", exc_info=True)
+        logger.exception("Probe upload error")
         return json_response(
             {
                 "ok": False,
@@ -2936,7 +2940,7 @@ def convert_probed():
             return json_response({"error": "Module not found! Please re-upload"}, 404)
         return response
     except Exception:
-        logger.error("Convert-probed error", exc_info=True)
+        logger.exception("Convert-probed error")
         return json_response({"error": "Internal server error"}, 500)
     finally:
         _log_duration(
@@ -3351,7 +3355,7 @@ def is_safe_url(u):
         # Normalize hostname for Unicode/punycode edge cases
         try:
             normalized_hostname = parsed.hostname.encode("idna").decode("ascii")
-        except Exception:
+        except UnicodeError:
             logger.info(
                 f"is_safe_url: failed to normalize hostname '{parsed.hostname}' "
                 f"in URL: {sanitized_url_for_log}"
@@ -3385,7 +3389,7 @@ def is_safe_url(u):
                     ipaddress.ip_address(addr[4][0])
                     for addr in socket.getaddrinfo(normalized_hostname, None)
                 ]
-            except Exception:
+            except OSError:
                 logger.info(
                     f"is_safe_url: failed to resolve domain '{normalized_hostname}' "
                     f"in URL: {sanitized_url_for_log}"
@@ -3461,7 +3465,7 @@ def is_safe_url(u):
         logger.info(f"is_safe_url: accepted URL: {sanitized_url_for_log}")
         return True
     except Exception:
-        logger.error(f"is_safe_url: exception for URL '{sanitized_url_for_log}'", exc_info=True)
+        logger.exception("is_safe_url: exception for URL '%s'", sanitized_url_for_log)
         return False
 
 
@@ -3738,7 +3742,7 @@ def convert_url_payload(data):
             unsupported_content_policy=UnsupportedContentPolicy.CLIENT_ERROR,
         )
     except Exception:
-        logger.error("Convert URL error", exc_info=True)
+        logger.exception("Convert URL error")
         return json_response(
             {
                 "error": "Internal server error during URL conversion",
@@ -3777,7 +3781,7 @@ def probe_url_payload(data):
             unsupported_content_policy=UnsupportedContentPolicy.CLIENT_ERROR,
         )
     except Exception:
-        logger.error("Probe URL error", exc_info=True)
+        logger.exception("Probe URL error")
         return json_response(
             {
                 "error": "Internal server error during URL probe",
@@ -4010,9 +4014,10 @@ def download_and_limit_size(url, temp_file_path, error_context=""):
             {"error": f"Download failed for {error_context}"}, HTTP_BAD_GATEWAY
         )
     except Exception:
-        logger.error(
-            f"Unexpected error during download for {sanitized_url(url)} ({error_context})",
-            exc_info=True,
+        logger.exception(
+            "Unexpected error during download for %s (%s)",
+            sanitized_url(url),
+            error_context,
         )
         # Clean up partial file
         if temp_file_path.exists():
@@ -4118,7 +4123,7 @@ def serve_audio_file(file_id, *, as_attachment=False, custom_filename=None):
             return json_response({"error": "File not found or forbidden"}, 404)
 
     except Exception:
-        logger.error(f"Error serving file {safe_file_id}", exc_info=True)
+        logger.exception("Error serving file %s", safe_file_id)
         return json_response({"error": "Internal server error"}, 500)
 
     file_size = file_path.stat().st_size

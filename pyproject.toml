@@ -40,9 +40,12 @@ select = [
     "A",   # flake8-builtins
     "ARG", # flake8-unused-arguments
     "B",   # flake8-bugbear
+    "BLE001", # blind-except
     "C4",  # flake8-comprehensions
+    "EXE002", # shebang-missing-executable-file
     "PIE", # flake8-pie
     "FBT", # flake8-boolean-trap
+    "G201", # logging-exc-info
     "LOG", # flake8-logging
     "PYI", # flake8-pyi
     "Q",   # flake8-quotes
@@ -52,6 +55,7 @@ select = [
     "SLF", # flake8-self
     "TC",  # flake8-type-checking
     "TID", # flake8-tidy-imports
+    "TRY004", # type-check-without-type-error
     "RET", # flake8-return
     "RUF", # Ruff-specific rules
     "PTH", # pathlib best practices
