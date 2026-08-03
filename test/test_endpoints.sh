@@ -12,6 +12,7 @@ LOCAL_TEST_SERVER_URL="http://uade-test-http-server:$LOCAL_TEST_SERVER_PORT"
 SKIP_MODARCHIVE_TESTS="${SKIP_MODARCHIVE_TESTS:-0}"
 AMINET_LHA_ARCHIVE_URL="https://aminet.net/mods/pop/spacedebris.lha"
 PROJECT_X_THESMOPHORIA_URL="https://ftp.modland.com/pub/modules/Protracker/Allister%20Brimble/project%20x%20-%20thesmophoria.mod"
+LED_STORM_EXOTICA_LHA_URL="https://files.exotica.org.uk/?file=exotica/media/audio/UnExoticA/Game/Follin_Tim/L_E_D_Storm.lha"
 
 ./prepare-endpoint-fixtures.sh
 
@@ -3032,6 +3033,7 @@ test_url "AHX module" "https://modland.com/pub/modules/AHX/Pink/stormlord.ahx"
 test_url "TFMX module" "https://modland.com/pub/modules/TFMX/Chris%20Huelsbeck/mdat.turrican%202%20level%200-intro" "https://modland.com/pub/modules/TFMX/Chris%20Huelsbeck/smpl.turrican%202%20level%200-intro"
 test_url "TFMX module (Apidya)" "https://modland.com/pub/modules/TFMX/Chris%20Huelsbeck/mdat.apidya%20%28level%201%29" "https://modland.com/pub/modules/TFMX/Chris%20Huelsbeck/smpl.apidya%20%28level%201%29"
 test_url "LHA archive" "$AMINET_LHA_ARCHIVE_URL"
+test_url "Exotica browser-verification LHA archive" "$LED_STORM_EXOTICA_LHA_URL"
 test_url "Project-X module" "$PROJECT_X_THESMOPHORIA_URL"
 test_url "ZIP archive" "https://files.scene.org/get:fi-https/music/artists/4-mat/chip_shop.zip"
 test_url "RJP module" "https://modland.com/pub/modules/Richard%20Joseph/Richard%20Joseph/cannon%20fodder%20(intro).sng" "https://modland.com/pub/modules/Richard%20Joseph/Richard%20Joseph/cannon%20fodder%20(intro).ins"

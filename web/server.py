@@ -66,6 +66,8 @@ SANITIZED_URL_LOG_MAX_LEN: Final = 200
 CACHE_ACCESS_RECORD_SUFFIX: Final = ".cache-access.json"
 ENOENT_ERRNO: Final = 2
 MAX_REMOTE_REDIRECTS: Final = 5
+REMOTE_BROWSER_VERIFICATION_RETRIES: Final = 1
+REMOTE_BROWSER_VERIFICATION_RETRY_DELAY_SECONDS: Final = 1
 GIT_BIN: Final = "/usr/bin/git"
 UADE123_BIN: Final = "/usr/local/bin/uade123"
 FLAC_BIN: Final = "/usr/bin/flac"
@@ -3627,13 +3629,34 @@ def ensure_safe_remote_url(u, *, context="URL"):
     return normalized_url
 
 
+class UnsupportedRemoteContentError(requests.RequestException):
+    """Raised when a remote URL returns browser-only content instead of a file."""
+
+
+def is_html_response(response):
+    """Return True when a response declares HTML content."""
+    content_type = response.headers.get("content-type", "").split(";", maxsplit=1)[0]
+    return content_type.strip().lower() in {"text/html", "application/xhtml+xml"}
+
+
+def response_looks_like_browser_verification(response):
+    """Return True for small browser-verification pages that set a retry cookie."""
+    if not is_html_response(response):
+        return False
+
+    body = response.content.lower()
+    return b"verifying your browser" in body and b"window.location.reload" in body
+
+
 @contextmanager
 def open_safe_remote_stream(url, *, headers, timeout=30):
     """Open a streaming HTTP response while validating each redirect target."""
     current_url = ensure_safe_remote_url(url, context="URL")
 
     with requests.Session() as session:
-        for _ in range(MAX_REMOTE_REDIRECTS + 1):
+        redirect_count = 0
+        verification_retry_count = 0
+        while redirect_count <= MAX_REMOTE_REDIRECTS:
             response = session.get(
                 current_url,
                 timeout=timeout,
@@ -3646,6 +3669,7 @@ def open_safe_remote_stream(url, *, headers, timeout=30):
             if response.is_redirect or response.is_permanent_redirect:
                 redirect_target = response.headers.get("location")
                 response.close()
+                redirect_count += 1
 
                 if not redirect_target:
                     raise requests.RequestException("Redirect response missing Location header")
@@ -3653,6 +3677,28 @@ def open_safe_remote_stream(url, *, headers, timeout=30):
                 next_url = urllib.parse.urljoin(current_url, redirect_target)
                 current_url = ensure_safe_remote_url(next_url, context="redirect URL")
                 continue
+
+            if response.status_code < HTTP_CLIENT_ERROR_MIN:
+                if response_looks_like_browser_verification(response):
+                    response.close()
+                    if verification_retry_count < REMOTE_BROWSER_VERIFICATION_RETRIES:
+                        verification_retry_count += 1
+                        logger.info(
+                            "Remote URL returned a browser verification page; "
+                            "retrying once with session cookies: %s",
+                            sanitized_url(current_url),
+                        )
+                        time.sleep(REMOTE_BROWSER_VERIFICATION_RETRY_DELAY_SECONDS)
+                        continue
+                    raise UnsupportedRemoteContentError(
+                        "Remote host returned a browser verification page"
+                    )
+
+                if is_html_response(response):
+                    response.close()
+                    raise UnsupportedRemoteContentError(
+                        "Remote URL returned HTML instead of a downloadable file"
+                    )
 
             try:
                 yield response, current_url
@@ -4141,6 +4187,19 @@ def download_and_limit_size(url, temp_file_path, error_context=""):
         )
         return False, json_response(
             {"error": f"Download failed for {error_context}"}, HTTP_BAD_GATEWAY
+        )
+    except UnsupportedRemoteContentError as exc:
+        logger.warning(
+            "Remote fetch rejected unsupported content for %s (%s): %s",
+            sanitized_url(url),
+            error_context,
+            exc,
+        )
+        if temp_file_path.exists():
+            temp_file_path.unlink(missing_ok=True)
+        return False, json_response(
+            {"error": f"{error_context} URL did not return a downloadable file"},
+            HTTP_CLIENT_ERROR_MIN,
         )
     except ValueError:
         logger.warning(

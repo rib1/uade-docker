@@ -102,6 +102,7 @@ This document contains project-specific learnings and regression-avoidance notes
 - **Input Validation:** `/probe-url` should validate remote module URLs before the frontend adds them to the queue.
 - **Error Handling:** `/probe-url` and `/convert-url` must return JSON errors consistently. Use `request.get_json(silent=True)` and explicit JSON `400` responses for bad requests.
 - **Error Mapping:** Map upstream `4xx` errors from user-supplied URLs to a client-facing `400`, not a `500` internal server error.
+- **Remote Verification Pages:** Some archive hosts return a one-shot HTML browser-verification page before the real download. Detect that page before writing the URL cache, retry once with the session cookie, and never cache the HTML response as an invalid module.
 - **Error Exposure:** Do not return raw exception text, stack traces, or subprocess stderr in JSON error payloads. Log detailed failure context on the server, but send stable generic error messages to clients.
 - **Endpoint Responsibility:** Keep `/probe-url` for metadata only; it should never return conversion artifacts.
 - **Concurrency:** The sample-file lock must be based on the actual cached sample path, not the module namespace, to serialize access correctly.
