@@ -84,8 +84,15 @@ updates:
   # Monitor GitHub Actions
   - package-ecosystem: "github-actions"
     directory: "/"
+    # CodeQL bundle updates are driven by github/codeql-action bumps; the
+    # quality sync check then requires test/codeql-version.txt to match the
+    # pinned action's default bundle version.
     schedule:
       interval: "weekly"
     cooldown:
       default-days: 7
     open-pull-requests-limit: 5
+    groups:
+      codeql-action:
+        patterns:
+          - "github/codeql-action"

@@ -1,7 +1,5 @@
 FROM python:3.13.14-slim-bookworm
 
-ARG CODEQL_VERSION=2.25.2
-
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
         bash=5.2.15-2+b* \
@@ -10,7 +8,10 @@ RUN apt-get update \
         tar=1.34+dfsg-1.2+deb12u1 \
     && rm -rf /var/lib/apt/lists/*
 
-RUN curl --retry 5 --retry-delay 2 --retry-all-errors -fsSL \
+COPY test/codeql-version.txt /tmp/codeql-version.txt
+
+RUN CODEQL_VERSION="$(cat /tmp/codeql-version.txt)" \
+    && curl --retry 5 --retry-delay 2 --retry-all-errors -fsSL \
         "https://github.com/github/codeql-action/releases/download/codeql-bundle-v${CODEQL_VERSION}/codeql-bundle-linux64.tar.gz" \
         -o /tmp/codeql-bundle-linux64.tar.gz \
     && curl --retry 5 --retry-delay 2 --retry-all-errors -fsSL \

@@ -25,6 +25,7 @@
 #   ./test/check-code-quality.sh --playwright-sync # Playwright tooling version sync only
 #   ./test/check-code-quality.sh --node-quality-sync # Node quality helper image sync only
 #   ./test/check-code-quality.sh --python-sync # Python tooling version sync only
+#   ./test/check-code-quality.sh --codeql-sync # CodeQL bundle version sync only
 #   ./test/check-code-quality.sh --mypy       # mypy only
 #   ./test/check-code-quality.sh --vulture    # Vulture dead-code audit only
 #   ./test/check-code-quality.sh --purgecss      # PurgeCSS unused CSS check only
@@ -174,6 +175,7 @@ HTML Checks:
 
 Backend Python Checks:
   --python-sync
+  --codeql-sync
   --black
   --ruff
   --mypy
@@ -210,6 +212,7 @@ enable_only_check() {
     RUN_PLAYWRIGHT_SYNC=false
     RUN_NODE_QUALITY_SYNC=false
     RUN_PYTHON_SYNC=false
+    RUN_CODEQL_SYNC=false
     RUN_MYPY=false
     RUN_VULTURE=false
     RUN_INSTRUCTIONS=false
@@ -233,6 +236,7 @@ enable_only_check() {
         playwright-sync) RUN_PLAYWRIGHT_SYNC=true ;;
         node-quality-sync) RUN_NODE_QUALITY_SYNC=true ;;
         python-sync) RUN_PYTHON_SYNC=true ;;
+        codeql-sync) RUN_CODEQL_SYNC=true ;;
         mypy) RUN_MYPY=true ;;
         vulture) RUN_VULTURE=true ;;
         instructions) RUN_INSTRUCTIONS=true ;;
@@ -261,6 +265,7 @@ RUN_PLAYWRIGHT_SYNC=true
 RUN_NODE_QUALITY_SYNC=true
 RUN_PURGECSS=true
 RUN_PYTHON_SYNC=true
+RUN_CODEQL_SYNC=true
 RUN_MYPY=true
 RUN_VULTURE=true
 RUN_INSTRUCTIONS=true
@@ -338,6 +343,10 @@ for arg in "$@"; do
             ;;
         --python-sync)
             enable_only_check python-sync
+            shift
+            ;;
+        --codeql-sync)
+            enable_only_check codeql-sync
             shift
             ;;
         --mypy)
@@ -725,9 +734,36 @@ if [ "$RUN_PYTHON_SYNC" = true ]; then
     fi
 fi
 
+# CodeQL bundle sync check
+if [ "$RUN_CODEQL_SYNC" = true ]; then
+    if [ "$RUN_PYTHON_SYNC" != true ]; then
+        print_group_header "Backend Python Checks"
+    fi
+    print_header "CodeQL Bundle Sync"
+
+    echo "Checking local CodeQL bundle version against GitHub Action default..."
+
+    if command -v node >/dev/null 2>&1; then
+        OUTPUT=$(cd "${PROJECT_ROOT}" && node test/check-codeql-version-sync.mjs 2>&1)
+        EXIT_CODE=$?
+    else
+        OUTPUT=$(docker run --rm \
+               -v "${PROJECT_ROOT}:/workspace" \
+               --workdir /workspace \
+               node:26-alpine node test/check-codeql-version-sync.mjs 2>&1)
+        EXIT_CODE=$?
+    fi
+
+    if [ $EXIT_CODE -eq 0 ]; then
+        print_result "CodeQL Bundle Sync" 0
+    else
+        print_result "CodeQL Bundle Sync" $EXIT_CODE "$OUTPUT"
+    fi
+fi
+
 # Black Check
 if [ "$RUN_BLACK" = true ]; then
-    if [ "$RUN_PYTHON_SYNC" != true ]; then
+    if [ "$RUN_PYTHON_SYNC" != true ] && [ "$RUN_CODEQL_SYNC" != true ]; then
         print_group_header "Backend Python Checks"
     fi
     print_header "Black - Python Code Formatting"

@@ -23,6 +23,7 @@
 #   .\test\check-code-quality.ps1 -PlaywrightSync # Playwright tooling version sync only
 #   .\test\check-code-quality.ps1 -NodeQualitySync # Node quality helper image sync only
 #   .\test\check-code-quality.ps1 -PythonSync  # Python tooling version sync only
+#   .\test\check-code-quality.ps1 -CodeQLSync  # CodeQL bundle version sync only
 #   .\test\check-code-quality.ps1 -MyPy        # mypy only
 #   .\test\check-code-quality.ps1 -Vulture     # Vulture dead-code audit only
 #   .\test\check-code-quality.ps1 -PurgeCSS    # PurgeCSS unused CSS check only
@@ -51,6 +52,7 @@ param(
     [switch]$PlaywrightSync,
     [switch]$NodeQualitySync,
     [switch]$PythonSync,
+    [switch]$CodeQLSync,
     [switch]$MyPy,
     [switch]$Vulture,
     [switch]$Instructions,
@@ -88,6 +90,7 @@ function Show-Usage {
     Write-Host ""
     Write-Host "Backend Python Checks:"
     Write-Host "  -PythonSync"
+    Write-Host "  -CodeQLSync"
     Write-Host "  -Black"
     Write-Host "  -Ruff"
     Write-Host "  -MyPy"
@@ -200,7 +203,7 @@ if ($Help) {
 }
 
 # Default to run all if no specific tool selected
-if (-not $ESLint -and -not $Black -and -not $Ruff -and -not $ActionLint -and -not $Hadolint -and -not $Compose -and -not $ShellCheck -and -not $Yamllint -and -not $Stylelint -and -not $HTMLHint -and -not $Knip -and -not $KnipProduction -and -not $KnipNamespace -and -not $PlaywrightSync -and -not $NodeQualitySync -and -not $PythonSync -and -not $MyPy -and -not $Vulture -and -not $Instructions -and -not $Documentation -and -not $PurgeCSS) {
+if (-not $ESLint -and -not $Black -and -not $Ruff -and -not $ActionLint -and -not $Hadolint -and -not $Compose -and -not $ShellCheck -and -not $Yamllint -and -not $Stylelint -and -not $HTMLHint -and -not $Knip -and -not $KnipProduction -and -not $KnipNamespace -and -not $PlaywrightSync -and -not $NodeQualitySync -and -not $PythonSync -and -not $CodeQLSync -and -not $MyPy -and -not $Vulture -and -not $Instructions -and -not $Documentation -and -not $PurgeCSS) {
     $ESLint = $true
     $Stylelint = $true
     $HTMLHint = $true
@@ -210,6 +213,7 @@ if (-not $ESLint -and -not $Black -and -not $Ruff -and -not $ActionLint -and -no
     $PlaywrightSync = $true
     $NodeQualitySync = $true
     $PythonSync = $true
+    $CodeQLSync = $true
     $Black = $true
     $Ruff = $true
     $ActionLint = $true
@@ -539,9 +543,32 @@ if ($PythonSync) {
     }
 }
 
+# CodeQL bundle sync check
+if ($CodeQLSync) {
+    if (-not $PythonSync) {
+        Write-GroupHeader "Backend Python Checks"
+    }
+    Write-Header "CodeQL Bundle Sync"
+
+    Write-Host "Checking local CodeQL bundle version against GitHub Action default..."
+
+    $output = & docker run --rm `
+        -v "${ProjectRoot}:/workspace" `
+        --workdir /workspace `
+        node:26-alpine node test/check-codeql-version-sync.mjs 2>&1
+
+    $exitCode = $LASTEXITCODE
+
+    if ($exitCode -eq 0) {
+        Write-Result "CodeQL Bundle Sync" 0
+    } else {
+        Write-Result "CodeQL Bundle Sync" 1 $output
+    }
+}
+
 # Black Check
 if ($Black) {
-    if (-not $PythonSync) {
+    if (-not $PythonSync -and -not $CodeQLSync) {
         Write-GroupHeader "Backend Python Checks"
     }
     Write-Header "Black - Python Code Formatting"

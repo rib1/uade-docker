@@ -309,6 +309,7 @@ This document contains project-specific learnings and regression-avoidance notes
 **Key Takeaways:** Keep local CodeQL as a separate Dockerized verification path, and fix the actual taint flows instead of guessing from GitHub alerts.
 
 - **Separate Workflow:** Local CodeQL should stay opt-in and separate from the default Compose quality run. In this repo, `codeql-check` belongs in `test/docker-compose.quality.yml`, but `quality-check` should remain the fast default.
+- **Bundle Version Sync:** Keep the local CodeQL bundle pin in `test/codeql-version.txt`. Dependabot can update the pinned `github/codeql-action` workflow action, and the quality sync check should resolve that tag's default bundle from the action changelog instead of maintaining a hand-written version table.
 - **Docker-First Local Scan:** Use the same Compose pattern as other repo checks for local confirmation. The current local entrypoint is `docker compose -f docker-compose.yml -f test/docker-compose.quality.yml run --rm --build codeql-check`.
 - **Debian Binary Rebuild Pins:** The local CodeQL image inherits Bookworm package pins from `python:*-slim-bookworm`. For Debian binary rebuild suffixes such as `bash=5.2.15-2+b10`, prefer a wildcard pin like `bash=5.2.15-2+b*` so a base-image bump to `+b13` does not break `apt-get install` while Hadolint still sees an explicit version family.
 - **SARIF Confirmation:** When GitHub Advanced Security findings are unclear, re-run the local Dockerized scan and parse the generated SARIF under `reports/codeql/` before making more speculative changes.
