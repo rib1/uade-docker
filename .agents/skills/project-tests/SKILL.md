@@ -92,7 +92,7 @@ Benchmark suite:
 Use when the change affects performance, concurrency, cache efficiency, range streaming, or you need throughput/latency reports rather than pass/fail functional coverage.
 
 ```powershell
-docker compose -f docker-compose.yml -f test/docker-compose.benchmark.yml run --rm --build uade-benchmark-runner
+$env:GIT_COMMIT = (git rev-parse HEAD); docker compose -f docker-compose.yml -f test/docker-compose.benchmark.yml run --rm --build uade-benchmark-runner
 ```
 
 Baseline DAST:

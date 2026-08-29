@@ -218,6 +218,7 @@ This document contains project-specific learnings and regression-avoidance notes
 - **OCI vs Runtime:** OCI labels are the best-practice place for container image metadata, but the app still needs its own readable source at runtime because a running container cannot easily introspect its own image labels.
 - **Health Test Coverage:** If `/health` exposes `image_build_time`, tests should verify it is non-null, parseable, and in the past rather than only checking that the field exists.
 - **Layer Cache Optimization:** `ARG` values that change every build (e.g. `GIT_COMMIT`, `IMAGE_CREATED`) bust the Docker layer cache for all subsequent layers. Place these ARGs as late as possible — after expensive layers like `apt-get install`, `pip install`, and `COPY --from` stages.
+- **Local Revision Injection:** Set `GIT_COMMIT` from `git rev-parse HEAD` immediately before every local Compose command that builds the web image. Do not reuse a pre-existing shell value: Compose will accept it even when it names an older checkout, leaving `/health` and image metadata stale despite building current source. Host-side test wrappers should override the value for their run and restore the caller's original environment afterward.
 - **Label Grouping:** Group all OCI metadata labels (`image.source`, `image.created`, `image.revision`) together in the late metadata block for readability, even if static labels don't affect caching.
 
 ## Docker Base Image (CLI) Release Lessons

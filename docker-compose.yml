@@ -36,7 +36,10 @@
 #    To stop and clean up the multi-instance setup:
 #    docker compose -f docker-compose.yml -f test/docker-compose.multiinstance.yml down -v
 # 8. To run the benchmark suite (rate limiting disabled, uses the same downloaded fixtures as the endpoint tests):
-#    docker compose -f docker-compose.yml -f test/docker-compose.benchmark.yml run --rm --build uade-benchmark-runner
+#    powershell:
+#    $env:GIT_COMMIT = (git rev-parse HEAD); docker compose -f docker-compose.yml -f test/docker-compose.benchmark.yml run --rm --build uade-benchmark-runner
+#    or in bash:
+#    GIT_COMMIT=$(git rev-parse HEAD) docker compose -f docker-compose.yml -f test/docker-compose.benchmark.yml run --rm --build uade-benchmark-runner
 # 9. To run a DAST scan (UADE_TEST_MODE is OFF by default):
 #    docker compose run --rm --build zap-scan
 #    To run a DAST scan with local-only ZAP seed requests (UADE_TEST_MODE is ON):

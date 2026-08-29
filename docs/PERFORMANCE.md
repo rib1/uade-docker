@@ -10,8 +10,14 @@ The benchmark runner version pin lives in `test/docker-compose.tooling.yml`, alo
 
 Use the benchmark Compose overlay:
 
+```powershell
+$env:GIT_COMMIT = (git rev-parse HEAD); docker compose -f docker-compose.yml -f test/docker-compose.benchmark.yml run --rm --build uade-benchmark-runner
+```
+
+Or from Bash:
+
 ```bash
-docker compose -f docker-compose.yml -f test/docker-compose.benchmark.yml run --rm --build uade-benchmark-runner
+GIT_COMMIT=$(git rev-parse HEAD) docker compose -f docker-compose.yml -f test/docker-compose.benchmark.yml run --rm --build uade-benchmark-runner
 ```
 
 The runner writes benchmark summaries to `reports/benchmarks/`.
@@ -102,6 +108,8 @@ Run it from PowerShell:
 ```powershell
 .\test\run-cloudrun-semaphore-sweep.ps1
 ```
+
+The wrapper replaces any inherited `GIT_COMMIT` with the current checkout's HEAD for the sweep, then restores the caller's original environment value during cleanup.
 
 Default sweep:
 

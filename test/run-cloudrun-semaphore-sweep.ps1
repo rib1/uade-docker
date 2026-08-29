@@ -28,7 +28,7 @@ $ProjectRoot = Split-Path -Parent $ScriptDir
 $ComposeArgs = @("-f", "docker-compose.yml", "-f", "test/docker-compose.benchmark.yml")
 $RunnerService = "uade-benchmark-runner"
 $Results = @()
-$CreatedGitCommit = $false
+$OriginalGitCommit = $env:GIT_COMMIT
 $OriginalMaxConcurrentConversions = $env:MAX_CONCURRENT_CONVERSIONS
 
 function Get-K6MetricValue {
@@ -171,6 +171,11 @@ function Invoke-Compose {
 
 Push-Location $ProjectRoot
 try {
+    $env:GIT_COMMIT = (git rev-parse HEAD).Trim()
+    if ($LASTEXITCODE -ne 0 -or -not $env:GIT_COMMIT) {
+        throw "Could not resolve the current Git commit"
+    }
+
     New-Item -ItemType Directory -Force -Path $OutputDir | Out-Null
 
     foreach ($limit in $SemaphoreLimits) {
@@ -183,10 +188,6 @@ try {
         Write-Host "=== Cloud Run semaphore sweep: MAX_CONCURRENT_CONVERSIONS=$limit ==="
 
         $env:MAX_CONCURRENT_CONVERSIONS = "$limit"
-        if (-not $env:GIT_COMMIT) {
-            $env:GIT_COMMIT = (git rev-parse HEAD).Trim()
-            $CreatedGitCommit = $true
-        }
 
         Invoke-Compose -Arguments @("up", "-d", "--build", "uade-web", "test-http-server")
 
@@ -241,7 +242,9 @@ finally {
     } else {
         Remove-Item Env:MAX_CONCURRENT_CONVERSIONS -ErrorAction SilentlyContinue
     }
-    if ($CreatedGitCommit) {
+    if ($null -ne $OriginalGitCommit) {
+        $env:GIT_COMMIT = $OriginalGitCommit
+    } else {
         Remove-Item Env:GIT_COMMIT -ErrorAction SilentlyContinue
     }
     Pop-Location

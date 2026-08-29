@@ -83,7 +83,7 @@ docker compose -f docker-compose.yml -f test/docker-compose.multiinstance.yml do
 Use for throughput/latency, cache efficiency, streaming, or concurrency-performance verification.
 
 ```powershell
-docker compose -f docker-compose.yml -f test/docker-compose.benchmark.yml run --rm --build uade-benchmark-runner
+$env:GIT_COMMIT = (git rev-parse HEAD); docker compose -f docker-compose.yml -f test/docker-compose.benchmark.yml run --rm --build uade-benchmark-runner
 ```
 
 ## DAST

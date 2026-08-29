@@ -36,6 +36,10 @@ const foundInlineReferencesByFile = new Map();
 const canonicalComposePath = "docker-compose.yml";
 const canonicalIntegrationTestCommand =
   "docker compose -f docker-compose.yml -f test/docker-compose.endpoints.yml run --rm --build uade-test-runner";
+const canonicalBenchmarkCommand =
+  "docker compose -f docker-compose.yml -f test/docker-compose.benchmark.yml run --rm --build uade-benchmark-runner";
+const powershellGitCommitPrefix = "$env:GIT_COMMIT = (git rev-parse HEAD); ";
+const bashGitCommitPrefix = "GIT_COMMIT=$(git rev-parse HEAD) ";
 const canonicalDevCommand =
   "docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d --build uade-web";
 const oneOffComposeServices = [
@@ -381,6 +385,61 @@ function validateComposeCommandSourceOfTruth() {
   }
 }
 
+function validateBenchmarkGitCommitInjection() {
+  const powershellInstructionPaths = [
+    canonicalComposePath,
+    "test/docker-compose.benchmark.yml",
+    "docs/PERFORMANCE.md",
+    ".agents/skills/project-tests/SKILL.md",
+    ".agents/skills/project-tests/references/commands.md",
+  ];
+  const bashInstructionPaths = [
+    canonicalComposePath,
+    "test/docker-compose.benchmark.yml",
+    "docs/PERFORMANCE.md",
+  ];
+
+  for (const relativePath of powershellInstructionPaths) {
+    if (
+      fileExists(relativePath) &&
+      !readFile(relativePath).includes(
+        `${powershellGitCommitPrefix}${canonicalBenchmarkCommand}`,
+      )
+    ) {
+      addFailure(
+        relativePath,
+        "benchmark command must replace GIT_COMMIT with the current HEAD before building",
+      );
+    }
+  }
+
+  for (const relativePath of bashInstructionPaths) {
+    if (
+      fileExists(relativePath) &&
+      !readFile(relativePath).includes(`${bashGitCommitPrefix}${canonicalBenchmarkCommand}`)
+    ) {
+      addFailure(
+        relativePath,
+        "Bash benchmark command must inject the current HEAD into the Compose process",
+      );
+    }
+  }
+
+  const sweepPath = "test/run-cloudrun-semaphore-sweep.ps1";
+  if (fileExists(sweepPath)) {
+    const sweepContent = readFile(sweepPath);
+    if (!sweepContent.includes("$env:GIT_COMMIT = (git rev-parse HEAD).Trim()")) {
+      addFailure(sweepPath, "must replace GIT_COMMIT with the current HEAD before building");
+    }
+    if (/if\s*\(-not\s+\$env:GIT_COMMIT\)/.test(sweepContent)) {
+      addFailure(sweepPath, "must not preserve a potentially stale GIT_COMMIT value");
+    }
+    if (!sweepContent.includes("$env:GIT_COMMIT = $OriginalGitCommit")) {
+      addFailure(sweepPath, "must restore the caller's GIT_COMMIT after the sweep");
+    }
+  }
+}
+
 function normalizePolicyLine(value) {
   return value
     .toLowerCase()
@@ -702,6 +761,7 @@ validatePlaywrightVersionAlignment();
 validateHadolintSingleVersionSource();
 validateK6ChecksumVersionAlignment();
 validateComposeCommandSourceOfTruth();
+validateBenchmarkGitCommitInjection();
 
 if (failures.length > 0) {
   console.error("Instruction file checks failed:");
