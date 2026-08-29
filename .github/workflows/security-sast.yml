@@ -165,16 +165,22 @@ jobs:
         include:
           - dockerfile: 'Dockerfile'
             label: 'Dockerfile'
+            category: 'hadolint'
           - dockerfile: 'Dockerfile.web'
             label: 'Dockerfile.web'
+            category: 'hadolint-Dockerfile.web'
           - dockerfile: 'test/Dockerfile.quality'
             label: 'Dockerfile.quality'
+            category: 'hadolint-Dockerfile.quality'
           - dockerfile: 'test/Dockerfile.test'
             label: 'Dockerfile.test'
+            category: 'hadolint-Dockerfile.test'
           - dockerfile: 'test/Dockerfile.benchmark'
             label: 'Dockerfile.benchmark'
+            category: 'hadolint-Dockerfile.benchmark'
           - dockerfile: 'test/Dockerfile.codeql'
             label: 'Dockerfile.codeql'
+            category: 'hadolint-Dockerfile.codeql'
 
     steps:
       - name: Checkout repository
@@ -223,7 +229,7 @@ jobs:
         with:
           # Avoid the reserved `.quality.sarif` suffix used by GitHub Code Quality.
           sarif_file: hadolint-${{ matrix.label }}-results.sarif
-          category: hadolint-${{ matrix.label }}
+          category: ${{ matrix.category }}
 
   dependency-review:
     name: Dependency Review

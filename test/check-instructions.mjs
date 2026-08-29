@@ -578,6 +578,16 @@ function validateHadolintSingleVersionSource() {
       message:
         "must avoid GitHub's reserved .quality.sarif suffix when a Dockerfile label ends in .quality",
     },
+    {
+      pattern: /category:\s*\$\{\{ matrix\.category \}\}/,
+      message: "must use explicit stable Hadolint analysis categories",
+    },
+    {
+      pattern:
+        /- dockerfile:\s*['"]Dockerfile['"]\s*\r?\n\s*label:\s*['"]Dockerfile['"]\s*\r?\n\s*category:\s*['"]hadolint['"]/,
+      message:
+        "must preserve the legacy root Dockerfile category so historical alerts can close",
+    },
   ];
 
   for (const { pattern, message } of requiredPatterns) {
