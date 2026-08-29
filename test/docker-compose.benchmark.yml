@@ -1,5 +1,8 @@
 # To run benchmark tests:
-#    docker compose -f docker-compose.yml -f test/docker-compose.benchmark.yml run --rm --build uade-benchmark-runner
+#    powershell:
+#    $env:GIT_COMMIT = (git rev-parse HEAD); docker compose -f docker-compose.yml -f test/docker-compose.benchmark.yml run --rm --build uade-benchmark-runner
+#    or in bash:
+#    GIT_COMMIT=$(git rev-parse HEAD) docker compose -f docker-compose.yml -f test/docker-compose.benchmark.yml run --rm --build uade-benchmark-runner
 services:
   uade-web:
     environment:

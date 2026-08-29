@@ -4,11 +4,11 @@ services:
   hadolint:
     image: hadolint/hadolint:v2.15.1
   actionlint:
-    image: rhysd/actionlint:1.7.11
+    image: rhysd/actionlint:1.7.12
   shellcheck:
     image: koalaman/shellcheck:v0.11.0
   k6:
-    image: grafana/k6:1.3.0
+    image: grafana/k6:2.2.0
   playwright:
     # Keep this Playwright image version aligned with
     # test/package.json devDependencies.playwright-core.

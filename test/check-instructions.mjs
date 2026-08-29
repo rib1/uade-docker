@@ -36,6 +36,10 @@ const foundInlineReferencesByFile = new Map();
 const canonicalComposePath = "docker-compose.yml";
 const canonicalIntegrationTestCommand =
   "docker compose -f docker-compose.yml -f test/docker-compose.endpoints.yml run --rm --build uade-test-runner";
+const canonicalBenchmarkCommand =
+  "docker compose -f docker-compose.yml -f test/docker-compose.benchmark.yml run --rm --build uade-benchmark-runner";
+const powershellGitCommitPrefix = "$env:GIT_COMMIT = (git rev-parse HEAD); ";
+const bashGitCommitPrefix = "GIT_COMMIT=$(git rev-parse HEAD) ";
 const canonicalDevCommand =
   "docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d --build uade-web";
 const oneOffComposeServices = [
@@ -381,6 +385,67 @@ function validateComposeCommandSourceOfTruth() {
   }
 }
 
+function validateBenchmarkGitCommitInjection() {
+  const powershellInstructionPaths = [
+    canonicalComposePath,
+    "test/docker-compose.benchmark.yml",
+    "docs/PERFORMANCE.md",
+    ".agents/skills/project-tests/SKILL.md",
+    ".agents/skills/project-tests/references/commands.md",
+  ];
+  const bashInstructionPaths = [
+    canonicalComposePath,
+    "test/docker-compose.benchmark.yml",
+    "docs/PERFORMANCE.md",
+  ];
+
+  for (const relativePath of powershellInstructionPaths) {
+    if (!fileExists(relativePath)) {
+      addFailure(relativePath, "required benchmark instruction file is missing");
+      continue;
+    }
+    if (
+      !readFile(relativePath).includes(
+        `${powershellGitCommitPrefix}${canonicalBenchmarkCommand}`,
+      )
+    ) {
+      addFailure(
+        relativePath,
+        "benchmark command must replace GIT_COMMIT with the current HEAD before building",
+      );
+    }
+  }
+
+  for (const relativePath of bashInstructionPaths) {
+    if (!fileExists(relativePath)) {
+      addFailure(relativePath, "required benchmark instruction file is missing");
+      continue;
+    }
+    if (
+      !readFile(relativePath).includes(`${bashGitCommitPrefix}${canonicalBenchmarkCommand}`)
+    ) {
+      addFailure(
+        relativePath,
+        "Bash benchmark command must inject the current HEAD into the Compose process",
+      );
+    }
+  }
+
+  const sweepPath = "test/run-cloudrun-semaphore-sweep.ps1";
+  if (fileExists(sweepPath)) {
+    const sweepContent = readFile(sweepPath);
+    if (!sweepContent.includes("$env:GIT_COMMIT = (git rev-parse HEAD).Trim()")) {
+      addFailure(sweepPath, "must replace GIT_COMMIT with the current HEAD before building");
+    }
+    if (/if\s*\(-not\s+\$env:GIT_COMMIT\)/.test(sweepContent)) {
+      addFailure(sweepPath, "must not preserve a potentially stale GIT_COMMIT value");
+    }
+    if (!sweepContent.includes("$env:GIT_COMMIT = $OriginalGitCommit")) {
+      addFailure(sweepPath, "must restore the caller's GIT_COMMIT after the sweep");
+    }
+  }
+}
+
 function normalizePolicyLine(value) {
   return value
     .toLowerCase()
@@ -632,6 +697,46 @@ function validateHadolintSingleVersionSource() {
   }
 }
 
+function validateK6ChecksumVersionAlignment() {
+  const toolingComposePath = "test/docker-compose.tooling.yml";
+  const benchmarkDockerfilePath = "test/Dockerfile.benchmark";
+
+  if (!fileExists(toolingComposePath) || !fileExists(benchmarkDockerfilePath)) {
+    return;
+  }
+
+  const toolingCompose = readFile(toolingComposePath);
+  const benchmarkDockerfile = readFile(benchmarkDockerfilePath);
+  const toolingVersion = toolingCompose.match(
+    /^  k6:\s*$.*?^    image:\s*grafana\/k6:(\d+\.\d+\.\d+)\s*$/ms,
+  )?.[1];
+  const checksumVersion = benchmarkDockerfile.match(
+    /K6_CHECKSUM_VERSION="(\d+\.\d+\.\d+)"/,
+  )?.[1];
+
+  if (!toolingVersion) {
+    addFailure(toolingComposePath, "must define a pinned grafana/k6 image");
+  }
+  if (!checksumVersion) {
+    addFailure(
+      benchmarkDockerfilePath,
+      "must identify the k6 release matched by the pinned archive checksum",
+    );
+  }
+  if (toolingVersion && checksumVersion && toolingVersion !== checksumVersion) {
+    addFailure(
+      benchmarkDockerfilePath,
+      `k6 checksum version ${checksumVersion} does not match tooling version ${toolingVersion}`,
+    );
+  }
+  if (!/K6_SHA256="[a-f0-9]{64}"/.test(benchmarkDockerfile)) {
+    addFailure(
+      benchmarkDockerfilePath,
+      "must pin the k6 Linux amd64 archive with a SHA-256 checksum",
+    );
+  }
+}
+
 for (const relativePath of instructionFiles) {
   if (!fileExists(relativePath)) {
     addFailure(relativePath, "expected instruction file is missing");
@@ -660,7 +765,9 @@ for (const relativePath of instructionFiles) {
 
 validatePlaywrightVersionAlignment();
 validateHadolintSingleVersionSource();
+validateK6ChecksumVersionAlignment();
 validateComposeCommandSourceOfTruth();
+validateBenchmarkGitCommitInjection();
 
 if (failures.length > 0) {
   console.error("Instruction file checks failed:");

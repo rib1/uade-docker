@@ -1,5 +1,8 @@
 # To run the cross-instance playback-protection benchmark:
-#    docker compose -f docker-compose.yml -f test/docker-compose.cross-instance-benchmark.yml run --rm --build uade-cross-instance-benchmark-runner
+#    powershell:
+#    $env:GIT_COMMIT = (git rev-parse HEAD); docker compose -f docker-compose.yml -f test/docker-compose.cross-instance-benchmark.yml run --rm --build uade-cross-instance-benchmark-runner
+#    or in bash:
+#    GIT_COMMIT=$(git rev-parse HEAD) docker compose -f docker-compose.yml -f test/docker-compose.cross-instance-benchmark.yml run --rm --build uade-cross-instance-benchmark-runner
 services:
   uade-web-a:
     build:
