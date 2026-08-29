@@ -26,6 +26,8 @@ COPY --chown=benchmarker:benchmarker test/bench ./bench
 
 RUN chmod +x ./*.sh
 
+# The user is present in this image's /etc/passwd, so name resolution is deterministic.
+# hadolint ignore=DL3066
 USER benchmarker
 
 ENTRYPOINT ["sh", "./run-benchmarks.sh"]

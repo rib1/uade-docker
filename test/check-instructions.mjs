@@ -524,6 +524,88 @@ function validatePlaywrightVersionAlignment() {
   }
 }
 
+function validateHadolintSingleVersionSource() {
+  const toolingComposePath = "test/docker-compose.tooling.yml";
+  const securityWorkflowPath = ".github/workflows/security-sast.yml";
+  const dependabotPath = ".github/dependabot.yml";
+
+  if (
+    !fileExists(toolingComposePath) ||
+    !fileExists(securityWorkflowPath) ||
+    !fileExists(dependabotPath)
+  ) {
+    return;
+  }
+
+  const toolingCompose = readFile(toolingComposePath);
+  const securityWorkflow = readFile(securityWorkflowPath);
+  const dependabotConfig = readFile(dependabotPath);
+  const pinnedImage = toolingCompose.match(
+    /^  hadolint:\s*$.*?^    image:\s*(hadolint\/hadolint:v\d+\.\d+\.\d+)\s*$/ms,
+  )?.[1];
+
+  if (!pinnedImage) {
+    addFailure(toolingComposePath, "must define a fully pinned Hadolint image");
+  }
+
+  if (/uses:\s*hadolint\/hadolint-action@/i.test(securityWorkflow)) {
+    addFailure(
+      securityWorkflowPath,
+      "must not use a separately versioned Hadolint action",
+    );
+  }
+
+  const requiredPatterns = [
+    {
+      pattern: /test\/docker-compose\.tooling\.yml/,
+      message: "must resolve Hadolint from test/docker-compose.tooling.yml",
+    },
+    {
+      pattern: /docker run --rm[\s\S]*steps\.hadolint-image\.outputs\.image/,
+      message: "must run the Hadolint image resolved from the tooling manifest",
+    },
+    {
+      pattern: /--config \.hadolint\.yaml/,
+      message: "must apply the repository Hadolint configuration explicitly",
+    },
+    {
+      pattern: /--format sarif/,
+      message: "must preserve SARIF output for GitHub Security",
+    },
+  ];
+
+  for (const { pattern, message } of requiredPatterns) {
+    if (!pattern.test(securityWorkflow)) {
+      addFailure(securityWorkflowPath, message);
+    }
+  }
+
+  if (/has_results\s*==\s*['"]true['"]/i.test(securityWorkflow)) {
+    addFailure(
+      securityWorkflowPath,
+      "must upload empty Hadolint SARIF analyses so GitHub can close resolved alerts",
+    );
+  }
+
+  const dependabotUpdateBlocks = dependabotConfig.split(
+    /(?=^  - package-ecosystem:)/m,
+  );
+  const monitorsHadolintComposeImage = dependabotUpdateBlocks.some(
+    (block) =>
+      /package-ecosystem:\s*["']docker-compose["']/i.test(block) &&
+      /directory:\s*["']\/test["']/i.test(block) &&
+      !/^    patterns:/m.test(block) &&
+      !/dependency-name:\s*["']?hadolint\/hadolint/i.test(block),
+  );
+
+  if (!monitorsHadolintComposeImage) {
+    addFailure(
+      dependabotPath,
+      "must monitor /test with the Docker Compose ecosystem for Hadolint image updates",
+    );
+  }
+}
+
 for (const relativePath of instructionFiles) {
   if (!fileExists(relativePath)) {
     addFailure(relativePath, "expected instruction file is missing");
@@ -551,6 +633,7 @@ for (const relativePath of instructionFiles) {
 }
 
 validatePlaywrightVersionAlignment();
+validateHadolintSingleVersionSource();
 validateComposeCommandSourceOfTruth();
 
 if (failures.length > 0) {

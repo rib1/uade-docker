@@ -20,6 +20,8 @@ COPY --chown=tester:tester web/server.py ./web/server.py
 RUN chmod +x ./*.sh
 
 # Switch to the non-root user
+# The user is present in this image's /etc/passwd, so name resolution is deterministic.
+# hadolint ignore=DL3066
 USER tester
 
 CMD ["/bin/bash", "./test_endpoints.sh"]

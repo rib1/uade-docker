@@ -107,6 +107,8 @@ RUN useradd -m -s /bin/bash uadeuser && \
 RUN chown root:uadeuser /usr/local/bin/uade123 && chmod 4750 /usr/local/bin/uade123
 
 # Switch to non-root user
+# The user is present in this image's /etc/passwd, so name resolution is deterministic.
+# hadolint ignore=DL3066
 USER uadeuser
 
 # The uade123 command-line player is the primary tool to run

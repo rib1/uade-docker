@@ -14,7 +14,7 @@ updates:
     cooldown:
       default-days: 7
     open-pull-requests-limit: 5
-  - package-ecosystem: "docker"
+  - package-ecosystem: "docker-compose"
     directory: "/test"
     patterns:
       - "mcr.microsoft.com/playwright"
@@ -33,6 +33,15 @@ updates:
         update-types:
           - "version-update:semver-major"
           - "version-update:semver-minor"
+    schedule:
+      interval: "weekly"
+    cooldown:
+      default-days: 7
+    open-pull-requests-limit: 5
+  - package-ecosystem: "docker-compose"
+    directory: "/test"
+    ignore:
+      - dependency-name: "mcr.microsoft.com/playwright"
     schedule:
       interval: "weekly"
     cooldown:

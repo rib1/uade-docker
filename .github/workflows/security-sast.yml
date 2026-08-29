@@ -180,47 +180,49 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v7
 
-      - name: Run Hadolint on ${{ matrix.dockerfile }}
-        uses: hadolint/hadolint-action@v3.4.0
-        with:
-          dockerfile: ${{ matrix.dockerfile }}
-          format: sarif
-          output-file: hadolint-${{ matrix.label }}.sarif
-          no-fail: true
-
-      - name: Check Hadolint SARIF has results
-        id: hadolint-sarif
+      - name: Resolve pinned Hadolint image
+        id: hadolint-image
         shell: bash
         run: |
-          python - <<'PY'
-          import json
-          import os
+          image="$(
+            awk '
+              /^  hadolint:[[:space:]]*$/ { in_hadolint = 1; next }
+              in_hadolint && /^    image:[[:space:]]*/ {
+                sub(/^    image:[[:space:]]*/, "")
+                print
+                exit
+              }
+            ' test/docker-compose.tooling.yml
+          )"
+          if [[ ! "$image" =~ ^hadolint/hadolint:v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "Could not resolve a pinned Hadolint image from test/docker-compose.tooling.yml" >&2
+            exit 1
+          fi
+          echo "image=$image" >> "$GITHUB_OUTPUT"
 
-          sarif_path = "hadolint-${{ matrix.label }}.sarif"
-          with open(sarif_path, encoding="utf-8") as fh:
-              data = json.load(fh)
-
-          count = sum(len(run.get("results", [])) for run in data.get("runs", []))
-
-          with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as fh:
-              fh.write(f"count={count}\n")
-              fh.write(f"has_results={'true' if count > 0 else 'false'}\n")
-          PY
+      - name: Run Hadolint on ${{ matrix.dockerfile }}
+        shell: bash
+        run: |
+          docker run --rm \
+            --volume "$GITHUB_WORKSPACE:/workspace:ro" \
+            --workdir /workspace \
+            "${{ steps.hadolint-image.outputs.image }}" \
+            hadolint \
+            --config .hadolint.yaml \
+            --format sarif \
+            --no-fail \
+            "${{ matrix.dockerfile }}" \
+            > "hadolint-${{ matrix.label }}.sarif"
 
       - name: Upload Hadolint results
         uses: github/codeql-action/upload-sarif@v4.37.7
         if: >-
           always() &&
-          steps.hadolint-sarif.outputs.has_results == 'true' &&
           (github.event_name != 'pull_request' ||
           github.event.pull_request.head.repo.full_name == github.repository)
         with:
           sarif_file: hadolint-${{ matrix.label }}.sarif
           category: hadolint-${{ matrix.label }}
-
-      - name: Skip empty Hadolint SARIF upload
-        if: always() && steps.hadolint-sarif.outputs.has_results != 'true'
-        run: echo "Skipping Hadolint SARIF upload because the scan produced 0 results."
 
   dependency-review:
     name: Dependency Review
