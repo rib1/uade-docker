@@ -572,12 +572,28 @@ function validateHadolintSingleVersionSource() {
       pattern: /--format sarif/,
       message: "must preserve SARIF output for GitHub Security",
     },
+    {
+      pattern:
+        /hadolint-\$\{\{ matrix\.label \}\}-results\.sarif/,
+      message:
+        "must avoid GitHub's reserved .quality.sarif suffix when a Dockerfile label ends in .quality",
+    },
   ];
 
   for (const { pattern, message } of requiredPatterns) {
     if (!pattern.test(securityWorkflow)) {
       addFailure(securityWorkflowPath, message);
     }
+  }
+
+  const safeSarifFilenameOccurrences = securityWorkflow.match(
+    /hadolint-\$\{\{ matrix\.label \}\}-results\.sarif/g,
+  );
+  if ((safeSarifFilenameOccurrences?.length ?? 0) < 2) {
+    addFailure(
+      securityWorkflowPath,
+      "must use the non-reserved Hadolint SARIF filename for both generation and upload",
+    );
   }
 
   if (/has_results\s*==\s*['"]true['"]/i.test(securityWorkflow)) {
