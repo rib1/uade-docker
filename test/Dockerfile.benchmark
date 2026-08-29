@@ -6,7 +6,9 @@ RUN apk add --no-cache curl=~8.21 bash=~5.3
 # benchmark runner the same way it tracks the other test/quality tool images.
 COPY test/docker-compose.tooling.yml /tmp/benchmark/docker-compose.tooling.yml
 RUN K6_TAG="$(sed -n 's|^    image: grafana/k6:||p' /tmp/benchmark/docker-compose.tooling.yml)" \
-    && K6_SHA256="84d26fc1f7bc03e02f2e016b3b1b20c032e05dfe461fca82de4e3a6ebe72ddbd" \
+    && K6_CHECKSUM_VERSION="2.2.0" \
+    && if [ "$K6_TAG" != "$K6_CHECKSUM_VERSION" ]; then echo "k6 checksum version does not match tooling manifest" >&2; exit 1; fi \
+    && K6_SHA256="b5a8003c86f35f5cd5ceef1490312c48e587696c94d998cefc6d7b3b4cb1597d" \
     && curl --retry 5 --retry-delay 2 --retry-all-errors -fsSL "https://github.com/grafana/k6/releases/download/v${K6_TAG}/k6-v${K6_TAG}-linux-amd64.tar.gz" -o /tmp/k6.tar.gz \
     && printf '%s  %s\n' "$K6_SHA256" "/tmp/k6.tar.gz" > /tmp/k6.tar.gz.sha256 \
     && sha256sum -c /tmp/k6.tar.gz.sha256 \

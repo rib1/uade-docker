@@ -632,6 +632,46 @@ function validateHadolintSingleVersionSource() {
   }
 }
 
+function validateK6ChecksumVersionAlignment() {
+  const toolingComposePath = "test/docker-compose.tooling.yml";
+  const benchmarkDockerfilePath = "test/Dockerfile.benchmark";
+
+  if (!fileExists(toolingComposePath) || !fileExists(benchmarkDockerfilePath)) {
+    return;
+  }
+
+  const toolingCompose = readFile(toolingComposePath);
+  const benchmarkDockerfile = readFile(benchmarkDockerfilePath);
+  const toolingVersion = toolingCompose.match(
+    /^  k6:\s*$.*?^    image:\s*grafana\/k6:(\d+\.\d+\.\d+)\s*$/ms,
+  )?.[1];
+  const checksumVersion = benchmarkDockerfile.match(
+    /K6_CHECKSUM_VERSION="(\d+\.\d+\.\d+)"/,
+  )?.[1];
+
+  if (!toolingVersion) {
+    addFailure(toolingComposePath, "must define a pinned grafana/k6 image");
+  }
+  if (!checksumVersion) {
+    addFailure(
+      benchmarkDockerfilePath,
+      "must identify the k6 release matched by the pinned archive checksum",
+    );
+  }
+  if (toolingVersion && checksumVersion && toolingVersion !== checksumVersion) {
+    addFailure(
+      benchmarkDockerfilePath,
+      `k6 checksum version ${checksumVersion} does not match tooling version ${toolingVersion}`,
+    );
+  }
+  if (!/K6_SHA256="[a-f0-9]{64}"/.test(benchmarkDockerfile)) {
+    addFailure(
+      benchmarkDockerfilePath,
+      "must pin the k6 Linux amd64 archive with a SHA-256 checksum",
+    );
+  }
+}
+
 for (const relativePath of instructionFiles) {
   if (!fileExists(relativePath)) {
     addFailure(relativePath, "expected instruction file is missing");
@@ -660,6 +700,7 @@ for (const relativePath of instructionFiles) {
 
 validatePlaywrightVersionAlignment();
 validateHadolintSingleVersionSource();
+validateK6ChecksumVersionAlignment();
 validateComposeCommandSourceOfTruth();
 
 if (failures.length > 0) {
