@@ -400,8 +400,11 @@ function validateBenchmarkGitCommitInjection() {
   ];
 
   for (const relativePath of powershellInstructionPaths) {
+    if (!fileExists(relativePath)) {
+      addFailure(relativePath, "required benchmark instruction file is missing");
+      continue;
+    }
     if (
-      fileExists(relativePath) &&
       !readFile(relativePath).includes(
         `${powershellGitCommitPrefix}${canonicalBenchmarkCommand}`,
       )
@@ -414,8 +417,11 @@ function validateBenchmarkGitCommitInjection() {
   }
 
   for (const relativePath of bashInstructionPaths) {
+    if (!fileExists(relativePath)) {
+      addFailure(relativePath, "required benchmark instruction file is missing");
+      continue;
+    }
     if (
-      fileExists(relativePath) &&
       !readFile(relativePath).includes(`${bashGitCommitPrefix}${canonicalBenchmarkCommand}`)
     ) {
       addFailure(
