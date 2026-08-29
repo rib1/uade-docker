@@ -4,7 +4,7 @@ services:
   hadolint:
     image: hadolint/hadolint:v2.15.1
   actionlint:
-    image: rhysd/actionlint:1.7.11
+    image: rhysd/actionlint:1.7.12
   shellcheck:
     image: koalaman/shellcheck:v0.11.0
   k6:
