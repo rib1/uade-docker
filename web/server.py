@@ -3793,7 +3793,7 @@ def download_module(url, cached_path, *, cache_label, external_label, wait_secon
                 touch_for_lru(cached_path)
                 return True, None
         logger.warning(f"Timeout waiting for download of {sanitized_url(url)}.")
-        return False, json_response({"error": "Timeout waiting for file download."}, 500)
+        return False, processing_response("Download in progress.")
     finally:
         if download_lock_acquired:
             lock_path.unlink(missing_ok=True)
