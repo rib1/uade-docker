@@ -43,6 +43,7 @@ The quality suite covers:
 - Python linting and formatting: `Ruff`
 - Python type checking: `mypy`
 - Python dead code: `Vulture`
+- Alpine apk package-family pins: current package-index sync check
 - Dockerfiles: `Hadolint`
 - Docker Compose files: compose validation
 - GitHub Actions workflows: `ActionLint`
@@ -58,6 +59,7 @@ Versions and behavior are intentionally centralized:
 - JavaScript/CSS/HTML tooling versions: [`test/package.json`](../test/package.json)
 - Python tooling versions: [`test/requirements-quality.txt`](../test/requirements-quality.txt)
 - Pinned Docker-based tooling images: [`test/docker-compose.tooling.yml`](../test/docker-compose.tooling.yml)
+- Alpine apk pin sync helper: [`test/check-alpine-apk-pins.mjs`](../test/check-alpine-apk-pins.mjs)
 - Main Bash runner: [`test/check-code-quality.sh`](../test/check-code-quality.sh)
 - Main PowerShell runner: [`test/check-code-quality.ps1`](../test/check-code-quality.ps1)
 - Docker Compose quality service: [`test/docker-compose.quality.yml`](../test/docker-compose.quality.yml)
@@ -97,12 +99,20 @@ If you prefer to stay inside Docker, pass the same help request through the qual
 docker compose -f docker-compose.yml -f test/docker-compose.quality.yml run --rm quality-check --help
 ```
 
+For Alpine package-family pin drift in Dockerfiles, run the sync helper directly:
+
+```bash
+node test/check-alpine-apk-pins.mjs
+node test/check-alpine-apk-pins.mjs --fix
+```
+
 ## CI Behavior
 
 Code quality runs automatically in GitHub Actions through [`code-quality.yml`](../.github/workflows/code-quality.yml).
 
 The CI job:
 
+- checks Alpine apk package-family pins before building the quality image
 - builds the quality-check environment
 - runs the full suite
 - fails the workflow if any check fails

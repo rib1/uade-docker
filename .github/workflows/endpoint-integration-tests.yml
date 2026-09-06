@@ -78,6 +78,10 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v4
 
+      - name: Check Alpine APK package pins
+        run: |
+          node test/check-alpine-apk-pins.mjs
+
       - name: Run endpoint integration tests
         run: |
           GIT_COMMIT="${GITHUB_SHA}" docker compose -f docker-compose.yml -f test/docker-compose.endpoints.yml run --rm --build uade-test-runner
