@@ -9,6 +9,7 @@ const toolingEntries = [
   "./bench/semaphore-balance.js",
   "./bench/smoke.js",
   "./bench/streaming.js",
+  "./check-alpine-apk-pins.mjs",
   "./check-documentation.mjs",
   "./check-instructions.mjs",
   "./check-codeql-version-sync.mjs",

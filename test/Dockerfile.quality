@@ -14,7 +14,7 @@ RUN apk add --no-cache \
     grep=~3.12 \
     findutils=~4.10.0 \
     coreutils=~9.11 \
-    curl=~8.21 \
+    curl=~8.22 \
     shellcheck=~0.11 \
     python3=~3.14 \
     py3-pip=~26.1 \
