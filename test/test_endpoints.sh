@@ -1039,6 +1039,40 @@ test_convert_url_error() {
     echo ""
 }
 
+test_convert_url_download_lock_timeout() {
+    TEST_NAME=$1
+    URL="$2?download_lock_id=$(date +%s%N)"
+
+    echo "--- Testing Convert URL Download Lock Timeout: $TEST_NAME ---"
+
+    URL_HASH=$(printf "%s" "$URL" | md5sum | awk '{print $1}')
+    LOCK_PATH="/uade-tmp/modules/space_debris.mod_${URL_HASH}.lock"
+    mkdir -p "$(dirname "$LOCK_PATH")"
+    rm -f "/uade-tmp/modules/space_debris.mod_${URL_HASH}" "$LOCK_PATH"
+    touch "$LOCK_PATH"
+
+    HTTP_CODE_BODY=$(_perform_convert_url_call "$URL")
+    HTTP_CODE=$(echo "$HTTP_CODE_BODY" | head -n1)
+    BODY=$(echo "$HTTP_CODE_BODY" | tail -n1)
+    rm -f "$LOCK_PATH"
+
+    if [ "$HTTP_CODE" -ne 409 ]; then
+        echo "ERROR: Convert URL returned HTTP $HTTP_CODE (expected 409) for '$TEST_NAME'"
+        echo "Response body: $BODY"
+        exit 1
+    fi
+
+    if [ "$(echo "$BODY" | jq -r .status)" != "processing" ] ||
+        [ "$(echo "$BODY" | jq -r .retryable)" != "true" ]; then
+        echo "ERROR: Convert URL lock timeout did not return retryable processing payload"
+        echo "Response body: $BODY"
+        exit 1
+    fi
+
+    echo "SUCCESS: Convert URL download lock timeout returned retryable processing response."
+    echo ""
+}
+
 test_probe_oversized_remote_file() {
     TEST_NAME=$1
     URL_BASE=$2
@@ -3066,6 +3100,7 @@ test_security_url "Reject convert-url with mutated module URL" "$LOCAL_TEST_SERV
 test_security_url "Reject convert-url with mutated sample URL" "$LOCAL_TEST_SERVER_URL/fixtures/modules/mdat.turrican_2_level_0-intro" "$LOCAL_TEST_SERVER_URL/fixtures/modules/smpl.turrican_2_level_0-intro;sleep%2015.0;"
 test_convert_url_error "Convert URL local fixture server 404" "$LOCAL_TEST_SERVER_URL/fixtures/missing/not-found.mod" "" 400 "External module URL could not be fetched"
 test_convert_url_error "Convert URL local upstream transport failure" "http://uade-test-http-server:65534/fixtures/modules/space_debris.mod" "" 502 "Download failed for External module"
+test_convert_url_download_lock_timeout "Convert URL in-flight download stays retryable" "$LOCAL_TEST_SERVER_URL/fixtures/modules/space_debris.mod"
 test_convert_url_malformed_json
 test_convert_url_wrong_content_type
 
