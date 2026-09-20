@@ -68,7 +68,7 @@ RUN apt-get update && \
     apt-get install -y --no-install-recommends \
         curl=8.14.1-2+deb13u* \
         rsync=3.4.1+ds1-5+deb13u* \
-        unzip=6.0-29 \
+        unzip=6.0-29+deb13u* \
         lhasa=0.4.0-1+b2 \
         libao4=1.2.2+20180113-1.2 && \
     rm -rf /var/lib/apt/lists/*
