@@ -15,8 +15,6 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libao4=1.2.2+20180113-1.2 \
     curl=8.14.1-2+deb13u* \
     ca-certificates=20250419 \
-    rsync=3.4.1+ds1-5+deb13u* \
-    unzip=6.0-29+deb13u* \
     lhasa=0.4.0-1+b2 \
     python3=3.13.5-1 \
     python3-pip=25.1.1+dfsg-1 \
