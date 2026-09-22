@@ -2,8 +2,11 @@ FROM alpine:latest
 
 RUN apk add --no-cache curl=~8.22 jq=~1.8 bash=~5.3 python3=~3.14
 
-# Create a non-root user and group
-RUN addgroup -S tester && adduser -S tester -G tester
+# Create a non-root user and a shared-volume group matching the web container's
+# uade group, so endpoint tests can safely exercise shared /tmp cleanup.
+RUN addgroup -S tester && adduser -S tester -G tester && \
+    addgroup -g 1000 shared-uade-tmp && \
+    addgroup tester shared-uade-tmp
 
 RUN mkdir -p /home/tester/app && chown -R tester:tester /home/tester/app
 

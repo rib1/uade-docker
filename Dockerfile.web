@@ -39,8 +39,8 @@ ENV PATH="/opt/venv/bin:$PATH"
 # hadolint ignore=DL3059
 RUN mkdir -p /app /opt/uade-web /tmp/modules /tmp/converted /tmp/cache && \
     useradd -m -u 1000 -s /bin/bash uade && \
-    chown -R uade:uade /app /opt/uade-web /opt/venv && \
-    chmod -R 777 /tmp/modules /tmp/converted /tmp/cache
+    chown -R uade:uade /app /opt/uade-web /opt/venv /tmp/modules /tmp/converted /tmp/cache && \
+    chmod 2770 /tmp/modules /tmp/converted /tmp/cache
 
 
 # Must copy requirements.txt first to leverage Docker caching
