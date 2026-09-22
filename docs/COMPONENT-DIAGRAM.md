@@ -119,7 +119,7 @@ The CLI Player Container serves as the base image that contains all core UADE co
 
 ### Web Player Components (Built FROM CLI Base)
 
-The Web Player Container is built using multi-stage Docker build with `FROM uade-cli` as the base, adding Flask web server and Python components on top of the complete UADE CLI installation. It features automatic, atomic extraction of LHA and ZIP archives to unique temporary directories, ensuring no race conditions during concurrent extractions.
+The Web Player Container uses a multi-stage Docker build: it copies the complete UADE CLI installation from the Debian-based `uade-cli` image into an official `python:3.13-slim` web-runtime image. It adds the Flask web server and Python components on top of the CLI installation. It features automatic, atomic extraction of LHA and ZIP archives to unique temporary directories, ensuring no race conditions during concurrent extractions.
 
 #### Flask Application
 
@@ -201,7 +201,8 @@ The Web Player Container is built using multi-stage Docker build with `FROM uade
 - **Frontend**: HTML5, CSS3, Vanilla JavaScript
 - **Backend**: Python 3.13, Flask 3.1.3
 - **Server**: Gunicorn 26.2.0 (`1` worker, `8` threads, `gthread`)
-- **Container**: Multi-stage build (FROM uade-cli)
+- **Runtime base**: `python:3.13-slim`
+- **CLI components**: Copied from the Debian-based `uade-cli` image
 - **Additional Components**: Flask app, static assets, Python wrapper
 - **Client-Side Cache Support**: Converted audio is cached in the browser for one month for instant repeat playback.
 - **Server-Side Cache Support**: Converted files are cached using local disk, AWS S3, or Google Cloud Storage. Uses fsspec, s3fs, and gcsfs for unified access. Multi-instance deployments share a stateless cache for deduplication and instant replay. All Python dependencies are listed in `requirements.txt`.
@@ -217,7 +218,8 @@ The Web Player Container is built using multi-stage Docker build with `FROM uade
    - Create base image with uade123 binary
 
 2. Stage 2: Build Web Player Container (Dockerfile.web)
-   - FROM uade-cli base image (inherits all UADE components)
+   - Start from `python:3.13-slim` for the web runtime
+   - Copy UADE components from the Debian-based `uade-cli` base image
    - Install Python and Flask dependencies
    - Copy web application code and templates
    - Configure Gunicorn web server
@@ -268,7 +270,7 @@ The system is intentionally layered: the CLI container provides the reusable UAD
 ## Deployment Summary
 
 - **CLI Player:** Local Docker engine, standalone image for direct command-line playback.
-- **Web Player:** Web runtime built `FROM uade-cli`, served locally with Docker Compose or remotely on Cloud Run.
+- **Web Player:** Python 3.13 slim web runtime containing components copied from `uade-cli`, served locally with Docker Compose or remotely on Cloud Run.
 - **Registry and automation:** GitHub Actions builds images and publishes them to GitHub Container Registry.
 
 For CI/CD pipeline detail, security scanning, DAST workflows, concurrency testing, and performance guidance, see [`CODE-QUALITY.md`](CODE-QUALITY.md) and [`ARCHITECTURE.md`](ARCHITECTURE.md).
