@@ -84,6 +84,9 @@ jobs:
         run: |
           docker compose -f docker-compose.yml -f test/docker-compose.quality.yml up --build quality-check
 
+      - name: Check Alpine APK package pins
+        run: node test/check-alpine-apk-pins.mjs
+
       - name: Check exit code
         if: failure()
         run: |

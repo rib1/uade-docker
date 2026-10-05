@@ -24,7 +24,6 @@
 #   .\test\check-code-quality.ps1 -NodeQualitySync # Node quality helper image sync only
 #   .\test\check-code-quality.ps1 -PythonSync  # Python tooling version sync only
 #   .\test\check-code-quality.ps1 -CodeQLSync  # CodeQL bundle version sync only
-#   .\test\check-code-quality.ps1 -AlpinePins  # Alpine APK pin validation only
 #   .\test\check-code-quality.ps1 -MyPy        # mypy only
 #   .\test\check-code-quality.ps1 -Vulture     # Vulture dead-code audit only
 #   .\test\check-code-quality.ps1 -PurgeCSS    # PurgeCSS unused CSS check only
@@ -54,7 +53,6 @@ param(
     [switch]$NodeQualitySync,
     [switch]$PythonSync,
     [switch]$CodeQLSync,
-    [switch]$AlpinePins,
     [switch]$MyPy,
     [switch]$Vulture,
     [switch]$Instructions,
@@ -93,7 +91,6 @@ function Show-Usage {
     Write-Host "Backend Python Checks:"
     Write-Host "  -PythonSync"
     Write-Host "  -CodeQLSync"
-    Write-Host "  -AlpinePins"
     Write-Host "  -Black"
     Write-Host "  -Ruff"
     Write-Host "  -MyPy"
@@ -206,7 +203,7 @@ if ($Help) {
 }
 
 # Default to run all if no specific tool selected
-if (-not $ESLint -and -not $Black -and -not $Ruff -and -not $ActionLint -and -not $Hadolint -and -not $Compose -and -not $ShellCheck -and -not $Yamllint -and -not $Stylelint -and -not $HTMLHint -and -not $Knip -and -not $KnipProduction -and -not $KnipNamespace -and -not $PlaywrightSync -and -not $NodeQualitySync -and -not $PythonSync -and -not $CodeQLSync -and -not $AlpinePins -and -not $MyPy -and -not $Vulture -and -not $Instructions -and -not $Documentation -and -not $PurgeCSS) {
+if (-not $ESLint -and -not $Black -and -not $Ruff -and -not $ActionLint -and -not $Hadolint -and -not $Compose -and -not $ShellCheck -and -not $Yamllint -and -not $Stylelint -and -not $HTMLHint -and -not $Knip -and -not $KnipProduction -and -not $KnipNamespace -and -not $PlaywrightSync -and -not $NodeQualitySync -and -not $PythonSync -and -not $CodeQLSync -and -not $MyPy -and -not $Vulture -and -not $Instructions -and -not $Documentation -and -not $PurgeCSS) {
     $ESLint = $true
     $Stylelint = $true
     $HTMLHint = $true
@@ -217,7 +214,6 @@ if (-not $ESLint -and -not $Black -and -not $Ruff -and -not $ActionLint -and -no
     $NodeQualitySync = $true
     $PythonSync = $true
     $CodeQLSync = $true
-    $AlpinePins = $true
     $Black = $true
     $Ruff = $true
     $ActionLint = $true
@@ -672,23 +668,6 @@ if ($Vulture) {
         Write-Result "Vulture" 0
     } else {
         Write-Result "Vulture" 1 $output
-    }
-}
-
-# Alpine APK pin check
-if ($AlpinePins) {
-    Write-GroupHeader "Infrastructure Checks"
-    Write-Header "Alpine APK Pin Validation"
-
-    Write-Host "Checking pinned Alpine APK package families against current repositories..."
-
-    $output = & node (Join-Path $ProjectRoot "test/check-alpine-apk-pins.mjs") 2>&1
-    $exitCode = $LASTEXITCODE
-
-    if ($exitCode -eq 0) {
-        Write-Result "Alpine APK Pins" 0
-    } else {
-        Write-Result "Alpine APK Pins" 1 $output
     }
 }
 
