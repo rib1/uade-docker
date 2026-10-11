@@ -19,6 +19,7 @@
 #   .\test\check-code-quality.ps1 -HTMLHint    # HTMLHint only
 #   .\test\check-code-quality.ps1 -Knip        # knip dead-code audit only
 #   .\test\check-code-quality.ps1 -KnipProduction # knip production dead-code audit only
+#   .\test\check-code-quality.ps1 -KnipProductionStrict # knip strict production audit only
 #   .\test\check-code-quality.ps1 -KnipNamespace # knip namespace export audit only
 #   .\test\check-code-quality.ps1 -PlaywrightSync # Playwright tooling version sync only
 #   .\test\check-code-quality.ps1 -NodeQualitySync # Node quality helper image sync only
@@ -48,6 +49,7 @@ param(
     [switch]$HTMLHint,
     [switch]$Knip,
     [switch]$KnipProduction,
+    [switch]$KnipProductionStrict,
     [switch]$KnipNamespace,
     [switch]$PlaywrightSync,
     [switch]$NodeQualitySync,
@@ -81,6 +83,7 @@ function Show-Usage {
     Write-Host "  -ESLint"
     Write-Host "  -Knip"
     Write-Host "  -KnipProduction"
+    Write-Host "  -KnipProductionStrict"
     Write-Host "  -KnipNamespace"
     Write-Host "  -PlaywrightSync"
     Write-Host "  -NodeQualitySync"
@@ -203,12 +206,13 @@ if ($Help) {
 }
 
 # Default to run all if no specific tool selected
-if (-not $ESLint -and -not $Black -and -not $Ruff -and -not $ActionLint -and -not $Hadolint -and -not $Compose -and -not $ShellCheck -and -not $Yamllint -and -not $Stylelint -and -not $HTMLHint -and -not $Knip -and -not $KnipProduction -and -not $KnipNamespace -and -not $PlaywrightSync -and -not $NodeQualitySync -and -not $PythonSync -and -not $CodeQLSync -and -not $MyPy -and -not $Vulture -and -not $Instructions -and -not $Documentation -and -not $PurgeCSS) {
+if (-not $ESLint -and -not $Black -and -not $Ruff -and -not $ActionLint -and -not $Hadolint -and -not $Compose -and -not $ShellCheck -and -not $Yamllint -and -not $Stylelint -and -not $HTMLHint -and -not $Knip -and -not $KnipProduction -and -not $KnipProductionStrict -and -not $KnipNamespace -and -not $PlaywrightSync -and -not $NodeQualitySync -and -not $PythonSync -and -not $CodeQLSync -and -not $MyPy -and -not $Vulture -and -not $Instructions -and -not $Documentation -and -not $PurgeCSS) {
     $ESLint = $true
     $Stylelint = $true
     $HTMLHint = $true
     $Knip = $true
     $KnipProduction = $true
+    $KnipProductionStrict = $true
     $KnipNamespace = $true
     $PlaywrightSync = $true
     $NodeQualitySync = $true
@@ -426,9 +430,33 @@ if ($KnipProduction) {
     }
 }
 
+# knip Production Strict Check
+if ($KnipProductionStrict) {
+    if (-not $PurgeCSS -and -not $Stylelint -and -not $ESLint -and -not $Knip -and -not $KnipProduction) {
+        Write-GroupHeader "Frontend Checks"
+        Write-SubgroupHeader "JavaScript Checks"
+    }
+    Write-Header "knip - JavaScript Production Strict Dead-Code Audit"
+
+    Write-Host "Running knip strict production audit on runtime JavaScript entrypoints..."
+
+    $output = & docker run --rm `
+        -v "${ProjectRoot}:/workspace" `
+        --workdir /workspace/test `
+        node:26-alpine sh -lc "npm install -g knip@$KNIP_VERSION >/dev/null && knip --config knip.config.js --no-progress --treat-config-hints-as-errors --include-entry-exports --production --strict" 2>&1
+
+    $exitCode = $LASTEXITCODE
+
+    if ($exitCode -eq 0) {
+        Write-Result "knip production strict" 0
+    } else {
+        Write-Result "knip production strict" 1 $output
+    }
+}
+
 # knip namespace export audit
 if ($KnipNamespace) {
-    if (-not $PurgeCSS -and -not $Stylelint -and -not $ESLint -and -not $Knip -and -not $KnipProduction) {
+    if (-not $PurgeCSS -and -not $Stylelint -and -not $ESLint -and -not $Knip -and -not $KnipProduction -and -not $KnipProductionStrict) {
         Write-GroupHeader "Frontend Checks"
         Write-SubgroupHeader "JavaScript Checks"
     }
@@ -452,7 +480,7 @@ if ($KnipNamespace) {
 
 # Playwright tooling sync check
 if ($PlaywrightSync) {
-    if (-not $PurgeCSS -and -not $Stylelint -and -not $ESLint -and -not $Knip -and -not $KnipProduction -and -not $KnipNamespace) {
+    if (-not $PurgeCSS -and -not $Stylelint -and -not $ESLint -and -not $Knip -and -not $KnipProduction -and -not $KnipProductionStrict -and -not $KnipNamespace) {
         Write-GroupHeader "Frontend Checks"
         Write-SubgroupHeader "JavaScript Checks"
     }
@@ -476,7 +504,7 @@ if ($PlaywrightSync) {
 
 # Node quality tooling sync check
 if ($NodeQualitySync) {
-    if (-not $PurgeCSS -and -not $Stylelint -and -not $ESLint -and -not $Knip -and -not $KnipProduction -and -not $KnipNamespace -and -not $PlaywrightSync) {
+    if (-not $PurgeCSS -and -not $Stylelint -and -not $ESLint -and -not $Knip -and -not $KnipProduction -and -not $KnipProductionStrict -and -not $KnipNamespace -and -not $PlaywrightSync) {
         Write-GroupHeader "Frontend Checks"
         Write-SubgroupHeader "JavaScript Checks"
     }
@@ -500,7 +528,7 @@ if ($NodeQualitySync) {
 
 # HTMLHint Check
 if ($HTMLHint) {
-    if (-not $PurgeCSS -and -not $Stylelint -and -not $ESLint -and -not $Knip -and -not $KnipProduction -and -not $KnipNamespace -and -not $PlaywrightSync -and -not $NodeQualitySync) {
+    if (-not $PurgeCSS -and -not $Stylelint -and -not $ESLint -and -not $Knip -and -not $KnipProduction -and -not $KnipProductionStrict -and -not $KnipNamespace -and -not $PlaywrightSync -and -not $NodeQualitySync) {
         Write-GroupHeader "Frontend Checks"
     }
     Write-SubgroupHeader "HTML Checks"

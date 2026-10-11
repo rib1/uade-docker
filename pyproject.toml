@@ -51,6 +51,7 @@ select = [
     "Q",   # flake8-quotes
     "PERF", # Perflint
     "UP",  # pyupgrade
+    "UP052", # context-manager-iterator
     "SIM", # flake8-simplify
     "SLF", # flake8-self
     "TC",  # flake8-type-checking
