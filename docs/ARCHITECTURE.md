@@ -160,7 +160,7 @@ This is why `/convert-probed` is documented as a best-effort optimization rather
 ### Container Security
 
 - Non-root user (uid=1000) in all containers
-- Debian stable-slim CLI base image; Python 3.13 slim web runtime image
+- Debian stable-slim CLI base image; Python 3.14 slim web runtime image
 - No shell=True in subprocess calls
 - Read-only application directory
 - Writable temp directories only
@@ -220,7 +220,7 @@ This is why `/convert-probed` is documented as a best-effort optimization rather
 
 ### Backend
 
-- **Language:** Python 3.13
+- **Language:** Python 3.14
 - **Framework:** Flask 3.1.3
 - **Server:** Gunicorn 26.2.0
 - **Audio Processing:** UADE player, FLAC encoder

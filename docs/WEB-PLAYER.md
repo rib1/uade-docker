@@ -503,7 +503,7 @@ This document focuses on user-visible behavior and deployment knobs. For the ful
 
 Architecture highlights:
 
-- Multi-stage build: the web image runs on `python:3.13-slim` and copies UADE components from the Debian-based `uade-cli` image
+- Multi-stage build: the web image runs on `python:3.14-slim` and copies UADE components from the Debian-based `uade-cli` image
 - Production serving uses Gunicorn
 - Converted artifacts use canonical FLAC output
 - Cleanup is request-triggered and skips `/play/*` and `/download/*`
@@ -661,7 +661,7 @@ To run the integration tests using Docker Compose:
     docker compose -f docker-compose.yml -f test/docker-compose.accessibility.yml run --rm --build uade-test-accessibility-runner
     ```
 
-    This starts the web app, then runs `pa11y-ci` in a Playwright/Chromium-capable container against `http://uade-web:5000`.
+    This starts the web app, then runs `pa11y-ci` with both HTML_CodeSniffer and axe in a Playwright/Chromium-capable container against `http://uade-web:5000`.
 
 ### Security Testing (DAST)
 

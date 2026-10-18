@@ -77,12 +77,12 @@ function extractCodeqlDockerVersion(dockerfileText) {
   return match[1];
 }
 
-function extractQualityFallbackVersions(qualityScriptText) {
+function extractQualityFallbackVersions(qualityScriptText, label) {
   const versions = [...qualityScriptText.matchAll(/python:(\d+\.\d+)(?:\.\d+)?-slim\b/g)].map(
     (match) => match[1],
   );
 
-  return requireSingleVersion("test/check-code-quality.sh Python fallback image version", versions);
+  return requireSingleVersion(label, versions);
 }
 
 async function main() {
@@ -91,17 +91,43 @@ async function main() {
   const codeqlDockerfilePath = path.join(projectRoot, "test", "Dockerfile.codeql");
   const qualityScriptPath = path.join(projectRoot, "test", "check-code-quality.sh");
 
-  const [pyprojectText, codeqlDockerfileText, qualityScriptText] = await Promise.all([
+  const [
+    pyprojectText,
+    codeqlDockerfileText,
+    qualityScriptText,
+    powershellText,
+    webDockerfileText,
+    composeText,
+    workflowText,
+  ] = await Promise.all([
     readFile(pyprojectPath, "utf8"),
     readFile(codeqlDockerfilePath, "utf8"),
     readFile(qualityScriptPath, "utf8"),
+    readFile(path.join(projectRoot, "test", "check-code-quality.ps1"), "utf8"),
+    readFile(path.join(projectRoot, "Dockerfile.web"), "utf8"),
+    readFile(path.join(projectRoot, "docker-compose.yml"), "utf8"),
+    readFile(path.join(projectRoot, ".github", "workflows", "security-sast.yml"), "utf8"),
   ]);
 
   const blackVersion = extractBlackVersion(pyprojectText);
   const ruffVersion = extractRuffVersion(pyprojectText);
   const mypyVersion = extractMypyVersion(pyprojectText);
   const codeqlDockerVersion = extractCodeqlDockerVersion(codeqlDockerfileText);
-  const qualityFallbackVersion = extractQualityFallbackVersions(qualityScriptText);
+  const qualityFallbackVersion = extractQualityFallbackVersions(
+    qualityScriptText, "Bash Python fallback images",
+  );
+  const powershellVersion = extractQualityFallbackVersions(
+    powershellText, "PowerShell Python fallback images",
+  );
+  const webVersion = requireSingleVersion("Dockerfile.web Python base image", [
+    ...webDockerfileText.matchAll(/^FROM python:(\d+\.\d+)(?:\.\d+)?-slim\b/gm),
+  ].map((match) => match[1]));
+  const fixtureVersion = requireSingleVersion("Compose Python fixture images", [
+    ...composeText.matchAll(/image:\s*python:(\d+\.\d+)(?:\.\d+)?-alpine\b/g),
+  ].map((match) => match[1]));
+  const workflowVersion = requireSingleVersion("Security workflow Python version", [
+    ...workflowText.matchAll(/python-version:\s*['"](\d+\.\d+)['"]/g),
+  ].map((match) => match[1]));
 
   const pyprojectVersion = requireSingleVersion("pyproject.toml Python target version", [
     blackVersion,
@@ -113,6 +139,10 @@ async function main() {
     ["pyproject.toml Python target", pyprojectVersion],
     ["test/Dockerfile.codeql base image", codeqlDockerVersion],
     ["test/check-code-quality.sh Python fallback images", qualityFallbackVersion],
+    ["test/check-code-quality.ps1 Python fallback images", powershellVersion],
+    ["Dockerfile.web Python base image", webVersion],
+    ["docker-compose.yml fixture Python images", fixtureVersion],
+    ["security-sast.yml Python version", workflowVersion],
   ];
 
   const uniqueVersions = [...new Set(comparedVersions.map(([, version]) => version))];

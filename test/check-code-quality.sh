@@ -886,7 +886,7 @@ if [ "$RUN_MYPY" = true ]; then
         OUTPUT=$(docker run --rm \
                -v "${PROJECT_ROOT}:/workspace" \
                --workdir /workspace \
-               python:3.13-slim sh -lc "pip install --no-cache-dir -r test/requirements-quality.txt >/dev/null && mypy ${MYPY_ARGS[*]}" 2>&1)
+               python:3.14-slim sh -lc "pip install --no-cache-dir -r test/requirements-quality.txt >/dev/null && mypy ${MYPY_ARGS[*]}" 2>&1)
         EXIT_CODE=$?
     fi
 
@@ -910,7 +910,7 @@ if [ "$RUN_VULTURE" = true ]; then
         OUTPUT=$(docker run --rm \
                -v "${PROJECT_ROOT}:/workspace" \
                --workdir /workspace \
-               python:3.13-slim sh -lc "pip install --no-cache-dir -r test/requirements-quality.txt >/dev/null && vulture --config pyproject.toml" 2>&1)
+               python:3.14-slim sh -lc "pip install --no-cache-dir -r test/requirements-quality.txt >/dev/null && vulture --config pyproject.toml" 2>&1)
         EXIT_CODE=$?
     fi
 
@@ -1148,7 +1148,7 @@ if [ "$RUN_YAMLLINT" = true ]; then
             OUTPUT=$(docker run --rm \
                 -v "${PROJECT_ROOT}:/workspace" \
                 --workdir /workspace \
-                python:3.13-slim sh -lc \
+                python:3.14-slim sh -lc \
                 "pip install --no-cache-dir yamllint==${YAMLLINT_VERSION} >/dev/null && if [ -f .yamllint.yml ]; then yamllint -c .yamllint.yml \"\$@\"; else yamllint \"\$@\"; fi" \
                 sh "${YAML_FILES_REL[@]}" 2>&1)
         fi

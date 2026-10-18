@@ -95,7 +95,7 @@ footer p {
 
 footer a {
   color: var(--primary);
-  text-decoration: none;
+  text-decoration: underline;
 }
 
 footer a:hover {
@@ -789,10 +789,12 @@ audio::-webkit-media-controls-enclosure {
 
 .version-info a {
   color: #666 !important;
+  text-decoration: none;
 }
 
 .version-info a:hover {
   color: var(--primary) !important;
+  text-decoration: none;
 }
 
 /* Responsive */
