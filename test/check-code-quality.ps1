@@ -668,7 +668,7 @@ if ($MyPy) {
     $output = & docker run --rm `
         -v "${ProjectRoot}:/workspace" `
         --workdir /workspace `
-        python:3.13-slim sh -lc "pip install --no-cache-dir -r test/requirements-quality.txt >/dev/null && mypy --config-file pyproject.toml --no-error-summary" 2>&1
+        python:3.14-slim sh -lc "pip install --no-cache-dir -r test/requirements-quality.txt >/dev/null && mypy --config-file pyproject.toml --no-error-summary" 2>&1
 
     $exitCode = $LASTEXITCODE
 
@@ -688,7 +688,7 @@ if ($Vulture) {
     $output = & docker run --rm `
         -v "${ProjectRoot}:/workspace" `
         --workdir /workspace `
-        python:3.13-slim sh -lc "pip install --no-cache-dir -r test/requirements-quality.txt >/dev/null && vulture --config pyproject.toml" 2>&1
+        python:3.14-slim sh -lc "pip install --no-cache-dir -r test/requirements-quality.txt >/dev/null && vulture --config pyproject.toml" 2>&1
 
     $exitCode = $LASTEXITCODE
 
@@ -919,7 +919,7 @@ if ($Yamllint) {
         $output = & docker run --rm `
             -v "${ProjectRoot}:/workspace" `
             --workdir /workspace `
-            python:3.13-slim sh -lc "pip install --no-cache-dir yamllint==$YAMLLINT_VERSION >/dev/null && yamllint $($yamllintArgs -join ' ')" 2>&1
+            python:3.14-slim sh -lc "pip install --no-cache-dir yamllint==$YAMLLINT_VERSION >/dev/null && yamllint $($yamllintArgs -join ' ')" 2>&1
         $exitCode = $LASTEXITCODE
 
         if ($exitCode -eq 0) {

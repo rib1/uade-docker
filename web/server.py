@@ -92,7 +92,7 @@ def get_git_commit():
         )
         if result.returncode == 0:
             return result.stdout.strip()
-    except (OSError, subprocess.SubprocessError):
+    except OSError, subprocess.SubprocessError:
         # Ignore errors (e.g., not a git repo, git not installed); fallback to env var
         logger.info(
             "Could not get git commit via command line, using environment variable fallback"
@@ -122,7 +122,7 @@ def get_uade_version():
                         return parts[1]  # e.g., "3.05"
             return output.split()[0] if output else "unknown"
         return "unknown"
-    except (OSError, subprocess.SubprocessError):
+    except OSError, subprocess.SubprocessError:
         return "unknown"
 
 
@@ -1162,10 +1162,10 @@ def _find_probed_module_by_hash(module_hash: str) -> Path | None:
         for entry in MODULES_DIR.iterdir():
             entry_name = entry.name
             if (
-                entry.is_file()
-                and entry_name.startswith("probed_")
+                entry_name.startswith("probed_")
                 and len(entry_name) == len("probed_") + 32
                 and entry_name[len("probed_") :] == module_hash
+                and entry.is_file()
             ):
                 return entry
     except OSError:
@@ -1189,12 +1189,12 @@ def is_cache_directory(remote_path):
     """Return True when the remote cache path points to a cache subdirectory."""
     try:
         return bool(fs_cache.isdir(remote_path))
-    except (FileNotFoundError, OSError):
+    except FileNotFoundError, OSError:
         return False
     except AttributeError:
         try:
             return fs_cache.info(remote_path).get("type") == "directory"
-        except (FileNotFoundError, OSError):
+        except FileNotFoundError, OSError:
             return False
 
 
@@ -1221,13 +1221,13 @@ def parse_timestamp_to_epoch(timestamp_value):
                 from dateutil.parser import parse as dtparse
 
                 return dtparse(timestamp_value).timestamp()
-            except (OverflowError, TypeError, ValueError):
+            except OverflowError, TypeError, ValueError:
                 return 0
     if timestamp_value is None:
         return 0
     try:
         return float(timestamp_value)
-    except (TypeError, ValueError):
+    except TypeError, ValueError:
         return 0
 
 
@@ -1420,10 +1420,9 @@ def find_music_file(extract_dir):
                 music_files.append(file_path)
     if not music_files:
         return None, 0
-    # Sort files in reverse alphabetical order to ensure deterministic selection.
+    # Select the last file alphabetically to ensure deterministic selection.
     # This tends to select later tracks or versions (e.g., 'track2' over 'track1').
-    music_files.sort(reverse=True)
-    return music_files[0], len(music_files)
+    return max(music_files), len(music_files)
 
 
 def is_lha_file(file_path):
@@ -1436,7 +1435,7 @@ def is_lha_file(file_path):
                 signature = header[2:5]
                 return signature == b"-lh" or signature == b"-lz"
         return False
-    except (OSError, TypeError):
+    except OSError, TypeError:
         return False
 
 
@@ -1447,7 +1446,7 @@ def is_zip_file(file_path):
             header = f.read(4)
             # ZIP files start with PK\x03\x04 or PK\x05\x06 or PK\x07\x08
             return header[:2] == b"PK"
-    except (OSError, TypeError):
+    except OSError, TypeError:
         return False
 
 
@@ -1832,7 +1831,7 @@ def _read_lock_metadata(lock_path):
         else:
             with fs_cache.open(lock_path, "r") as f:
                 metadata = json.load(f)
-    except (OSError, TypeError, ValueError):
+    except OSError, TypeError, ValueError:
         return None
     if isinstance(metadata, dict):
         return metadata
@@ -2147,7 +2146,7 @@ def _clear_stale_conversion_lock(lock_path):
         age_seconds = _lock_age_seconds(lock_path, metadata=metadata)
     except FileNotFoundError:
         return False
-    except (OSError, TypeError, ValueError):
+    except OSError, TypeError, ValueError:
         return False
 
     if age_seconds <= CONVERSION_TIMEOUT_SECONDS:
@@ -2170,7 +2169,7 @@ def _clear_stale_conversion_lock(lock_path):
             f"Removed stale conversion lock after {age_seconds:.1f}s: {_lock_name(lock_path)}"
         )
         return True
-    except (OSError, TypeError, ValueError):
+    except OSError, TypeError, ValueError:
         logger.warning(f"Could not remove stale conversion lock: {_lock_name(lock_path)}")
         return False
 
