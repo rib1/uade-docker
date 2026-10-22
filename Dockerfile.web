@@ -11,9 +11,11 @@ FROM ${BASE_IMAGE} AS uade-base
 FROM python:3.13-slim
 
 # Install runtime dependencies + Python + tools for cloud environments
+# ca-certificates intentionally follows the current Debian security release.
+# hadolint ignore=DL3008
 RUN apt-get update && apt-get install -y --no-install-recommends \
     libao4=1.2.2+20180113-1.2 \
-    ca-certificates=20250419 \
+    ca-certificates \
     lhasa=0.4.0-1+b2 \
     flac=1.5.0+ds-2 \
     && rm -rf /var/lib/apt/lists/*
