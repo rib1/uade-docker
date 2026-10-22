@@ -164,6 +164,8 @@ This is why `/convert-probed` is documented as a best-effort optimization rather
 - No shell=True in subprocess calls
 - Read-only application directory
 - Writable temp directories only
+- The converter binary is explicitly non-setuid in both images and runs without
+  privilege elevation.
 
 ### Cloud Run Security
 

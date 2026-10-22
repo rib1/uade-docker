@@ -244,7 +244,7 @@ The Web Player Container uses a multi-stage Docker build: it copies the complete
 4. UADE CLI loads module file
 5. UADE Core detects format and loads player
 6. Player Engine executes on 68k emulator
-7. Audio output to Docker host audio device
+7. Audio output is rendered in the container and written to the requested file
 
 ## Why This Diagram Exists
 

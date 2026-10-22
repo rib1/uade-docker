@@ -4,11 +4,36 @@ This file tracks all published versions of the `uade-cli` base Docker image and 
 
 ## Current Stable Version
 
-**`3.05-base.4`** (Debian runtime package revision resilience)
+**`3.05-base.5`** (non-setuid CLI runtime hardening)
 
 ---
 
 ## Version History
+
+### 3.05-base.5 (2026-10-22) [NON-SETUID CLI RUNTIME HARDENING]
+
+- **Image:** `ghcr.io/rib1/uade-cli:3.05-base.5`
+- **UADE Binary Version:** 3.05 (stable)
+- **Status:** Pending publication
+- **Base Image:** `debian:stable-slim`
+
+**Changes:**
+
+- Removed the legacy setuid workaround from `uade123`
+- Keeps CLI conversion unprivileged; emulated Amiga audio activity does not require host audio-device access
+- Bumped the build number according to the Docker Base Image Versioning Schema
+
+**Testing:**
+
+- ✅ Hardened CLI smoke conversions passed as `uadeuser` with `CAP_DROP=ALL` and `no-new-privileges`
+- ✅ Exotic source formats converted successfully without privilege elevation
+- ✅ Repository quality and endpoint integration suites pass
+
+**Deployment Status:**
+
+- Not published yet; publish `ghcr.io/rib1/uade-cli:3.05-base.5` before updating downstream pins
+
+---
 
 ### 3.05-base.4 (2026-05-25) [DEBIAN RUNTIME PACKAGE REVISION RESILIENCE]
 
@@ -125,7 +150,7 @@ This file tracks all published versions of the `uade-cli` base Docker image and 
 - Core UADE command-line tools (uade123, uade-convert)
 - Support for MOD, AHX, TFMX, S3M, XM, IT, and other formats
 - Non-root user security
-- SUID permissions for audio device access
+- Non-setuid execution without host audio-device access
 - Helper script: `uade-convert` for TFMX dual-file conversion
 
 **Testing:**

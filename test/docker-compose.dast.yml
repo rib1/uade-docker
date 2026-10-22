@@ -1,0 +1,25 @@
+# DAST runtime-hardening gate using the existing web image.
+# Usage:
+#   docker compose -f docker-compose.yml -f test/docker-compose.dast.yml run --rm --build uade-runtime-hardening-check
+
+services:
+  uade-runtime-hardening-check:
+    build:
+      context: .
+      dockerfile: Dockerfile.web
+    depends_on:
+      test-fixture-preparer:
+        condition: service_completed_successfully
+    command: ["/bin/sh", "/usr/local/bin/check-web-runtime-hardening.sh"]
+    network_mode: none
+    read_only: true
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    tmpfs:
+      - /dev/shm:size=64m,noexec,nosuid,nodev
+    volumes:
+      - uade-tmp:/tmp
+      - test-tmp:/fixtures:ro
+      - ./test/check-web-runtime-hardening.sh:/usr/local/bin/check-web-runtime-hardening.sh:ro

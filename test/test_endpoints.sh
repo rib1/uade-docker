@@ -2222,6 +2222,75 @@ test_health_endpoint() {
     echo ""
 }
 
+# Verify security headers and ensure health output does not disclose traceback,
+# secret, or container filesystem details.
+test_security_headers_and_health_disclosure() {
+    echo "--- Testing Security Headers And Health Disclosure ---"
+
+    for path in "/" "/health" "/static/style.css"; do
+        HEADERS=$(curl -sS -D - -o /dev/null "$BASE_URL$path")
+        for header in \
+            "Content-Security-Policy:" \
+            "X-Content-Type-Options: nosniff" \
+            "X-Frame-Options: SAMEORIGIN"; do
+            if ! printf '%s\n' "$HEADERS" | grep -Fqi "$header"; then
+                echo "ERROR: Missing security header '$header' on '$path'"
+                echo "$HEADERS"
+                exit 1
+            fi
+        done
+    done
+
+    HEALTH_RESPONSE=$(curl -sS "$BASE_URL/health")
+    if printf '%s' "$HEALTH_RESPONSE" | grep -Eiq \
+        'Traceback|File "/|/app/|/usr/local/bin|password=|secret='; then
+        echo "ERROR: Health response contains traceback, secret, or filesystem disclosure"
+        echo "$HEALTH_RESPONSE"
+        exit 1
+    fi
+
+    echo "SUCCESS: Security headers and health disclosure checks passed."
+    echo ""
+}
+
+# Verify managed-artifact boundaries and reject unsupported range forms.
+test_download_safety_and_advanced_ranges() {
+    echo "--- Testing Download Safety And Advanced Ranges ---"
+
+    for path in \
+        "/download/not-a-real-file-id" \
+        "/download/../../etc/passwd"; do
+        STATUS_CODE=$(curl --path-as-is -sS -o /dev/null -w "%{http_code}" "$BASE_URL$path")
+        if [ "$STATUS_CODE" -ne 404 ]; then
+            echo "ERROR: Unsafe download path '$path' returned HTTP $STATUS_CODE"
+            exit 1
+        fi
+    done
+
+    HTTP_CODE_BODY=$(_perform_convert_url_call \
+        "https://modland.com/pub/modules/Protracker/Captain/space_debris.mod" "")
+    HTTP_CODE=$(echo "$HTTP_CODE_BODY" | head -n1)
+    BODY=$(echo "$HTTP_CODE_BODY" | tail -n1)
+    if [ "$HTTP_CODE" -ne 200 ]; then
+        echo "ERROR: Could not prepare an artifact for advanced range tests"
+        echo "$BODY"
+        exit 1
+    fi
+
+    FILE_ID=$(echo "$BODY" | jq -r .file_id)
+    for range_header in "bytes=0-10,20-30" "bytes=10-5" "bytes=invalid-range"; do
+        STATUS_CODE=$(curl -sS -o /dev/null -w "%{http_code}" \
+            -H "Range: $range_header" "$BASE_URL/play/$FILE_ID")
+        if [ "$STATUS_CODE" -ne 416 ]; then
+            echo "ERROR: Unsupported range '$range_header' returned HTTP $STATUS_CODE"
+            exit 1
+        fi
+    done
+
+    echo "SUCCESS: Download boundaries and advanced range checks passed."
+    echo ""
+}
+
 test_client_config_consistency() {
     echo "--- Testing Client Config Consistency ---"
     HEALTH_RESPONSE=$(curl -s "$BASE_URL/health")
@@ -2888,6 +2957,8 @@ done
 echo "Service is up!"
 
 test_health_endpoint
+test_security_headers_and_health_disclosure
+test_download_safety_and_advanced_ranges
 test_client_config_consistency
 test_client_config_disables_queue_cap_in_app_js
 test_queue_drop_autoplay_does_not_reuse_queue_button_loading_state

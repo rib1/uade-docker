@@ -120,7 +120,7 @@ docker run --rm uade-cli --help
 docker run --rm -v "C:\path\to\modules:/music" uade-cli -s 2 /music/song.mod
 
 # Set frequency
-docker run --rm -v "C:\path\to\modules:/music" uade-cli -f 48000 /music/song.mod
+docker run --rm -v "C:\path\to\modules:/music" uade-cli --frequency=48000 /music/song.mod
 
 # Shuffle playback
 docker run --rm -v "C:\path\to\modules:/music" uade-cli -z /music/*.mod

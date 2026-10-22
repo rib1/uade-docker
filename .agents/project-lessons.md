@@ -264,6 +264,8 @@ This document contains project-specific learnings and regression-avoidance notes
 - **Cache Behavior:** Under scanner-style concurrent load, cache health is better judged by leftover temp files and missing sidecars than by raw warning count in logs.
 - **Cache Behavior:** After the sidecar hardening patch, a healthy post-scan cache check is no `*.tmp` files in `/tmp/cache` and every cached audio object has a matching `.cache-access.json`.
 - **Log Noise:** Reduce log noise during DAST scans by logging expected hostile-input rejections and DNS lookup failures at the `INFO` level without tracebacks.
+- **Runtime Hardening Gate:** The DAST Compose flow includes an in-image check for non-root execution, Docker-socket absence, setuid binaries, managed filesystem boundaries, and bounded format smoke tests. Both Dockerfiles explicitly remove the legacy `uade123` setuid workaround. Protracker, AHX, and TFMX `mdat` fixtures convert without privilege elevation; a TFMX `smpl` file is sample data and must not be tested as a standalone module.
+- **Module Support Boundary:** Local standalone modules, the ZIP-contained Protracker module, and the HTML-listed Protracker/AHX/TFMX/Oktalyzer/SidMon/Hippel-COSO examples all converted with `no-new-privileges`. The local LHA archives extract successfully, but their `cust.*` and `mw.*` entries return UADE `Unknown format`, including with content detection and `-i`; this is a player-format limitation, not an audio-device or SUID failure.
 
 ## Local Cleanup Lessons
 
