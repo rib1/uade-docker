@@ -232,7 +232,7 @@ MODULE_FILE_EXTENSIONS = {"mod", "s3m", "it", "xm", "tfmx", "ahx", "hvl", "mdat"
 
 1. **Don't use `docker build` directly for web player** - use `docker compose` to inject `GIT_COMMIT` env var
 2. **Archive extraction requires temp storage** - local Docker Compose provides persistent temp storage via a `/tmp` volume, while Cloud Run uses the container filesystem at runtime
-3. **UADE needs an audio device even in conversion mode** - The workaround uses the SUID bit: `chmod 4750 /usr/local/bin/uade123` allows a non-root user to run as root (see `Dockerfile`)
+3. **UADE conversion is headless and unprivileged** - `aud0per` and similar messages describe emulated Amiga audio activity, not host audio-device access. Keep `uade123` non-setuid.
 4. **Dual-file modules need special handling** - Look for `.mdat`/`.smpl` pairs in `detect_module_metadata()`
 5. **Windows paths:** Use `Path` objects and forward slashes in Docker volume mounts
 

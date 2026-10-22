@@ -12,6 +12,8 @@ Use [`.agents/project-lessons.md`](../../project-lessons.md) for project-specifi
 Prefer the Docker Compose quality stack first:
 
 ```powershell
+node test/check-alpine-apk-pins.mjs
+if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 docker compose -f docker-compose.yml -f test/docker-compose.quality.yml run --rm --build quality-check
 ```
 
@@ -19,6 +21,8 @@ Why:
 - It matches the repo's preferred Docker-first verification flow.
 - It is usually the fastest full-run path after the quality image layers are cached.
 - It exercises the same containerized toolchain used by the quality workflow.
+- The Alpine APK pin check runs on the host because it must inspect fresh package
+  indexes without mounting the Docker socket into the quality container.
 
 Run local CodeQL through the same Compose override when the task is security-driven or the user explicitly asks for CodeQL:
 

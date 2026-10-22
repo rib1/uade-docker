@@ -239,7 +239,7 @@ def main() -> None:
         "probe-upload-unsupported-file",
         fixture_path=modules_dir / ZAP_GUTENBERG_FIXTURE,
         filename=ZAP_GUTENBERG_FIXTURE,
-        expected_status=500,
+        expected_status=400,
     )
     seed_case(
         "convert-probed-invalid-body",
@@ -289,9 +289,9 @@ def main() -> None:
             502,
         ),
         (
-            "unsupported-500",
+            "unsupported-400",
             json_body({"url": f"{LOCAL_TEST_SERVER_URL}/fixtures/modules/{ZAP_GUTENBERG_FIXTURE}"}),
-            500,
+            400,
         ),
         (
             "mutated-module-400",
@@ -327,7 +327,7 @@ def main() -> None:
                     {
                         "url": (
                             f"{LOCAL_TEST_SERVER_URL}/fixtures/invalid/{ZAP_TOO_LARGE_FIXTURE}"
-                            f"?test_id={endpoint}-{uuid.uuid4().hex}"
+                            f"?oversize_probe_id={endpoint}-{uuid.uuid4().hex}"
                         )
                     }
                 ),

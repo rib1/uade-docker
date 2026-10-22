@@ -1,4 +1,4 @@
-# UADE CLI Base Image v3.05-base.4
+# UADE CLI Base Image v3.05-base.5
 # Versioning: UADE_VERSION-base.BUILD_NUMBER
 # This Dockerfile builds UADE 3.05 (stable) from source
 # Binary version: uade123 3.05
@@ -102,9 +102,9 @@ RUN useradd -m -s /bin/bash uadeuser && \
     mkdir -p /output /music /tmp && \
     chown -R uadeuser:uadeuser /output /music /tmp
 
-# Workaround for UADE bug: some modules open audio device even in conversion mode.
-# Setting SUID bit allows non-root user to run uade123 as root without sudo.
-RUN chown root:uadeuser /usr/local/bin/uade123 && chmod 4750 /usr/local/bin/uade123
+# Keep the converter unprivileged. Audio conversion must not regain root through
+# a setuid bit; modules that need an audio device must fail safely instead.
+RUN chmod u-s /usr/local/bin/uade123
 
 # Switch to non-root user
 # The user is present in this image's /etc/passwd, so name resolution is deterministic.

@@ -11,19 +11,29 @@ FROM ${BASE_IMAGE} AS uade-base
 FROM python:3.14-slim
 
 # Install runtime dependencies + Python + tools for cloud environments
+# ca-certificates intentionally follows the current Debian security release.
+# hadolint ignore=DL3008
 RUN apt-get update && apt-get install -y --no-install-recommends \
     libao4=1.2.2+20180113-1.2 \
-    ca-certificates=20250419 \
+    ca-certificates \
     lhasa=0.4.0-1+b2 \
     flac=1.5.0+ds-2 \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy UADE binaries and libraries from base image
+# Copy the UADE binary separately so its permission-hardening layer can cache
+# independently from library changes.
 COPY --from=uade-base /usr/local/bin/uade123 /usr/local/bin/
+
+# Copy UADE support files and libraries from the base image.
 COPY --from=uade-base /usr/local/share/uade /usr/local/share/uade
 COPY --from=uade-base /usr/local/lib/ /usr/local/lib/
 
-# Update library cache
+# The pinned base image may still carry the legacy setuid workaround. The web
+# runtime must always execute UADE without privilege elevation.
+RUN chmod u-s /usr/local/bin/uade123
+
+# Refresh the dynamic linker cache after copying the UADE libraries.
+# hadolint ignore=DL3059
 RUN ldconfig
 
 # Create Python virtual environment and install dependencies
