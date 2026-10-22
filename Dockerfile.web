@@ -8,7 +8,7 @@ ARG BASE_IMAGE=ghcr.io/rib1/uade-cli:3.05-base.1
 FROM ${BASE_IMAGE} AS uade-base
 
 # Runtime stage - Add web server
-FROM python:3.13-slim
+FROM python:3.14-slim
 
 # Install runtime dependencies + Python + tools for cloud environments
 # ca-certificates intentionally follows the current Debian security release.
