@@ -171,6 +171,10 @@ services:
     image: ghcr.io/zaproxy/zaproxy:stable
     # DAST scanner service using OWASP ZAP.
     # It scans the uade-web service.
+    # The upstream healthcheck targets the daemon port, but these are
+    # one-shot CLI scans that use an internal random port.
+    healthcheck:
+      disable: true
     command: zap-baseline.py -t http://uade-web:5000 -j -a -r report.html -w report.md
     depends_on:
       uade-web:
