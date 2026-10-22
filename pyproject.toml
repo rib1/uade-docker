@@ -40,6 +40,7 @@ select = [
     "A",   # flake8-builtins
     "ARG", # flake8-unused-arguments
     "B",   # flake8-bugbear
+    "B912", # Python 3.14 map() requires an explicit strict= choice
     "BLE001", # blind-except
     "C4",  # flake8-comprehensions
     "EXE002", # shebang-missing-executable-file
@@ -51,6 +52,8 @@ select = [
     "Q",   # flake8-quotes
     "PERF", # Perflint
     "UP",  # pyupgrade
+    "UP048", # while-one (preview)
+    "UP051", # deprecated-abc-decorator (preview)
     "UP052", # context-manager-iterator
     "SIM", # flake8-simplify
     "SLF", # flake8-self

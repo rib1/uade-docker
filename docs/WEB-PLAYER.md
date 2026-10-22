@@ -661,7 +661,7 @@ To run the integration tests using Docker Compose:
     docker compose -f docker-compose.yml -f test/docker-compose.accessibility.yml run --rm --build uade-test-accessibility-runner
     ```
 
-    This starts the web app, then runs `pa11y-ci` in a Playwright/Chromium-capable container against `http://uade-web:5000`.
+    This starts the web app, then runs `pa11y-ci` with both HTML_CodeSniffer and axe in a Playwright/Chromium-capable container against `http://uade-web:5000`.
 
 ### Security Testing (DAST)
 

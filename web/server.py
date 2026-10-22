@@ -1162,10 +1162,10 @@ def _find_probed_module_by_hash(module_hash: str) -> Path | None:
         for entry in MODULES_DIR.iterdir():
             entry_name = entry.name
             if (
-                entry.is_file()
-                and entry_name.startswith("probed_")
+                entry_name.startswith("probed_")
                 and len(entry_name) == len("probed_") + 32
                 and entry_name[len("probed_") :] == module_hash
+                and entry.is_file()
             ):
                 return entry
     except OSError:
@@ -1420,10 +1420,9 @@ def find_music_file(extract_dir):
                 music_files.append(file_path)
     if not music_files:
         return None, 0
-    # Sort files in reverse alphabetical order to ensure deterministic selection.
+    # Select the last file alphabetically to ensure deterministic selection.
     # This tends to select later tracks or versions (e.g., 'track2' over 'track1').
-    music_files.sort(reverse=True)
-    return music_files[0], len(music_files)
+    return max(music_files), len(music_files)
 
 
 def is_lha_file(file_path):

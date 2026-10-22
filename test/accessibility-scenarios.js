@@ -99,6 +99,24 @@ function buildQueueOpenActions() {
   ];
 }
 
+async function expectQueueFilePicker(page, key) {
+  const picker = page.locator("#queue-browse-btn");
+  const isLabel = await picker.evaluate((element) =>
+    element.tagName === "LABEL" && element.htmlFor === "queue-file-input",
+  );
+  if (!isLabel) {
+    throw new Error("Queue picker must preserve its native file-input label association.");
+  }
+  const [chooser] = await Promise.all([
+    page.waitForEvent("filechooser"),
+    key ? picker.press(key) : picker.tap(),
+  ]);
+  if (!chooser.isMultiple()) {
+    throw new Error("Queue file picker must allow selecting multiple modules.");
+  }
+  await chooser.setFiles([]);
+}
+
 const accessibilityScenarios = [
   {
     label: "desktop-home",
@@ -196,6 +214,7 @@ const accessibilityScenarios = [
         state: "visible",
         timeout: DEFAULT_TIMEOUT_MS,
       });
+      await expectQueueFilePicker(page);
     },
   },
   {
@@ -212,6 +231,8 @@ const accessibilityScenarios = [
         state: "visible",
         timeout: DEFAULT_TIMEOUT_MS,
       });
+      await expectQueueFilePicker(page, "Enter");
+      await expectQueueFilePicker(page, "Space");
     },
   },
 ];
@@ -255,6 +276,10 @@ function buildPa11yConfig() {
     defaults: {
       hideElements: "#version-info",
       standard: "WCAG2AA",
+      runners: ["htmlcs", "axe"],
+      levelCapWhenNeedsReview: "warning",
+      // Audit the settled status message after its 300ms slide-in animation.
+      wait: 500,
       timeout: DEFAULT_TIMEOUT_MS,
     },
   };
