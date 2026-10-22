@@ -67,6 +67,7 @@ services:
       - ALL
     security_opt:
       - no-new-privileges:true
+    read_only: true
     ports:
       - "5000:5000"
     volumes:
@@ -101,6 +102,7 @@ services:
       - ALL
     security_opt:
       - no-new-privileges:true
+    read_only: true
     volumes:
       - uade-tmp:/tmp
     environment:

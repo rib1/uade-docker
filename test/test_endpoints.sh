@@ -2230,7 +2230,7 @@ test_security_headers_and_health_disclosure() {
     for path in "/" "/health" "/static/style.css"; do
         HEADERS=$(curl -sS -D - -o /dev/null "$BASE_URL$path")
         for header in \
-            "Content-Security-Policy:" \
+            "Content-Security-Policy: default-src 'self'; base-uri 'self'; form-action 'self'; frame-ancestors 'self'" \
             "X-Content-Type-Options: nosniff" \
             "X-Frame-Options: SAMEORIGIN"; do
             if ! printf '%s\n' "$HEADERS" | grep -Fqi "$header"; then
@@ -2243,7 +2243,7 @@ test_security_headers_and_health_disclosure() {
 
     HEALTH_RESPONSE=$(curl -sS "$BASE_URL/health")
     if printf '%s' "$HEALTH_RESPONSE" | grep -Eiq \
-        'Traceback|File "/|/app/|/usr/local/bin|password=|secret='; then
+        'Traceback|File "/|/app/|/usr/local/bin|password[=:]|secret[=:]|"password"[[:space:]]*:'; then
         echo "ERROR: Health response contains traceback, secret, or filesystem disclosure"
         echo "$HEALTH_RESPONSE"
         exit 1

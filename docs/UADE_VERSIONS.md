@@ -4,7 +4,7 @@ This file tracks all published versions of the `uade-cli` base Docker image and 
 
 ## Current Stable Version
 
-**`3.05-base.5`** (non-setuid CLI runtime hardening)
+**`3.05-base.4`** (latest published stable release)
 
 ---
 
@@ -27,7 +27,7 @@ This file tracks all published versions of the `uade-cli` base Docker image and 
 
 - ✅ Hardened CLI smoke conversions passed as `uadeuser` with `CAP_DROP=ALL` and `no-new-privileges`
 - ✅ Exotic source formats converted successfully without privilege elevation
-- ✅ Repository quality and endpoint integration suites pass
+- ✅ Local repository quality and endpoint integration suites pass for this change
 
 **Deployment Status:**
 
@@ -150,7 +150,7 @@ This file tracks all published versions of the `uade-cli` base Docker image and 
 - Core UADE command-line tools (uade123, uade-convert)
 - Support for MOD, AHX, TFMX, S3M, XM, IT, and other formats
 - Non-root user security
-- Non-setuid execution without host audio-device access
+- SUID permissions for audio device access
 - Helper script: `uade-convert` for TFMX dual-file conversion
 
 **Testing:**
