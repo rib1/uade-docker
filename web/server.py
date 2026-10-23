@@ -2112,11 +2112,10 @@ def _lock_touch_exclusive(lock_path):
         lock_path.touch(exist_ok=False)
         return
 
-    parent = posixpath.dirname(lock_path)
-    if parent:
-        fs_cache.makedirs(parent, exist_ok=True)
-    with fs_cache.open(lock_path, "xb") as f:
-        f.write(b"")
+    # Object stores do not need directory markers.  Use the backend's
+    # generation precondition instead of gcsfs' experimental ``open("xb")``
+    # mode so distributed conversion locks are created atomically on GCS.
+    fs_cache.pipe_file(lock_path, b"", if_generation_match=0)
 
 
 def _lock_unlink(lock_path):
