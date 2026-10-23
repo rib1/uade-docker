@@ -79,25 +79,25 @@ architecture-beta
 
   - Serverless container deployment
   - Auto-scaling (0-10 instances)
-  - Minimal service account (zero permissions)
+  - Minimal service account with bucket-scoped `roles/storage.objectAdmin` access for the converted-audio cache only
   - gVisor sandbox isolation
   - 2Gi memory, 2 CPU, 300s timeout
 
 ### Shared Storage Layer
 
 - **Shared Cache**
-  - Converted-audio cache backed by AWS S3 or Google Cloud Storage when configured
+  - Converted-audio cache configured with a `file://`, `s3://`, or `gcs://` `CACHE_URI`
   - Optional for a single-container deployment
   - Required for multi-container or load-balanced deployments, because conversion and playback requests may reach different instances
   - All instances must use the same shared backend for reliable playback, deduplication, and cache recovery
 
 ### Cache Deployment Defaults
 
-The diagram shows three distinct cache locations. Local Docker uses the persistent
-`uade-tmp` volume. The deployed Cloud Run service is configured with the same
-regional GCS bucket for every instance, while `file:///tmp/cache` remains the
-single-container local default. A multi-container deployment must configure the
-same S3/GCS (or other shared read/write) `CACHE_URI` for every instance;
+The diagram shows one Shared Cache node. Local Docker uses the persistent
+`uade-tmp` volume through the `file:///tmp/cache` default. The deployed Cloud
+Run service is configured with the same regional GCS bucket for every instance.
+A multi-container deployment must configure the same `file://`, `s3://`, or
+`gcs://` `CACHE_URI` for every instance;
 otherwise a `/play/{file_id}` request routed to another instance can return
 `404` even though conversion succeeded.
 

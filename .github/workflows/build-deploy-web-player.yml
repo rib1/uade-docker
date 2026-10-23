@@ -149,6 +149,17 @@ jobs:
           exit 1
         fi
         gcloud storage buckets describe "gs://${GCS_CACHE_BUCKET}" --project "${PROJECT_ID}" >/dev/null
+        RUNTIME_SERVICE_ACCOUNT="serviceAccount:uade-web-player-sa@${PROJECT_ID}.iam.gserviceaccount.com"
+        BUCKET_POLICY="$(gcloud storage buckets get-iam-policy "gs://${GCS_CACHE_BUCKET}" --project "${PROJECT_ID}" --format=json)"
+        if ! jq -e --arg member "${RUNTIME_SERVICE_ACCOUNT}" '
+          any(.bindings[]?;
+            .role == "roles/storage.objectAdmin" and
+            (((.members // []) | index($member)) != null)
+          )
+        ' <<<"${BUCKET_POLICY}" >/dev/null; then
+          echo "${RUNTIME_SERVICE_ACCOUNT} must have bucket-scoped roles/storage.objectAdmin access."
+          exit 1
+        fi
         gcloud run deploy ${{ env.SERVICE_NAME }} \
           --image gcr.io/${{ env.PROJECT_ID }}/${{ env.SERVICE_NAME }}:latest \
           --platform managed \
