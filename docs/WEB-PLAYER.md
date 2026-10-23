@@ -179,6 +179,7 @@ The web player automatically detects and extracts classic Amiga LHA archives fro
 - Upload an .lha or .zip file, or provide its URL
 - Player lists and validates archive members before extraction
 - Archives are not fully exploded: a playable module candidate is selected deterministically, and only it plus any required companion data are extracted
+- LHA members whose names contain `*` or `?` are not supported; they are rejected because the Lhasa command-line extractor interprets those characters as wildcards rather than literal filename characters
 - Archives without a playable module are rejected with HTTP `400`
 - Supports all common Amiga module formats inside archives
 - No manual extraction needed!
