@@ -1810,6 +1810,64 @@ test_metadata_extraction() {
     echo ""
 }
 
+# Test that concurrent probes of one LHA archive use isolated extraction directories.
+# This protects against cross-request file races while confirming cleanup after probing.
+test_concurrent_lha_probe_requests() {
+    echo "--- Testing Concurrent LHA Probe Extraction ---"
+
+    RESPONSE_DIR=$(mktemp -d)
+    PIDS=()
+    REQUEST_COUNT=4
+
+    for INDEX in $(seq 1 "$REQUEST_COUNT"); do
+        (
+            _perform_probe_url_call "$CUSTOM_MULTI_LHA_URL" >"$RESPONSE_DIR/response_${INDEX}.txt"
+        ) &
+        PIDS+=("$!")
+    done
+
+    WAIT_FAILED=0
+    for PID in "${PIDS[@]}"; do
+        if ! wait "$PID"; then
+            WAIT_FAILED=1
+        fi
+    done
+
+    if [ "$WAIT_FAILED" -ne 0 ]; then
+        echo "ERROR: One or more concurrent LHA probe requests failed to run"
+        rm -rf "$RESPONSE_DIR"
+        exit 1
+    fi
+
+    for RESPONSE_FILE in "$RESPONSE_DIR"/response_*.txt; do
+        HTTP_CODE=$(head -n1 "$RESPONSE_FILE")
+        BODY=$(tail -n +2 "$RESPONSE_FILE")
+        if [ "$HTTP_CODE" -ne 200 ] || ! echo "$BODY" | jq -e '
+            .ok == true
+            and .playable == true
+            and .module_format == "Custom"
+            and .player_format == "Custom"
+            and .subsongs == 8
+        ' >/dev/null; then
+            echo "ERROR: Concurrent LHA probe returned an unexpected response"
+            echo "Response: $BODY"
+            rm -rf "$RESPONSE_DIR"
+            exit 1
+        fi
+    done
+
+    if find /uade-tmp/modules -maxdepth 1 -type d -name '*_extracted_*' -print -quit | grep -q .; then
+        echo "ERROR: Concurrent LHA probes left extraction directories behind"
+        find /uade-tmp/modules -maxdepth 1 -type d -name '*_extracted_*' -print
+        rm -rf "$RESPONSE_DIR"
+        exit 1
+    fi
+
+    rm -rf "$RESPONSE_DIR"
+    echo "SUCCESS: Concurrent LHA probes were isolated and cleaned up."
+    echo ""
+}
+
 # Function to test subsong durations
 # Arguments:
 # 1. Test name (string)
@@ -3201,6 +3259,7 @@ test_external_download_flow_with_oversized_file "Download file exceeding 10MB li
 test_metadata_extraction "Full metadata" "https://modland.com/pub/modules/Protracker/Captain/space_debris.mod" "" "space_debris" "Protracker" "Protracker and family" 1
 test_metadata_extraction "Custom module" "https://zakalwe.fi/uade/amiga-music/customs/WingsOfDeath-Levels1-7/cust.WingsOfDeath-Levels1-7" "" "" "Custom" "Custom" 8
 test_metadata_extraction "LHA: Custom module with multiple files" "$CUSTOM_MULTI_LHA_URL" "" "" "Custom" "Custom" 8
+test_concurrent_lha_probe_requests
 test_metadata_extraction "Partial metadata" "https://modland.com/pub/modules/Richard%20Joseph/Richard%20Joseph/cannon%20fodder%20(intro).sng" "https://modland.com/pub/modules/Richard%20Joseph/Richard%20Joseph/cannon%20fodder%20(intro).ins" "" "" "Richard Joseph Player" 2
 
 # Subsong duration tests
