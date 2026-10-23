@@ -14,6 +14,7 @@ AMINET_LHA_ARCHIVE_URL="https://aminet.net/mods/pop/spacedebris.lha"
 PROJECT_X_THESMOPHORIA_URL="https://ftp.modland.com/pub/modules/Protracker/Allister%20Brimble/project%20x%20-%20thesmophoria.mod"
 LED_STORM_MODLAND_URL="https://ftp.modland.com/pub/modules/Delitracker%20Custom/Tim%20Follin/led%20storm.cus"
 CUSTOM_MULTI_LHA_URL="$LOCAL_TEST_SERVER_URL/fixtures/invalid/archive-custom-multi.lha"
+CUSTOM_MULTI_LHA_PATH="fixtures/invalid/archive-custom-multi.lha"
 
 ./prepare-endpoint-fixtures.sh
 
@@ -3217,6 +3218,8 @@ test_filename_extraction "Scene.org URL" "https://files.scene.org/get:fi-https/m
 test_upload_conversion "Protracker module upload" "fixtures/modules/space_debris.mod"
 test_upload_metadata_extraction "Protracker module upload" "fixtures/modules/space_debris.mod" "space_debris" "Protracker" "Protracker and family" 1
 test_upload_filename_extraction "Protracker module upload" "fixtures/modules/space_debris.mod" "space_debris.mod"
+# Uploaded archive coverage: selective extraction must find the Custom module.
+test_upload_metadata_extraction "LHA: Custom module upload" "$CUSTOM_MULTI_LHA_PATH" "" "Custom" "Custom" 8
 test_upload_negative_case "Non-module file upload" "fixtures/modules/gutenberg.txt"
 test_upload_error "Reject empty file upload" "fixtures/invalid/empty.bin" 400
 test_upload_error "Reject oversized file upload" "fixtures/invalid/too-large.bin" 413
@@ -3224,6 +3227,8 @@ test_upload_oversized_payload_shape "Reject oversized file upload uses shared 41
 
 # Probe-upload tests
 test_probe_upload "Probe upload Protracker module" "fixtures/modules/space_debris.mod"
+# Probe-upload must apply the same LHA member selection and metadata policy.
+test_probe_upload "LHA: Custom module probe upload" "$CUSTOM_MULTI_LHA_PATH"
 test_probe_upload_error "Probe upload non-module file" "fixtures/modules/gutenberg.txt" 400 "Could not detect module metadata"
 test_probe_upload_preserves_negative_cache "Probe upload invalid file preserves negative cache" "fixtures/modules/gutenberg.txt"
 test_probe_upload_error "Probe upload empty file" "fixtures/invalid/empty.bin" 400 "Empty file provided"
