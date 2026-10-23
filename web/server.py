@@ -743,6 +743,11 @@ def _safe_client_filename(filename, *, fallback="module"):
     return secure_filename(normalized)[:100] or fallback
 
 
+def new_unique_id():
+    """Return a compact UUID suitable for internal filenames and lock markers."""
+    return uuid.uuid4().hex
+
+
 def _validated_managed_path(path, *roots):
     """Validate that a path stays under one of the managed storage roots."""
     candidate = Path(path)
@@ -765,9 +770,14 @@ def _validated_managed_path(path, *roots):
 def _managed_modules_path(*, filename, suffix):
     """Build a validated path under MODULES_DIR for uploaded/probed module storage."""
     return _validated_managed_path(
-        MODULES_DIR / f"{_safe_client_filename(filename)}_{suffix}",
+        MODULES_DIR / _module_storage_filename(filename, suffix),
         MODULES_DIR,
     )
+
+
+def _module_storage_filename(filename, unique_suffix):
+    """Build the shared safe-name-plus-unique-suffix storage filename."""
+    return f"{_safe_client_filename(filename)}_{unique_suffix}"
 
 
 def _safe_log_name(value):
@@ -938,7 +948,7 @@ def prepare_uploaded_request_source(*, content_addressed=False):
     if error_message is not None:
         return None, None, error_message
 
-    temp_path = _managed_modules_path(filename=filename, suffix=str(uuid.uuid4()))
+    temp_path = _managed_modules_path(filename=filename, suffix=new_unique_id())
     file.save(temp_path)
 
     if not content_addressed:
@@ -1294,7 +1304,7 @@ def update_cache_access_record(cache_hash, *, force=False):
                     return
 
         payload = json.dumps({"last_accessed_at": now.isoformat()})
-        temp_record_path = f"{access_record_path}.{uuid.uuid4()}.tmp"
+        temp_record_path = f"{access_record_path}.{new_unique_id()}.tmp"
         with fs_cache.open(temp_record_path, "w") as f:
             f.write(payload)
         if fs_cache.exists(access_record_path):
@@ -1372,7 +1382,7 @@ def supports_flac(user_agent):
 def compress_to_flac(wav_path, flac_path):
     """Compress WAV to FLAC format"""
     # Use a temporary file for UADE output to ensure atomic write
-    temp_flac_output_path = flac_path.with_name(f"{flac_path.name}.{uuid.uuid4()!s}.tmp")
+    temp_flac_output_path = flac_path.with_name(f"{flac_path.name}.{new_unique_id()}.tmp")
     flac_started_at = time.perf_counter()
     try:
         # Prevent division by zero if wav file is empty
@@ -1475,17 +1485,41 @@ def _archive_target(extract_dir, member_name):
     return target
 
 
-def _archive_output_target(extract_dir, member_name):
-    """Return the flat, sanitized output path used for an extracted member."""
+def _archive_surrogate_name(member_name, extraction_id):
+    """Return the safe extracted filename used internally for an archive member."""
     parts = _normalise_archive_member(member_name)
     if parts is None:
         raise ArchiveValidationError("unsafe archive member path")
-    return extract_dir / _safe_client_filename(parts[-1])
+
+    safe_name = _safe_client_filename(parts[-1])
+    folded_name = safe_name.casefold()
+    dual_suffixes = {
+        suffix
+        for entry in DUAL_FILE_MODULES
+        for suffix in (entry["pattern_data"], entry["sample_data"])
+    }
+    for suffix in dual_suffixes:
+        suffix_marker = f".{suffix}"
+        if folded_name.endswith(suffix_marker):
+            stem = safe_name[: -len(suffix_marker)]
+            return _module_storage_filename(stem, f"{extraction_id}{suffix_marker}")
+        if folded_name.startswith(f"{suffix}."):
+            prefix, remainder = safe_name.split(".", maxsplit=1)
+            return _module_storage_filename(f"{prefix}.{remainder}", extraction_id)
+
+    return _module_storage_filename(safe_name, extraction_id)
 
 
-def _validate_archive_output_names(member_names):
+def _archive_output_target(extract_dir, member_name, extraction_id):
+    """Return the flat, surrogate-named output path for an extracted member."""
+    return extract_dir / _archive_surrogate_name(member_name, extraction_id)
+
+
+def _validate_archive_output_names(member_names, extraction_id):
     """Reject selected members whose sanitized basenames would collide."""
-    output_names = [_archive_output_target(Path(), name).name for name in member_names]
+    output_names = [
+        _archive_output_target(Path(), name, extraction_id).name for name in member_names
+    ]
     if len(output_names) != len(set(output_names)):
         raise ArchiveValidationError("archive members have colliding sanitized filenames")
 
@@ -1599,7 +1633,7 @@ def extract_lha(lha_path, extract_dir):
     """
     Extract LHA archive and return first music file found
 
-    Returns: (success, error_message, music_file_path or None, client_fault)
+    Returns: (success, error_message, music_file_path or None, client_fault, logical_name)
     """
     try:
         members = _list_lha_members(lha_path)
@@ -1607,8 +1641,9 @@ def extract_lha(lha_path, extract_dir):
         primary, selected, count = _select_archive_members(tuple(members))
         if not primary:
             logger.warning("Rejected LHA archive with no playable module: %s", lha_path.name)
-            return False, "No music files found in LHA archive", None, True
-        _validate_archive_output_names(selected)
+            return False, "No music files found in LHA archive", None, True, None
+        extraction_id = new_unique_id()
+        _validate_archive_output_names(selected, extraction_id)
         if any(char in member_name for member_name in selected for char in "*?"):
             raise ArchiveValidationError(
                 "LHA archive member contains unsupported wildcard characters"
@@ -1622,42 +1657,48 @@ def extract_lha(lha_path, extract_dir):
 
         if result.returncode != 0:
             logger.error(f"LHA extraction error: {result.stderr}")
-            return False, "LHA extraction failed", None, False
+            return False, "LHA extraction failed", None, False, None
 
         for member_name in selected:
             source = _archive_target(extract_dir, member_name)
-            target = _archive_output_target(extract_dir, member_name)
+            target = _archive_output_target(extract_dir, member_name, extraction_id)
             if not source.is_file() or source.is_symlink():
                 logger.warning(
                     "Rejected LHA archive because selected member was not extracted safely: %s",
                     lha_path.name,
                 )
-                return False, "Selected music file was not extracted from LHA archive", None, False
+                return (
+                    False,
+                    "Selected music file was not extracted from LHA archive",
+                    None,
+                    False,
+                    None,
+                )
             if source != target:
                 source.replace(target)
 
-        music_file = _archive_output_target(extract_dir, primary)
+        music_file = _archive_output_target(extract_dir, primary, extraction_id)
 
         logger.info(
             "Extracted selected LHA module, found %s candidate(s), using: %s", count, primary
         )
-        return True, None, music_file, False
+        return True, None, music_file, False, _safe_client_filename(Path(primary).name)
 
     except subprocess.TimeoutExpired:
-        return False, "LHA extraction timeout", None, False
+        return False, "LHA extraction timeout", None, False, None
     except ArchiveValidationError as exc:
         logger.warning("Rejected LHA archive: %s", exc)
-        return False, str(exc), None, True
+        return False, str(exc), None, True, None
     except Exception:
         logger.exception("LHA extraction exception")
-        return False, "LHA extraction failed", None, False
+        return False, "LHA extraction failed", None, False, None
 
 
 def extract_zip(zip_path, extract_dir):
     """
     Extract ZIP archive and return first music file found
 
-    Returns: (success, error_message, music_file_path or None, client_fault)
+    Returns: (success, error_message, music_file_path or None, client_fault, logical_name)
     """
     try:
         with zipfile.ZipFile(zip_path, "r") as zip_ref:
@@ -1672,41 +1713,42 @@ def extract_zip(zip_path, extract_dir):
             primary, selected, count = _select_archive_members(tuple(infos))
             if not primary:
                 logger.warning("Rejected ZIP archive with no playable module: %s", zip_path.name)
-                return False, "No music files found in ZIP archive", None, True
-            _validate_archive_output_names(selected)
+                return False, "No music files found in ZIP archive", None, True, None
+            extraction_id = new_unique_id()
+            _validate_archive_output_names(selected, extraction_id)
 
             extract_dir.mkdir(parents=True, exist_ok=True)
             for member_name in selected:
-                target = _archive_output_target(extract_dir, member_name)
+                target = _archive_output_target(extract_dir, member_name, extraction_id)
                 with zip_ref.open(member_name, "r") as source, target.open("wb") as destination:
                     shutil.copyfileobj(source, destination, length=1024 * 1024)
 
-        music_file = _archive_output_target(extract_dir, primary)
+        music_file = _archive_output_target(extract_dir, primary, extraction_id)
         if not music_file.is_file():
             logger.warning(
                 "Rejected ZIP archive because selected module was not extracted: %s", zip_path.name
             )
-            return False, "No music files found in ZIP archive", None, True
+            return False, "No music files found in ZIP archive", None, True, None
 
         logger.info(
             "Extracted selected ZIP module, found %s candidate(s), using: %s", count, primary
         )
-        return True, None, music_file, False
+        return True, None, music_file, False, _safe_client_filename(Path(primary).name)
 
     except zipfile.BadZipFile:
-        return False, "ZIP extraction failed: Bad ZIP file", None, True
+        return False, "ZIP extraction failed: Bad ZIP file", None, True, None
     except ArchiveValidationError as exc:
         logger.warning("Rejected ZIP archive: %s", exc)
-        return False, str(exc), None, True
+        return False, str(exc), None, True, None
     except Exception:
         logger.exception("ZIP extraction exception")
-        return False, "ZIP extraction failed", None, False
+        return False, "ZIP extraction failed", None, False, None
 
 
 def save_to_cache(cache_hash, file, ext):
     """Save a converted file and metadata to remote cache (WAV or FLAC)."""
     cache_file_remote = f"{root_cache}/{cache_hash}{ext}"
-    temp_file_remote = f"{cache_file_remote}.{uuid.uuid4()}.tmp"
+    temp_file_remote = f"{cache_file_remote}.{new_unique_id()}.tmp"
     if not fs_cache.exists(cache_file_remote):
         with Path(file).open("rb") as src, fs_cache.open(temp_file_remote, "wb") as dst:
             shutil.copyfileobj(src, dst, length=1024 * 1024)  # 1MB buffer
@@ -1719,7 +1761,7 @@ def save_to_cache(cache_hash, file, ext):
     if metadata_file_local.exists():
         # copy to remote cache
         cache_file_remote = f"{root_cache}/{cache_hash}.json"
-        temp_file_remote = f"{cache_file_remote}.{uuid.uuid4()}.tmp"
+        temp_file_remote = f"{cache_file_remote}.{new_unique_id()}.tmp"
 
         if not fs_cache.exists(cache_file_remote):
             with (
@@ -1751,7 +1793,9 @@ def fetch_cached_file(cache_hash, *, prefer_flac=False, allow_wav_fallback=True)
     for ext in extensions:
         cache_file_remote = f"{root_cache}/{cache_hash}{ext}"
         cache_file_local = CONVERTED_DIR / f"{cache_hash}{ext}"
-        temp_file_local = cache_file_local.with_name(f"{cache_file_local.name}.{uuid.uuid4()}.tmp")
+        temp_file_local = cache_file_local.with_name(
+            f"{cache_file_local.name}.{new_unique_id()}.tmp"
+        )
         if fs_cache.exists(cache_file_remote):
             remote_size = fs_cache.size(cache_file_remote)
             if cache_file_local.exists() and cache_file_local.stat().st_size == remote_size:
@@ -1944,7 +1988,7 @@ def save_metadata(cache_hash, metadata):
         # Save to local disk
         metadata_file_local = CONVERTED_DIR / f"{cache_hash}.json"
         temp_file_local = metadata_file_local.with_name(
-            f"{metadata_file_local.name}.{uuid.uuid4()}.tmp"
+            f"{metadata_file_local.name}.{new_unique_id()}.tmp"
         )
 
         metadata_json = json.dumps(metadata)
@@ -1983,7 +2027,7 @@ def load_metadata_cache(cache_hash):
 
             # Save to local disk for future access
             temp_file_local = metadata_file_local.with_name(
-                f"{metadata_file_local.name}.{uuid.uuid4()}.tmp"
+                f"{metadata_file_local.name}.{new_unique_id()}.tmp"
             )
             metadata_json = json.dumps(metadata)
             with Path(temp_file_local).open("w") as f:
@@ -2557,7 +2601,7 @@ def process_audio_conversion(
         else:
             # No cached metadata, run detection
             # Use a unique lock file for metadata detection (per thread/process)
-            unique_metadata_lock = MODULES_DIR / f"{cache_hash}.metadatalock.{uuid.uuid4()!s}"
+            unique_metadata_lock = MODULES_DIR / f"{cache_hash}.metadatalock.{new_unique_id()}"
             unique_metadata_lock.touch(exist_ok=True)
             try:
                 metadata = detect_module_metadata(input_path)
@@ -2609,7 +2653,7 @@ def process_audio_conversion(
         output_path = CONVERTED_DIR / f"{cache_hash}.wav"
         lock_path = get_conversion_lock_path(cache_hash)
         # Use a temporary file for UADE output to ensure atomic write
-        temp_uade_output_path = output_path.with_name(f"{output_path.name}.{uuid.uuid4()!s}.tmp")
+        temp_uade_output_path = output_path.with_name(f"{output_path.name}.{new_unique_id()}.tmp")
         stderr_log_path = temp_uade_output_path.with_suffix(
             f"{temp_uade_output_path.suffix}.stderr"
         )
@@ -3013,7 +3057,7 @@ def test_set_local_file_mtime():
     try:
         os.utime(target_path, (mtime_epoch, mtime_epoch))
     except PermissionError:
-        temp_path = target_path.with_name(f"{target_path.name}.{uuid.uuid4()}.tmp")
+        temp_path = target_path.with_name(f"{target_path.name}.{new_unique_id()}.tmp")
         try:
             with Path(target_path).open("rb") as src, Path(temp_path).open("wb") as dst:
                 shutil.copyfileobj(src, dst, length=1024 * 1024)
@@ -3353,7 +3397,7 @@ def detect_cached_module_metadata(input_path, sample_file_and_alias=None):
         )
         return metadata, cache_hash
 
-    unique_metadata_lock = MODULES_DIR / f"{cache_hash}.metadatalock.{uuid.uuid4()!s}"
+    unique_metadata_lock = MODULES_DIR / f"{cache_hash}.metadatalock.{new_unique_id()}"
     unique_metadata_lock.touch(exist_ok=True)
     try:
         metadata = detect_module_metadata(input_path)
@@ -3467,7 +3511,7 @@ def resolve_archive_module(module_path, filename, extract_dir, *, mode):
             continue
 
         logger.info(f"Detected {archive_label} archive{mode_suffix}: {_safe_log_name(filename)}")
-        success, error, music_file, client_fault = extractor(module_path, extract_dir)
+        success, error, music_file, client_fault, logical_name = extractor(module_path, extract_dir)
         if not success:
             return ArchiveResolutionResult(
                 module_path=module_path,
@@ -3475,7 +3519,7 @@ def resolve_archive_module(module_path, filename, extract_dir, *, mode):
                 error=error,
                 client_fault=client_fault,
             )
-        archive_filename = _safe_client_filename(music_file.name)
+        archive_filename = logical_name
         archive_filename, _, _, _ = get_dual_file_module_filenames(archive_filename)
         return ArchiveResolutionResult(module_path=music_file, filename=archive_filename)
 
@@ -3492,7 +3536,7 @@ def prepare_module_source(
     """Prepare a module path/name for convert or probe processing."""
     module_path = _validated_managed_path(module_path, MODULES_DIR)
     filename = _safe_client_filename(filename)
-    unique_id = str(uuid.uuid4())
+    unique_id = new_unique_id()
     extract_dir = Path(f"{module_path}_extracted_{unique_id}")
     register_active_local_cleanup_path(extract_dir)
     source_prepared = False
