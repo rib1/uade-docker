@@ -463,6 +463,8 @@ When you play an audio file, it is stored in your browser's cache for **one mont
 The server maintains its own cache of converted audio files. This is primarily for efficiency in multi-instance or cloud-native deployments.
 
 - **Stateless & Shared:** All server instances can connect to a shared cache (e.g., AWS S3, GCS, or a shared disk), allowing them to share converted files.
+- **Load-Balancing Requirement:** A shared cache is mandatory when more than one web container or pod can receive requests. Without it, a conversion response and its later `/play/{file_id}` request may be handled by different instances, causing a cache miss and `404`.
+- **Single-Instance Exception:** The default local `file:///tmp/cache` configuration is suitable only when one container handles the workflow end to end.
 - **Deduplication:** If one user converts a module, it becomes available instantly to all other users without needing to be converted again.
 - **Queue Probe Caveat:** Shared cache applies to converted audio and metadata. Probed local-file state used by `/convert-probed` is still a container-local optimization by default, so cross-container queue handoff should expect `/upload` fallback.
 - **Backend Options:** The cache can be a local directory, an AWS S3 bucket, or a Google Cloud Storage bucket.
@@ -487,6 +489,15 @@ CACHE_URI: s3://your-bucket/cache   # AWS S3 remote cache
 CACHE_URI: gcs://your-bucket/cache  # Google Cloud Storage remote cache
 CACHE_ACCESS_UPDATE_INTERVAL_SECONDS: 300 # Update sidecar access time at most once every 5 min
 ```
+
+The Cloud Run deployment uses a regional GCS bucket for this setting. Create a
+Standard bucket in `us-central1`, grant
+`uade-web-player-sa@PROJECT_ID.iam.gserviceaccount.com` the
+`roles/storage.objectAdmin` role on that bucket, and store its name in the
+`GCS_CACHE_BUCKET` GitHub Actions secret. The deployment workflow validates the
+bucket and configures every Cloud Run instance with
+`gcs://BUCKET_NAME/cache`. Keep the local `file:///tmp/cache` default for
+single-container development only.
 
 ## Browser Compatibility
 

@@ -44,7 +44,7 @@ architecture-beta
 - **Web Browser** - Access web player via HTTPS
 - **Command Line** - Run Docker commands locally via PowerShell/Bash
 
-### Local Runtime (Docker) Layer
+### Local Environment (Docker)
 
 - **UADE CLI Container** (`uade-cli`)
   - Debian stable-slim base
@@ -61,7 +61,7 @@ architecture-beta
   - Non-root user (uid=1000)
   - Rate limiting (per endpoint & global, per instance)
 
-### Delivery and Cloud Runtime Layer
+### Build, Delivery, and Cloud Run Environment
 
 - **GitHub Actions**
   - Automated CI/CD pipeline
@@ -86,9 +86,20 @@ architecture-beta
 ### Shared Storage Layer
 
 - **Shared Cache**
-  - Converted-audio cache backed by local disk, AWS S3, or Google Cloud Storage
-  - Shared across web instances when `CACHE_URI` points to a shared backend
-  - Used for instant replay, deduplication, and multi-instance cache recovery
+  - Converted-audio cache backed by AWS S3 or Google Cloud Storage when configured
+  - Optional for a single-container deployment
+  - Required for multi-container or load-balanced deployments, because conversion and playback requests may reach different instances
+  - All instances must use the same shared backend for reliable playback, deduplication, and cache recovery
+
+### Cache Deployment Defaults
+
+The diagram shows three distinct cache locations. Local Docker uses the persistent
+`uade-tmp` volume. The deployed Cloud Run service is configured with the same
+regional GCS bucket for every instance, while `file:///tmp/cache` remains the
+single-container local default. A multi-container deployment must configure the
+same S3/GCS (or other shared read/write) `CACHE_URI` for every instance;
+otherwise a `/play/{file_id}` request routed to another instance can return
+`404` even though conversion succeeded.
 
 ### External Services
 

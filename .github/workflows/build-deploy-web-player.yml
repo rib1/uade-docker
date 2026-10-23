@@ -101,6 +101,7 @@ jobs:
     if: github.actor != 'dependabot[bot]' && github.repository == 'rib1/uade-docker' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
     env:
       PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
+      GCS_CACHE_BUCKET: ${{ secrets.GCS_CACHE_BUCKET }}
       SERVICE_NAME: uade-web-player
       REGION: us-central1
     permissions:
@@ -143,6 +144,11 @@ jobs:
       # Benchmark sweep result for this Cloud Run shape:
       # MAX_CONCURRENT_CONVERSIONS=2 gave the best playback/conversion balance.
       run: |
+        if [ -z "${GCS_CACHE_BUCKET}" ]; then
+          echo "GCS_CACHE_BUCKET secret is required for the multi-instance Cloud Run deployment."
+          exit 1
+        fi
+        gcloud storage buckets describe "gs://${GCS_CACHE_BUCKET}" --project "${PROJECT_ID}" >/dev/null
         gcloud run deploy ${{ env.SERVICE_NAME }} \
           --image gcr.io/${{ env.PROJECT_ID }}/${{ env.SERVICE_NAME }}:latest \
           --platform managed \
@@ -161,7 +167,7 @@ jobs:
           --set-env-vars "CLEANUP_INTERVAL=3600" \
           --set-env-vars "CACHE_CLEANUP_INTERVAL=86400" \
           --set-env-vars "RATE_LIMIT=200" \
-          --set-env-vars "CACHE_URI=file:///tmp/cache" \
+          --set-env-vars "CACHE_URI=gcs://${GCS_CACHE_BUCKET}/cache" \
           --set-env-vars "MAX_CONCURRENT_CONVERSIONS=2" \
           --set-env-vars "RATE_LIMIT_DISABLED=0"
 
