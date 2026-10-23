@@ -32,7 +32,7 @@ This file tracks all published versions of the `uade-cli` base Docker image and 
 **Deployment Status:**
 
 - Available as: `ghcr.io/rib1/uade-cli:3.05-base.5`
-- Verified binary: `uade123 3.05`; runtime binary is non-setuid (`0755`)
+- Verified binary: `uade123 3.05`; runtime binary is non-setuid
 
 ---
 
