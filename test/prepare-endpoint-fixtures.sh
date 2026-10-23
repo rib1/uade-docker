@@ -22,7 +22,10 @@ if [ ! -s "${INVALID_DIR}/invalid-archive.zip" ]; then
 fi
 
 ARCHIVE_BUILD_DIR="${INVALID_DIR}/archive-build"
-ARCHIVE_OUTPUT_DIR="$(pwd)/${INVALID_DIR}"
+case "$INVALID_DIR" in
+  /*) ARCHIVE_OUTPUT_DIR="$INVALID_DIR" ;;
+  *) ARCHIVE_OUTPUT_DIR="$(pwd)/${INVALID_DIR}" ;;
+esac
 mkdir -p "${ARCHIVE_BUILD_DIR}/no-module"
 printf 'archive contains no playable module\n' > "${ARCHIVE_BUILD_DIR}/no-module/README.txt"
 
@@ -77,14 +80,14 @@ download_fixture "${MODULES_DIR}/smpl.turrican_2_level_0-intro" "https://modland
 
 CUSTOM_ARCHIVE_BUILD_DIR="${ARCHIVE_BUILD_DIR}/custom-module"
 CUSTOM_ARCHIVE_PATH="${INVALID_DIR}/archive-custom-multi.lha"
-mkdir -p "$CUSTOM_ARCHIVE_BUILD_DIR"
-download_fixture \
-  "${CUSTOM_ARCHIVE_BUILD_DIR}/cust.WingsOfDeath-Levels1-7" \
-  "https://zakalwe.fi/uade/amiga-music/customs/WingsOfDeath-Levels1-7/cust.WingsOfDeath-Levels1-7"
-printf 'archive contains a README and one playable Custom module\n' \
-  > "${CUSTOM_ARCHIVE_BUILD_DIR}/README.txt"
 if [ ! -s "$CUSTOM_ARCHIVE_PATH" ]; then
   echo "Creating archive-custom-multi.lha fixture..."
+  mkdir -p "$CUSTOM_ARCHIVE_BUILD_DIR"
+  download_fixture \
+    "${CUSTOM_ARCHIVE_BUILD_DIR}/cust.WingsOfDeath-Levels1-7" \
+    "https://zakalwe.fi/uade/amiga-music/customs/WingsOfDeath-Levels1-7/cust.WingsOfDeath-Levels1-7"
+  printf 'archive contains a README and one playable Custom module\n' \
+    > "${CUSTOM_ARCHIVE_BUILD_DIR}/README.txt"
   (
     cd "$CUSTOM_ARCHIVE_BUILD_DIR"
     lha a -q "$ARCHIVE_OUTPUT_DIR/archive-custom-multi.lha" README.txt cust.WingsOfDeath-Levels1-7

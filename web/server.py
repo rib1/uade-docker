@@ -1449,11 +1449,14 @@ def _select_archive_members(member_names):
     primary = playable[0]
     selected = [primary]
     basename = posixpath.basename(primary)
-    _, _, sample_name, _ = get_dual_file_module_filenames(basename)
+    _, _, sample_name, sample_suffix = get_dual_file_module_filenames(basename.casefold())
     if sample_name:
-        companion = posixpath.join(posixpath.dirname(primary), sample_name)
-        if companion in member_names:
-            selected.append(companion)
+        companion_name = f"{sample_name}{sample_suffix}"
+        companion = posixpath.join(posixpath.dirname(primary), companion_name)
+        member_names_by_casefold = {name.casefold(): name for name in member_names}
+        actual_companion = member_names_by_casefold.get(companion.casefold())
+        if actual_companion:
+            selected.append(actual_companion)
     return primary, selected, len(playable)
 
 
@@ -1461,9 +1464,14 @@ def _archive_target(extract_dir, member_name):
     """Resolve an already-validated archive member below the extraction directory."""
     parts = _normalise_archive_member(member_name)
     if parts is None:
-        raise ValueError("unsafe archive member path")
+        raise ArchiveValidationError("unsafe archive member path")
     target = extract_dir.joinpath(*parts)
-    target.resolve(strict=False).relative_to(extract_dir.resolve(strict=False))
+    try:
+        target.resolve(strict=False).relative_to(extract_dir.resolve(strict=False))
+    except ValueError:
+        raise ArchiveValidationError(
+            "archive member resolves outside extraction directory"
+        ) from None
     return target
 
 
@@ -1471,7 +1479,7 @@ def _archive_output_target(extract_dir, member_name):
     """Return the flat, sanitized output path used for an extracted member."""
     parts = _normalise_archive_member(member_name)
     if parts is None:
-        raise ValueError("unsafe archive member path")
+        raise ArchiveValidationError("unsafe archive member path")
     return extract_dir / _safe_client_filename(parts[-1])
 
 
@@ -1479,7 +1487,7 @@ def _validate_archive_output_names(member_names):
     """Reject selected members whose sanitized basenames would collide."""
     output_names = [_archive_output_target(Path(), name).name for name in member_names]
     if len(output_names) != len(set(output_names)):
-        raise ValueError("archive members have colliding sanitized filenames")
+        raise ArchiveValidationError("archive members have colliding sanitized filenames")
 
 
 def find_music_file(extract_dir):
@@ -1539,7 +1547,7 @@ def _list_lha_members(lha_path):
     )
     if result.returncode != 0:
         logger.error("LHA listing error: %s", result.stderr)
-        raise ValueError("LHA listing failed")
+        raise ArchiveValidationError("LHA listing failed")
 
     members = {}
     listing_patterns = (
@@ -1565,26 +1573,26 @@ def _list_lha_members(lha_path):
             size = int(fields[1])
             name = " ".join(fields[6:]).strip()
         if _normalise_archive_member(name) is None:
-            raise ValueError("unsafe LHA member path")
+            raise ArchiveValidationError("unsafe LHA member path")
         members[name] = size
     if not members:
-        raise ValueError("LHA archive contains no readable members")
+        raise ArchiveValidationError("LHA archive contains no readable members")
     return members
 
 
 def _validate_archive_members(members):
     """Validate archive member count and declared expansion limits."""
     if len(members) > MAX_ARCHIVE_MEMBERS:
-        raise ValueError("archive contains too many members")
+        raise ArchiveValidationError("archive contains too many members")
     total_size = 0
     for name, size in members.items():
         if _normalise_archive_member(name) is None:
-            raise ValueError("unsafe archive member path")
+            raise ArchiveValidationError("unsafe archive member path")
         if size < 0 or size > MAX_ARCHIVE_MEMBER_SIZE:
-            raise ValueError("archive member exceeds the maximum allowed size")
+            raise ArchiveValidationError("archive member exceeds the maximum allowed size")
         total_size += size
         if total_size > MAX_ARCHIVE_TOTAL_SIZE:
-            raise ValueError("archive exceeds the maximum allowed extracted size")
+            raise ArchiveValidationError("archive exceeds the maximum allowed extracted size")
 
 
 def extract_lha(lha_path, extract_dir):
@@ -1601,6 +1609,10 @@ def extract_lha(lha_path, extract_dir):
             logger.warning("Rejected LHA archive with no playable module: %s", lha_path.name)
             return False, "No music files found in LHA archive", None, True
         _validate_archive_output_names(selected)
+        if any(char in member_name for member_name in selected for char in "*?"):
+            raise ArchiveValidationError(
+                "LHA archive member contains unsupported wildcard characters"
+            )
 
         extract_dir.mkdir(parents=True, exist_ok=True)
         cmd = [LHA_BIN, "x", str(lha_path), *selected]
@@ -1633,7 +1645,7 @@ def extract_lha(lha_path, extract_dir):
 
     except subprocess.TimeoutExpired:
         return False, "LHA extraction timeout", None, False
-    except ValueError as exc:
+    except ArchiveValidationError as exc:
         logger.warning("Rejected LHA archive: %s", exc)
         return False, str(exc), None, True
     except Exception:
@@ -1654,7 +1666,7 @@ def extract_zip(zip_path, extract_dir):
                 if info.is_dir():
                     continue
                 if (info.external_attr >> 16) & ZIP_FILE_TYPE_MASK == ZIP_SYMLINK_TYPE:
-                    raise ValueError("ZIP archive contains a symbolic link")
+                    raise ArchiveValidationError("ZIP archive contains a symbolic link")
                 infos[info.filename] = info.file_size
             _validate_archive_members(infos)
             primary, selected, count = _select_archive_members(tuple(infos))
@@ -1683,7 +1695,7 @@ def extract_zip(zip_path, extract_dir):
 
     except zipfile.BadZipFile:
         return False, "ZIP extraction failed: Bad ZIP file", None, True
-    except ValueError as exc:
+    except ArchiveValidationError as exc:
         logger.warning("Rejected ZIP archive: %s", exc)
         return False, str(exc), None, True
     except Exception:
@@ -3811,6 +3823,10 @@ def ensure_safe_remote_url(u, *, context="URL"):
     if not normalized_url or not is_safe_url(normalized_url):
         raise ValueError(f"Unsafe or disallowed {context.lower()} provided")
     return normalized_url
+
+
+class ArchiveValidationError(ValueError):
+    """Raised when an archive member or archive limit fails validation."""
 
 
 class UnsupportedRemoteContentError(requests.RequestException):
