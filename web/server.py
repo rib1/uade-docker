@@ -60,6 +60,7 @@ FLAC_COMPRESSION_COUNTS_LOCK = threading.Lock()
 UADE_VERSION_TOKEN_PARTS_MIN: Final = 2
 MEMINFO_LINE_PARTS_EXPECTED: Final = 2
 LHA_HEADER_MIN_BYTES: Final = 7
+LHA_GENERIC_LISTING_MIN_FIELDS: Final = 7
 ASCII_PRINTABLE_MIN: Final = 0x20
 ASCII_PRINTABLE_MAX: Final = 0x7E
 SANITIZED_URL_LOG_MAX_LEN: Final = 200
@@ -68,6 +69,11 @@ ENOENT_ERRNO: Final = 2
 MAX_REMOTE_REDIRECTS: Final = 5
 REMOTE_BROWSER_VERIFICATION_RETRIES: Final = 1
 REMOTE_BROWSER_VERIFICATION_RETRY_DELAY_SECONDS: Final = 1
+MAX_ARCHIVE_MEMBERS: Final = 256
+MAX_ARCHIVE_PATH_DEPTH: Final = 16
+WINDOWS_DRIVE_PREFIX_LENGTH: Final = 2
+ZIP_FILE_TYPE_MASK: Final = 0o170000
+ZIP_SYMLINK_TYPE: Final = 0o120000
 GIT_BIN: Final = "/usr/bin/git"
 UADE123_BIN: Final = "/usr/local/bin/uade123"
 FLAC_BIN: Final = "/usr/bin/flac"
@@ -226,6 +232,11 @@ MAX_UPLOAD_SIZE: Final = int(os.getenv("MAX_UPLOAD_SIZE", "10485760"))  # 10MB
 app.config["MAX_CONTENT_LENGTH"] = MAX_UPLOAD_SIZE
 MAX_DOWNLOAD_SIZE: Final = int(os.getenv("MAX_DOWNLOAD_SIZE", "10485760"))  # 10MB
 app.config["MAX_DOWNLOAD_SIZE"] = MAX_DOWNLOAD_SIZE
+# Archive expansion uses the same cap as remote downloads. This prevents a
+# compressed archive from bypassing the application's download-size boundary.
+MAX_ARCHIVE_SIZE: Final = MAX_DOWNLOAD_SIZE
+MAX_ARCHIVE_MEMBER_SIZE: Final = MAX_ARCHIVE_SIZE
+MAX_ARCHIVE_TOTAL_SIZE: Final = MAX_ARCHIVE_SIZE
 CLEANUP_INTERVAL: Final = int(os.getenv("CLEANUP_INTERVAL", "3600"))  # 1 hour
 CACHE_CLEANUP_INTERVAL: Final = int(os.getenv("CACHE_CLEANUP_INTERVAL", "86400"))  # 24 hours
 RATE_LIMIT: Final = int(os.getenv("RATE_LIMIT", "200"))  # requests per hour
@@ -608,10 +619,10 @@ EXAMPLES: Final = [
     {
         "id": "led-storm",
         "name": "Tim Follin - LED Storm",
-        "format": "Custom (LHA)",
+        "format": "Custom",
         "duration": "38 min (7 tracks)",
         "url": (
-            "https://files.exotica.org.uk/?file=exotica/media/audio/UnExoticA/Game/Follin_Tim/L_E_D_Storm.lha"
+            "https://ftp.modland.com/pub/modules/Delitracker%20Custom/Tim%20Follin/led%20storm.cus"
         ),
         "type": "cust",
     },
@@ -1404,6 +1415,73 @@ def compress_to_flac(wav_path, flac_path):
         temp_flac_output_path.unlink(missing_ok=True)  # Clean up temp file
 
 
+def _normalise_archive_member(name):
+    """Return safe POSIX path parts for an archive member, or None if unsafe."""
+    if not name or "\x00" in name:
+        return None
+    normalised = posixpath.normpath(name.replace("\\", "/"))
+    if normalised in ("", ".") or normalised.startswith("/"):
+        return None
+    parts = tuple(part for part in normalised.split("/") if part not in ("", "."))
+    if not parts or ".." in parts or len(parts) > MAX_ARCHIVE_PATH_DEPTH:
+        return None
+    if len(parts[0]) == WINDOWS_DRIVE_PREFIX_LENGTH and parts[0][1] == ":":
+        return None
+    return parts
+
+
+def _archive_member_is_playable(name):
+    """Return whether an archive member name can identify a primary module."""
+    basename = posixpath.basename(name)
+    ext = Path(basename).suffix.lower()[1:].strip()
+    prefix = basename.lower().split(".")[0].strip()
+    return ext in PLAYABLE_MODULE_EXTENSIONS or prefix in PLAYABLE_MODULE_EXTENSIONS
+
+
+def _select_archive_members(member_names):
+    """Select the deterministic primary module and any required dual-file companion."""
+    playable = sorted(
+        (name for name in member_names if _archive_member_is_playable(name)), reverse=True
+    )
+    if not playable:
+        return None, [], 0
+
+    primary = playable[0]
+    selected = [primary]
+    basename = posixpath.basename(primary)
+    _, _, sample_name, _ = get_dual_file_module_filenames(basename)
+    if sample_name:
+        companion = posixpath.join(posixpath.dirname(primary), sample_name)
+        if companion in member_names:
+            selected.append(companion)
+    return primary, selected, len(playable)
+
+
+def _archive_target(extract_dir, member_name):
+    """Resolve an already-validated archive member below the extraction directory."""
+    parts = _normalise_archive_member(member_name)
+    if parts is None:
+        raise ValueError("unsafe archive member path")
+    target = extract_dir.joinpath(*parts)
+    target.resolve(strict=False).relative_to(extract_dir.resolve(strict=False))
+    return target
+
+
+def _archive_output_target(extract_dir, member_name):
+    """Return the flat, sanitized output path used for an extracted member."""
+    parts = _normalise_archive_member(member_name)
+    if parts is None:
+        raise ValueError("unsafe archive member path")
+    return extract_dir / _safe_client_filename(parts[-1])
+
+
+def _validate_archive_output_names(member_names):
+    """Reject selected members whose sanitized basenames would collide."""
+    output_names = [_archive_output_target(Path(), name).name for name in member_names]
+    if len(output_names) != len(set(output_names)):
+        raise ValueError("archive members have colliding sanitized filenames")
+
+
 def find_music_file(extract_dir):
     """
     Find and return the first music file in a directory matching known extensions or prefixes.
@@ -1450,6 +1528,65 @@ def is_zip_file(file_path):
         return False
 
 
+def _list_lha_members(lha_path):
+    """List LHA members and their declared sizes without extracting them."""
+    result = subprocess.run(  # ruff:ignore[subprocess-without-shell-equals-true]
+        [LHA_BIN, "l", str(lha_path)],
+        capture_output=True,
+        text=True,
+        check=False,
+        timeout=30,
+    )
+    if result.returncode != 0:
+        logger.error("LHA listing error: %s", result.stderr)
+        raise ValueError("LHA listing failed")
+
+    members = {}
+    listing_patterns = (
+        re.compile(r"^\s*\S+\s+\d+/\d+\s+(\d+)\s+\S+\s+\S+\s+\d{1,2}\s+\S+\s+(.+)$"),
+        re.compile(r"^\s*\[[^]]+\]\s+(\d+)\s+\d+(?:\.\d+)?%\s+\S+\s+\d{1,2}\s+\d{4}\s+(.+)$"),
+    )
+    for line in result.stdout.splitlines():
+        match = next((pattern.match(line) for pattern in listing_patterns), None)
+        if match:
+            size = int(match.group(1))
+            name = match.group(2).strip()
+        else:
+            fields = line.split()
+            if not (
+                len(fields) >= LHA_GENERIC_LISTING_MIN_FIELDS
+                and fields[0].startswith("[")
+                and fields[0].endswith("]")
+                and fields[2].endswith("%")
+                and fields[4].isdigit()
+                and fields[5].isdigit()
+            ):
+                continue
+            size = int(fields[1])
+            name = " ".join(fields[6:]).strip()
+        if _normalise_archive_member(name) is None:
+            raise ValueError("unsafe LHA member path")
+        members[name] = size
+    if not members:
+        raise ValueError("LHA archive contains no readable members")
+    return members
+
+
+def _validate_archive_members(members):
+    """Validate archive member count and declared expansion limits."""
+    if len(members) > MAX_ARCHIVE_MEMBERS:
+        raise ValueError("archive contains too many members")
+    total_size = 0
+    for name, size in members.items():
+        if _normalise_archive_member(name) is None:
+            raise ValueError("unsafe archive member path")
+        if size < 0 or size > MAX_ARCHIVE_MEMBER_SIZE:
+            raise ValueError("archive member exceeds the maximum allowed size")
+        total_size += size
+        if total_size > MAX_ARCHIVE_TOTAL_SIZE:
+            raise ValueError("archive exceeds the maximum allowed extracted size")
+
+
 def extract_lha(lha_path, extract_dir):
     """
     Extract LHA archive and return first music file found
@@ -1457,10 +1594,16 @@ def extract_lha(lha_path, extract_dir):
     Returns: (success, error_message, music_file_path or None, client_fault)
     """
     try:
-        extract_dir.mkdir(parents=True, exist_ok=True)
+        members = _list_lha_members(lha_path)
+        _validate_archive_members(members)
+        primary, selected, count = _select_archive_members(tuple(members))
+        if not primary:
+            logger.warning("Rejected LHA archive with no playable module: %s", lha_path.name)
+            return False, "No music files found in LHA archive", None, True
+        _validate_archive_output_names(selected)
 
-        # Change to extract directory and run lha extraction
-        cmd = [LHA_BIN, "x", str(lha_path)]
+        extract_dir.mkdir(parents=True, exist_ok=True)
+        cmd = [LHA_BIN, "x", str(lha_path), *selected]
         result = subprocess.run(  # ruff:ignore[subprocess-without-shell-equals-true]
             cmd, capture_output=True, text=True, check=False, timeout=30, cwd=str(extract_dir)
         )
@@ -1469,15 +1612,30 @@ def extract_lha(lha_path, extract_dir):
             logger.error(f"LHA extraction error: {result.stderr}")
             return False, "LHA extraction failed", None, False
 
-        music_file, count = find_music_file(extract_dir)
-        if not music_file:
-            return False, "No music files found in LHA archive", None, True
+        for member_name in selected:
+            source = _archive_target(extract_dir, member_name)
+            target = _archive_output_target(extract_dir, member_name)
+            if not source.is_file() or source.is_symlink():
+                logger.warning(
+                    "Rejected LHA archive because selected member was not extracted safely: %s",
+                    lha_path.name,
+                )
+                return False, "Selected music file was not extracted from LHA archive", None, False
+            if source != target:
+                source.replace(target)
 
-        logger.info(f"Extracted LHA archive, found {count} music file(s), using: {music_file.name}")
+        music_file = _archive_output_target(extract_dir, primary)
+
+        logger.info(
+            "Extracted selected LHA module, found %s candidate(s), using: %s", count, primary
+        )
         return True, None, music_file, False
 
     except subprocess.TimeoutExpired:
         return False, "LHA extraction timeout", None, False
+    except ValueError as exc:
+        logger.warning("Rejected LHA archive: %s", exc)
+        return False, str(exc), None, True
     except Exception:
         logger.exception("LHA extraction exception")
         return False, "LHA extraction failed", None, False
@@ -1490,19 +1648,44 @@ def extract_zip(zip_path, extract_dir):
     Returns: (success, error_message, music_file_path or None, client_fault)
     """
     try:
-        extract_dir.mkdir(parents=True, exist_ok=True)
         with zipfile.ZipFile(zip_path, "r") as zip_ref:
-            zip_ref.extractall(extract_dir)
+            infos = {}
+            for info in zip_ref.infolist():
+                if info.is_dir():
+                    continue
+                if (info.external_attr >> 16) & ZIP_FILE_TYPE_MASK == ZIP_SYMLINK_TYPE:
+                    raise ValueError("ZIP archive contains a symbolic link")
+                infos[info.filename] = info.file_size
+            _validate_archive_members(infos)
+            primary, selected, count = _select_archive_members(tuple(infos))
+            if not primary:
+                logger.warning("Rejected ZIP archive with no playable module: %s", zip_path.name)
+                return False, "No music files found in ZIP archive", None, True
+            _validate_archive_output_names(selected)
 
-        music_file, count = find_music_file(extract_dir)
-        if not music_file:
+            extract_dir.mkdir(parents=True, exist_ok=True)
+            for member_name in selected:
+                target = _archive_output_target(extract_dir, member_name)
+                with zip_ref.open(member_name, "r") as source, target.open("wb") as destination:
+                    shutil.copyfileobj(source, destination, length=1024 * 1024)
+
+        music_file = _archive_output_target(extract_dir, primary)
+        if not music_file.is_file():
+            logger.warning(
+                "Rejected ZIP archive because selected module was not extracted: %s", zip_path.name
+            )
             return False, "No music files found in ZIP archive", None, True
 
-        logger.info(f"Extracted ZIP archive, found {count} music file(s), using: {music_file.name}")
+        logger.info(
+            "Extracted selected ZIP module, found %s candidate(s), using: %s", count, primary
+        )
         return True, None, music_file, False
 
     except zipfile.BadZipFile:
         return False, "ZIP extraction failed: Bad ZIP file", None, True
+    except ValueError as exc:
+        logger.warning("Rejected ZIP archive: %s", exc)
+        return False, str(exc), None, True
     except Exception:
         logger.exception("ZIP extraction exception")
         return False, "ZIP extraction failed", None, False
@@ -3281,7 +3464,9 @@ def resolve_archive_module(module_path, filename, extract_dir, *, mode):
                 error=error,
                 client_fault=client_fault,
             )
-        return ArchiveResolutionResult(module_path=music_file, filename=music_file.name)
+        archive_filename = _safe_client_filename(music_file.name)
+        archive_filename, _, _, _ = get_dual_file_module_filenames(archive_filename)
+        return ArchiveResolutionResult(module_path=music_file, filename=archive_filename)
 
     return ArchiveResolutionResult(module_path=module_path, filename=filename)
 

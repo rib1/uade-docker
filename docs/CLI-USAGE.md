@@ -297,17 +297,17 @@ docker run --rm -v "$env:USERPROFILE\Music:/output" --entrypoint /bin/sh uade-cl
 
 **Example: Extract and Convert from LHA Archive**
 
-You can extract Amiga modules from an LHA archive and convert them to WAV in one command:
+You can extract Amiga modules from an LHA archive and convert them to WAV in one command. Exotica's browser download endpoint currently serves a verification page, so use its FTP service for this CLI workflow:
 
 ```powershell
 # Download, extract, and convert a module from an LHA archive
-# This example uses Project-X.lha from Exotica
+# This example uses Project-X.lha from Exotica's FTP service
 
-docker run --rm -v "$env:USERPROFILE\Music:/output" --entrypoint /bin/sh uade-cli -c "curl -L -k -o /tmp/Project-X.lha 'http://files.exotica.org.uk/?file=exotica/media%2Faudio%2FUnExoticA%2FGame%2FBrimble_Allister%2FProject-X.lha' && cd /tmp && lha x Project-X.lha && /usr/local/bin/uade123 -c -f /output/mod.1812sampled.wav /tmp/Project-X/mod.1812sampled"
+docker run --rm -v "$env:USERPROFILE\Music:/output" --entrypoint /bin/sh uade-cli -c "curl --fail --ftp-pasv --user 'anonymous:' -o /tmp/Project-X.lha 'ftp://malus.exotica.org.uk/pub/exotica/media/audio/UnExoticA/Game/Brimble_Allister/Project-X.lha' && cd /tmp && lha x Project-X.lha && /usr/local/bin/uade123 -c -f /output/mod.1812sampled.wav /tmp/Project-X/mod.1812sampled"
 
 # You can also extract and convert other modules from the same archive, for example `bp.PX1`:
 
-docker run --rm -v "$env:USERPROFILE\Music:/output" --entrypoint /bin/sh uade-cli -c "curl -L -k -o /tmp/Project-X.lha 'http://files.exotica.org.uk/?file=exotica/media%2Faudio%2FUnExoticA%2FGame%2FBrimble_Allister%2FProject-X.lha' && cd /tmp && lha x Project-X.lha && /usr/local/bin/uade123 -c -f /output/bp.PX1.wav /tmp/Project-X/bp.PX1"
+docker run --rm -v "$env:USERPROFILE\Music:/output" --entrypoint /bin/sh uade-cli -c "curl --fail --ftp-pasv --user 'anonymous:' -o /tmp/Project-X.lha 'ftp://malus.exotica.org.uk/pub/exotica/media/audio/UnExoticA/Game/Brimble_Allister/Project-X.lha' && cd /tmp && lha x Project-X.lha && /usr/local/bin/uade123 -c -f /output/bp.PX1.wav /tmp/Project-X/bp.PX1"
 ```
 
 _Output: `$env:USERPROFILE\Music\mod.1812sampled.wav` and  `$env:USERPROFILE\Music\bp.PX1.wav` (WAV files ready to play on Windows)_

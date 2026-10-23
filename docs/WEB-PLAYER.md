@@ -168,19 +168,22 @@ For dual-file modules (e.g., TFMX, RJP), you can expand the details section to p
 ```url
 https://modland.com/pub/modules/Protracker/Captain/space_debris.mod
 https://modland.com/pub/modules/AHX/Pink/stormlord.ahx
-http://files.exotica.org.uk/?file=exotica%2Fmedia%2Faudio%2FUnExoticA%2FGame%2FFollin_Tim%2FL_E_D_Storm.lha
+https://ftp.modland.com/pub/modules/Delitracker%20Custom/Tim%20Follin/led%20storm.cus
 https://example.com/amiga-collection.zip
 ```
 
 **LHA & ZIP Archive Support:**
 
-The web player automatically detects and extracts classic Amiga LHA archives. Many music collections from sites like Exotica.org.uk are distributed as LHA files, and ZIP archives are also supported:
+The web player automatically detects and extracts classic Amiga LHA archives from HTTP/HTTPS URLs. Many music collections from sites like Exotica.org.uk are distributed as LHA files, and ZIP archives are also supported:
 
 - Upload an .lha or .zip file, or provide its URL
-- Player automatically extracts the archive
-- First music file found is played
+- Player lists and validates archive members before extraction
+- Archives are not fully exploded: a playable module candidate is selected deterministically, and only it plus any required companion data are extracted
+- Archives without a playable module are rejected with HTTP `400`
 - Supports all common Amiga module formats inside archives
 - No manual extraction needed!
+
+The web player does not fetch FTP URLs. Exotica's HTTP download endpoint currently returns a browser-verification page, so use the FTP-based extraction workflow in [CLI-USAGE.md](CLI-USAGE.md) for Exotica archives. Modland and Aminet HTTP/HTTPS URLs are suitable for the web player.
 
 ### 4. Share Music with Friends
 
@@ -426,6 +429,7 @@ FLASK_DEBUG: 0 # Development-only; set to 1 in docker-compose.dev.yml to enable 
 PORT: 5000 # Server port
 MAX_UPLOAD_SIZE: 10485760 # Max upload (10MB)
 MAX_DOWNLOAD_SIZE: 10485760 # Max download from URLs (10MB)
+# Archive member and total expansion limits use MAX_DOWNLOAD_SIZE too
 CLEANUP_INTERVAL: 3600 # Local file age threshold and request-triggered cleanup gate (1 hour)
 CACHE_CLEANUP_INTERVAL: 86400 # Cache cleanup interval (24 hours)
 CACHE_URI: file:///tmp/cache # Remote cache URI (default: file:///tmp/cache)
