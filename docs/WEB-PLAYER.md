@@ -174,7 +174,7 @@ https://example.com/amiga-collection.zip
 
 **LHA & ZIP Archive Support:**
 
-The web player automatically detects and extracts classic Amiga LHA archives from HTTP/HTTPS URLs. Many music collections from sites like Exotica.org.uk are distributed as LHA files, and ZIP archives are also supported:
+The web player automatically detects and extracts classic Amiga LHA archives from uploaded files and HTTP/HTTPS URLs. Many music collections from sites like Exotica.org.uk are distributed as LHA files, and ZIP archives are also supported:
 
 - Upload an .lha or .zip file, or provide its URL
 - Player lists and validates archive members before extraction
