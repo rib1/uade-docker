@@ -4,7 +4,7 @@ This file tracks all published versions of the `uade-cli` base Docker image and 
 
 ## Current Stable Version
 
-**`3.05-base.4`** (latest published stable release)
+**`3.05-base.5`** (latest published stable release)
 
 ---
 
@@ -14,7 +14,7 @@ This file tracks all published versions of the `uade-cli` base Docker image and 
 
 - **Image:** `ghcr.io/rib1/uade-cli:3.05-base.5`
 - **UADE Binary Version:** 3.05 (stable)
-- **Status:** Pending publication
+- **Status:** Stable version (published)
 - **Base Image:** `debian:stable-slim`
 
 **Changes:**
@@ -31,7 +31,8 @@ This file tracks all published versions of the `uade-cli` base Docker image and 
 
 **Deployment Status:**
 
-- Not published yet; publish `ghcr.io/rib1/uade-cli:3.05-base.5` before updating downstream pins
+- Available as: `ghcr.io/rib1/uade-cli:3.05-base.5`
+- Verified binary: `uade123 3.05`; runtime binary is non-setuid
 
 ---
 

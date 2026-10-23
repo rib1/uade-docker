@@ -12,7 +12,9 @@ LOCAL_TEST_SERVER_URL="http://uade-test-http-server:$LOCAL_TEST_SERVER_PORT"
 SKIP_MODARCHIVE_TESTS="${SKIP_MODARCHIVE_TESTS:-0}"
 AMINET_LHA_ARCHIVE_URL="https://aminet.net/mods/pop/spacedebris.lha"
 PROJECT_X_THESMOPHORIA_URL="https://ftp.modland.com/pub/modules/Protracker/Allister%20Brimble/project%20x%20-%20thesmophoria.mod"
-LED_STORM_EXOTICA_LHA_URL="https://files.exotica.org.uk/?file=exotica/media/audio/UnExoticA/Game/Follin_Tim/L_E_D_Storm.lha"
+LED_STORM_MODLAND_URL="https://ftp.modland.com/pub/modules/Delitracker%20Custom/Tim%20Follin/led%20storm.cus"
+CUSTOM_MULTI_LHA_URL="$LOCAL_TEST_SERVER_URL/fixtures/invalid/archive-custom-multi.lha"
+CUSTOM_MULTI_LHA_PATH="fixtures/invalid/archive-custom-multi.lha"
 
 ./prepare-endpoint-fixtures.sh
 
@@ -3138,12 +3140,18 @@ test_url "AHX module" "https://modland.com/pub/modules/AHX/Pink/stormlord.ahx"
 test_url "TFMX module" "https://modland.com/pub/modules/TFMX/Chris%20Huelsbeck/mdat.turrican%202%20level%200-intro" "https://modland.com/pub/modules/TFMX/Chris%20Huelsbeck/smpl.turrican%202%20level%200-intro"
 test_url "TFMX module (Apidya)" "https://modland.com/pub/modules/TFMX/Chris%20Huelsbeck/mdat.apidya%20%28level%201%29" "https://modland.com/pub/modules/TFMX/Chris%20Huelsbeck/smpl.apidya%20%28level%201%29"
 test_url "LHA archive" "$AMINET_LHA_ARCHIVE_URL"
-test_url "Exotica browser-verification LHA archive" "$LED_STORM_EXOTICA_LHA_URL"
+test_url "Custom: LED Storm Modland direct module" "$LED_STORM_MODLAND_URL"
 test_url "Project-X module" "$PROJECT_X_THESMOPHORIA_URL"
 test_url "ZIP archive" "https://files.scene.org/get:fi-https/music/artists/4-mat/chip_shop.zip"
 test_url "RJP module" "https://modland.com/pub/modules/Richard%20Joseph/Richard%20Joseph/cannon%20fodder%20(intro).sng" "https://modland.com/pub/modules/Richard%20Joseph/Richard%20Joseph/cannon%20fodder%20(intro).ins"
 test_convert_url_error "Convert URL unsupported remote file" "$LOCAL_TEST_SERVER_URL/fixtures/modules/gutenberg.txt" "" 400 "Could not detect module metadata. The file may be corrupt or not a supported module."
 test_convert_url_error "Convert URL corrupt ZIP archive" "$LOCAL_TEST_SERVER_URL/fixtures/invalid/invalid-archive.zip" "" 400 "ZIP extraction failed: Bad ZIP file"
+# Archive safety: list-only validation rejects archives without a module.
+test_convert_url_error "Convert URL archive without module" "$LOCAL_TEST_SERVER_URL/fixtures/invalid/archive-no-module.zip" "" 400 "No music files found in ZIP archive"
+# The same list-only rule applies to LHA archives.
+test_convert_url_error "Convert URL LHA archive without module" "$LOCAL_TEST_SERVER_URL/fixtures/invalid/archive-no-module.lha" "" 400 "No music files found in LHA archive"
+# Archive safety: traversal members are rejected before extraction.
+test_convert_url_error "Convert URL archive traversal member" "$LOCAL_TEST_SERVER_URL/fixtures/invalid/archive-unsafe-member.zip" "" 400 "unsafe archive member path"
 test_download_filename_sanitization "Sanitize hostile download filename" "https://modland.com/pub/modules/Protracker/Lizardking/l.k%27s%20doskpop.mod" "" "%3Cimg%20src%3Dx%20onerror%3Dalert(1)%3E" "filename=\"uade_img_srcx_onerroralert1"
 
 # Security tests
@@ -3192,6 +3200,7 @@ test_external_download_flow_with_oversized_file "Download file exceeding 10MB li
 # Metadata extraction tests
 test_metadata_extraction "Full metadata" "https://modland.com/pub/modules/Protracker/Captain/space_debris.mod" "" "space_debris" "Protracker" "Protracker and family" 1
 test_metadata_extraction "Custom module" "https://zakalwe.fi/uade/amiga-music/customs/WingsOfDeath-Levels1-7/cust.WingsOfDeath-Levels1-7" "" "" "Custom" "Custom" 8
+test_metadata_extraction "LHA: Custom module with multiple files" "$CUSTOM_MULTI_LHA_URL" "" "" "Custom" "Custom" 8
 test_metadata_extraction "Partial metadata" "https://modland.com/pub/modules/Richard%20Joseph/Richard%20Joseph/cannon%20fodder%20(intro).sng" "https://modland.com/pub/modules/Richard%20Joseph/Richard%20Joseph/cannon%20fodder%20(intro).ins" "" "" "Richard Joseph Player" 2
 
 # Subsong duration tests
@@ -3209,6 +3218,8 @@ test_filename_extraction "Scene.org URL" "https://files.scene.org/get:fi-https/m
 test_upload_conversion "Protracker module upload" "fixtures/modules/space_debris.mod"
 test_upload_metadata_extraction "Protracker module upload" "fixtures/modules/space_debris.mod" "space_debris" "Protracker" "Protracker and family" 1
 test_upload_filename_extraction "Protracker module upload" "fixtures/modules/space_debris.mod" "space_debris.mod"
+# Uploaded archive coverage: selective extraction must find the Custom module.
+test_upload_metadata_extraction "LHA: Custom module upload" "$CUSTOM_MULTI_LHA_PATH" "" "Custom" "Custom" 8
 test_upload_negative_case "Non-module file upload" "fixtures/modules/gutenberg.txt"
 test_upload_error "Reject empty file upload" "fixtures/invalid/empty.bin" 400
 test_upload_error "Reject oversized file upload" "fixtures/invalid/too-large.bin" 413
@@ -3216,6 +3227,8 @@ test_upload_oversized_payload_shape "Reject oversized file upload uses shared 41
 
 # Probe-upload tests
 test_probe_upload "Probe upload Protracker module" "fixtures/modules/space_debris.mod"
+# Probe-upload must apply the same LHA member selection and metadata policy.
+test_probe_upload "LHA: Custom module probe upload" "$CUSTOM_MULTI_LHA_PATH"
 test_probe_upload_error "Probe upload non-module file" "fixtures/modules/gutenberg.txt" 400 "Could not detect module metadata"
 test_probe_upload_preserves_negative_cache "Probe upload invalid file preserves negative cache" "fixtures/modules/gutenberg.txt"
 test_probe_upload_error "Probe upload empty file" "fixtures/invalid/empty.bin" 400 "Empty file provided"

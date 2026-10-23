@@ -27,14 +27,21 @@ RUN apk add --no-cache \
 COPY test/docker-compose.tooling.yml /tmp/quality/docker-compose.tooling.yml
 RUN ACTIONLINT_TAG="$(sed -n 's|^    image: rhysd/actionlint:||p' /tmp/quality/docker-compose.tooling.yml)" \
     && HADOLINT_TAG="$(sed -n 's|^    image: hadolint/hadolint:||p' /tmp/quality/docker-compose.tooling.yml)" \
+    && GITLEAKS_TAG="$(sed -n 's|^    image: zricethezav/gitleaks:||p' /tmp/quality/docker-compose.tooling.yml)" \
     && HADOLINT_VERSION="${HADOLINT_TAG#v}" \
+    && GITLEAKS_VERSION="${GITLEAKS_TAG#v}" \
     && curl --retry 5 --retry-delay 2 --retry-all-errors -fsSL "https://github.com/rhysd/actionlint/releases/download/v${ACTIONLINT_TAG}/actionlint_${ACTIONLINT_TAG}_linux_amd64.tar.gz" -o /tmp/actionlint.tar.gz \
     && tar xzf /tmp/actionlint.tar.gz -C /tmp \
     && mv /tmp/actionlint /usr/local/bin/actionlint \
     && chmod +x /usr/local/bin/actionlint \
     && rm -f /tmp/actionlint.tar.gz \
     && curl --retry 5 --retry-delay 2 --retry-all-errors -fsSL "https://github.com/hadolint/hadolint/releases/download/v${HADOLINT_VERSION}/hadolint-Linux-x86_64" -o /usr/local/bin/hadolint \
-    && chmod +x /usr/local/bin/hadolint
+    && chmod +x /usr/local/bin/hadolint \
+    && curl --retry 5 --retry-delay 2 --retry-all-errors -fsSL "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz" -o /tmp/gitleaks.tar.gz \
+    && tar xzf /tmp/gitleaks.tar.gz -C /tmp gitleaks \
+    && mv /tmp/gitleaks /usr/local/bin/gitleaks \
+    && chmod +x /usr/local/bin/gitleaks \
+    && rm -f /tmp/gitleaks.tar.gz
 
 # Install frontend quality tools globally from manifest pins
 COPY test/package.json /tmp/quality/package.json

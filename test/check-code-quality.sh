@@ -187,6 +187,7 @@ Infrastructure Checks:
   --hadolint
   --compose
   --actionlint
+  --gitleaks
   --shellcheck
   --yamllint
 
@@ -202,6 +203,7 @@ enable_only_check() {
     RUN_BLACK=false
     RUN_RUFF=false
     RUN_ACTIONLINT=false
+    RUN_GITLEAKS=false
     RUN_HADOLINT=false
     RUN_COMPOSE=false
     RUN_SHELLCHECK=false
@@ -227,6 +229,7 @@ enable_only_check() {
         black) RUN_BLACK=true ;;
         ruff) RUN_RUFF=true ;;
         actionlint) RUN_ACTIONLINT=true ;;
+        gitleaks) RUN_GITLEAKS=true ;;
         hadolint) RUN_HADOLINT=true ;;
         compose) RUN_COMPOSE=true ;;
         shellcheck) RUN_SHELLCHECK=true ;;
@@ -256,6 +259,7 @@ RUN_ESLINT=true
 RUN_BLACK=true
 RUN_RUFF=true
 RUN_ACTIONLINT=true
+RUN_GITLEAKS=true
 RUN_HADOLINT=true
 RUN_COMPOSE=true
 RUN_SHELLCHECK=true
@@ -300,6 +304,10 @@ for arg in "$@"; do
             ;;
         --actionlint)
             enable_only_check actionlint
+            shift
+            ;;
+        --gitleaks)
+            enable_only_check gitleaks
             shift
             ;;
         --hadolint)
@@ -1078,6 +1086,27 @@ if [ "$RUN_ACTIONLINT" = true ]; then
                 print_result "ActionLint" 0
             fi
         fi
+    fi
+fi
+
+# Gitleaks
+if [ "$RUN_GITLEAKS" = true ]; then
+    print_header "Gitleaks - Tracked Content Secret Scan"
+
+    echo "Scanning the quality-check workspace for committed secret patterns..."
+
+    if command -v gitleaks >/dev/null 2>&1; then
+        OUTPUT=$(gitleaks dir --redact --no-banner --exit-code=1 "$PROJECT_ROOT" 2>&1)
+        EXIT_CODE=$?
+    else
+        OUTPUT="gitleaks is not installed in the quality image"
+        EXIT_CODE=1
+    fi
+
+    if [ $EXIT_CODE -eq 0 ]; then
+        print_result "Gitleaks" 0
+    else
+        print_result "Gitleaks" $EXIT_CODE "$OUTPUT"
     fi
 fi
 

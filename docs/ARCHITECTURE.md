@@ -57,7 +57,7 @@ architecture-beta
   - Flask web application + Gunicorn
   - Python 3 with virtual environment
   - Supports file upload and URL downloads
-  - Automatic extraction of LHA and ZIP archives (finds and plays first music file inside)
+  - Validated, selective extraction of LHA and ZIP archives (archives are not fully exploded; the service lists members first and extracts only a playable module plus required companion data)
   - Non-root user (uid=1000)
   - Rate limiting (per endpoint & global, per instance)
 
@@ -179,7 +179,8 @@ This is why `/convert-probed` is documented as a best-effort optimization rather
 ### Application Security
 
 - UUID-based filenames (path traversal prevention)
-- File size limits (10MB uploads)
+- File size limits (10MB uploads/downloads by default; archive expansion uses the configured download limit)
+- Archive safety checks for member paths, symlinks, member counts, and playable-module presence; archives are never fully exploded
 - Process timeouts (300s max)
 - Automatic file cleanup on write-oriented requests
 - Input validation and sanitization
