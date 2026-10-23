@@ -11,6 +11,7 @@
 #   .\test\check-code-quality.ps1 -Black       # Black only
 #   .\test\check-code-quality.ps1 -Ruff        # Ruff only
 #   .\test\check-code-quality.ps1 -ActionLint  # ActionLint only
+#   .\test\check-code-quality.ps1 -Gitleaks    # Gitleaks only
 #   .\test\check-code-quality.ps1 -Hadolint    # Hadolint only
 #   .\test\check-code-quality.ps1 -Compose     # Docker Compose only
 #   .\test\check-code-quality.ps1 -ShellCheck  # ShellCheck only
@@ -41,6 +42,7 @@ param(
     [switch]$Black,
     [switch]$Ruff,
     [switch]$ActionLint,
+    [switch]$Gitleaks,
     [switch]$Hadolint,
     [switch]$Compose,
     [switch]$ShellCheck,
@@ -103,6 +105,7 @@ function Show-Usage {
     Write-Host "  -Hadolint"
     Write-Host "  -Compose"
     Write-Host "  -ActionLint"
+    Write-Host "  -Gitleaks"
     Write-Host "  -ShellCheck"
     Write-Host "  -Yamllint"
     Write-Host ""
@@ -169,9 +172,11 @@ $RuffFormatTargets = $PythonQualityTargets + @(".agents/AGENTS.md")
 $ToolingCompose = Get-Content -Path $ToolingImageManifest -Raw
 $HadolintImageMatch = [regex]::Match($ToolingCompose, "(?ms)^  hadolint:\s*$.*?^    image:\s*([^\r\n]+)")
 $ActionlintImageMatch = [regex]::Match($ToolingCompose, "(?ms)^  actionlint:\s*$.*?^    image:\s*([^\r\n]+)")
+$GitleaksImageMatch = [regex]::Match($ToolingCompose, "(?ms)^  gitleaks:\s*$.*?^    image:\s*([^\r\n]+)")
 $ShellcheckImageMatch = [regex]::Match($ToolingCompose, "(?ms)^  shellcheck:\s*$.*?^    image:\s*([^\r\n]+)")
 $HADOLINT_IMAGE = $HadolintImageMatch.Groups[1].Value.Trim().Trim('"')
 $ACTIONLINT_IMAGE = $ActionlintImageMatch.Groups[1].Value.Trim().Trim('"')
+$GITLEAKS_IMAGE = $GitleaksImageMatch.Groups[1].Value.Trim().Trim('"')
 $SHELLCHECK_IMAGE = $ShellcheckImageMatch.Groups[1].Value.Trim().Trim('"')
 
 foreach ($Required in @(
@@ -187,6 +192,7 @@ foreach ($Required in @(
     @{ Name = "yamllint"; Value = $YAMLLINT_VERSION },
     @{ Name = "hadolint image"; Value = $HADOLINT_IMAGE },
     @{ Name = "actionlint image"; Value = $ACTIONLINT_IMAGE },
+    @{ Name = "gitleaks image"; Value = $GITLEAKS_IMAGE },
     @{ Name = "shellcheck image"; Value = $SHELLCHECK_IMAGE }
 )) {
     if (-not $Required.Value) {
@@ -206,7 +212,7 @@ if ($Help) {
 }
 
 # Default to run all if no specific tool selected
-if (-not $ESLint -and -not $Black -and -not $Ruff -and -not $ActionLint -and -not $Hadolint -and -not $Compose -and -not $ShellCheck -and -not $Yamllint -and -not $Stylelint -and -not $HTMLHint -and -not $Knip -and -not $KnipProduction -and -not $KnipProductionStrict -and -not $KnipNamespace -and -not $PlaywrightSync -and -not $NodeQualitySync -and -not $PythonSync -and -not $CodeQLSync -and -not $MyPy -and -not $Vulture -and -not $Instructions -and -not $Documentation -and -not $PurgeCSS) {
+if (-not $ESLint -and -not $Black -and -not $Ruff -and -not $ActionLint -and -not $Gitleaks -and -not $Hadolint -and -not $Compose -and -not $ShellCheck -and -not $Yamllint -and -not $Stylelint -and -not $HTMLHint -and -not $Knip -and -not $KnipProduction -and -not $KnipProductionStrict -and -not $KnipNamespace -and -not $PlaywrightSync -and -not $NodeQualitySync -and -not $PythonSync -and -not $CodeQLSync -and -not $MyPy -and -not $Vulture -and -not $Instructions -and -not $Documentation -and -not $PurgeCSS) {
     $ESLint = $true
     $Stylelint = $true
     $HTMLHint = $true
@@ -221,6 +227,7 @@ if (-not $ESLint -and -not $Black -and -not $Ruff -and -not $ActionLint -and -no
     $Black = $true
     $Ruff = $true
     $ActionLint = $true
+    $Gitleaks = $true
     $Hadolint = $true
     $Compose = $true
     $ShellCheck = $true
@@ -848,6 +855,25 @@ if ($ActionLint) {
         }
     } else {
         Write-Host "Workflow directory not found at: $WorkflowDir" @Yellow
+    }
+}
+
+# Gitleaks Check
+if ($Gitleaks) {
+    Write-Header "Gitleaks - Git History Secret Scan"
+
+    Write-Host "Scanning committed repository content for secret patterns..."
+
+    $output = & docker run --rm `
+        -v "${ProjectRoot}:/repo:ro" `
+        --entrypoint gitleaks `
+        $GITLEAKS_IMAGE git --redact --no-banner --exit-code=1 /repo 2>&1
+    $exitCode = $LASTEXITCODE
+
+    if ($exitCode -eq 0) {
+        Write-Result "Gitleaks" 0
+    } else {
+        Write-Result "Gitleaks" 1 $output
     }
 }
 
