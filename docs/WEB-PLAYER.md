@@ -255,7 +255,7 @@ GET /health
 Returns comprehensive server health status, including:
 
 - **Service Status**: "healthy" status, versions (UADE, Git commit), image build time, timestamp, and mode. In development mode, `image_build_time` uses the `server.py` file modification time.
-- **Runtime Stats**: Uptime, Python version, OS platform, and the web server.
+- **Runtime Stats**: Process startup time (`started_at`), uptime, Python version, OS platform, and the web server.
 - **System Resources**: Memory and disk usage statistics (Linux only for memory).
 - **Dependency Check**: Availability verification for `uade123`, `flac`, `lha`, and `unzip` binaries.
 - **Configuration**: Redacted cache URI/protocol and service limits (max sizes, rate limiting status).

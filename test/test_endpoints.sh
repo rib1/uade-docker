@@ -2150,7 +2150,7 @@ test_health_endpoint() {
     fi
 
     # Check for presence of required keys
-    REQUIRED_KEYS=("uptime_seconds" "python_version" "os_platform" "memory" "disk" "binaries" "cache" "temp_files" "config" "uade_version" "version" "image_build_time" "uade_available" "mode" "web_server")
+    REQUIRED_KEYS=("started_at" "uptime_seconds" "python_version" "os_platform" "memory" "disk" "binaries" "cache" "temp_files" "config" "uade_version" "version" "image_build_time" "uade_available" "mode" "web_server")
     for key in "${REQUIRED_KEYS[@]}"; do
         if ! echo "$RESPONSE" | jq -e "has(\"$key\")" > /dev/null; then
             echo "ERROR: Missing key '$key' in health response"
@@ -2158,6 +2158,13 @@ test_health_endpoint() {
             exit 1
         fi
     done
+
+    # Verify the process startup timestamp is present and ISO-8601 formatted.
+    STARTED_AT=$(echo "$RESPONSE" | jq -r .started_at)
+    if [[ ! "$STARTED_AT" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}T.*(Z|\+[0-9]{2}:[0-9]{2})$ ]]; then
+        echo "ERROR: started_at is not an ISO-8601 timestamp: $STARTED_AT"
+        exit 1
+    fi
 
     # Verify uptime is a number
     UPTIME=$(echo "$RESPONSE" | jq -r .uptime_seconds)

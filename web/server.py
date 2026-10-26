@@ -49,6 +49,7 @@ logger = logging.getLogger(__name__)
 
 app = Flask(__name__, static_folder="static")
 START_TIME: Final = time.time()
+STARTED_AT: Final = datetime.fromtimestamp(START_TIME, UTC)
 CLEANUP_TIMESTAMPS: dict[str, datetime | None] = {"local": None, "cache": None}
 CLEANUP_STATUSES: dict[str, str] = {"local": "not_run_yet", "cache": "not_run_yet"}
 LOCAL_CLEANUP_STATE = {"last_check_monotonic": 0.0}
@@ -2969,6 +2970,7 @@ def health():
             "image_build_time": IMAGE_BUILD_TIME,
             "uade_version": UADE_VERSION,
             "timestamp": datetime.now(UTC).isoformat(),
+            "started_at": STARTED_AT.isoformat(),
             "uptime_seconds": int(time.time() - START_TIME),
             "uade_available": binaries["uade123"],
             "python_version": sys.version.split()[0],
