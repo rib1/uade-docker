@@ -6,7 +6,7 @@ services:
   actionlint:
     image: rhysd/actionlint:1.7.12
   gitleaks:
-    image: zricethezav/gitleaks:v8.24.3
+    image: zricethezav/gitleaks:v8.30.1
   shellcheck:
     image: koalaman/shellcheck:v0.11.0
   k6:
