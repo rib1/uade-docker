@@ -103,20 +103,6 @@ wait_for_service() {
 
 wait_for_service
 
-echo "--- Testing concurrent lazy filesystem initialization ---"
-LAZY_RESPONSE=$(curl -s -w "\n%{http_code}" -X POST \
-    "$BASE_URL/test/lazy-filesystem")
-LAZY_HTTP_CODE=$(echo "$LAZY_RESPONSE" | tail -n1)
-LAZY_BODY=$(echo "$LAZY_RESPONSE" | sed '$d')
-
-if [ "$LAZY_HTTP_CODE" -ne 200 ] || [ "$(echo "$LAZY_BODY" | jq -r .factory_calls)" -ne 1 ] || [ "$(echo "$LAZY_BODY" | jq -r .workers)" -ne 8 ]; then
-    echo "ERROR: Concurrent lazy filesystem initialization failed"
-    echo "Response body: $LAZY_BODY"
-    exit 1
-fi
-
-echo "--- Concurrent lazy filesystem initialization passed ---"
-
 HTTP_CODE_BODY=$(perform_convert_url_flac_call "$URL_TO_TEST")
 HTTP_CODE=$(echo "$HTTP_CODE_BODY" | head -n1)
 BODY=$(echo "$HTTP_CODE_BODY" | tail -n1)

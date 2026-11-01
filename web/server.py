@@ -31,7 +31,7 @@ from datetime import UTC, datetime
 from enum import Enum
 from functools import wraps
 from pathlib import Path
-from typing import Any, Final
+from typing import Final
 
 import requests
 from flask import Flask, Response, jsonify, request, send_from_directory
@@ -237,7 +237,6 @@ app.config["MAX_DOWNLOAD_SIZE"] = MAX_DOWNLOAD_SIZE
 MAX_ARCHIVE_SIZE: Final = MAX_DOWNLOAD_SIZE
 MAX_ARCHIVE_MEMBER_SIZE: Final = MAX_ARCHIVE_SIZE
 MAX_ARCHIVE_TOTAL_SIZE: Final = MAX_ARCHIVE_SIZE
-LAZY_FILESYSTEM_TEST_WORKERS: Final = 8
 CLEANUP_INTERVAL: Final = int(os.getenv("CLEANUP_INTERVAL", "3600"))  # 1 hour
 CACHE_CLEANUP_INTERVAL: Final = int(os.getenv("CACHE_CLEANUP_INTERVAL", "86400"))  # 24 hours
 RATE_LIMIT: Final = int(os.getenv("RATE_LIMIT", "200"))  # requests per hour
@@ -282,33 +281,6 @@ for directory in [MODULES_DIR, CONVERTED_DIR]:
     directory.mkdir(parents=True, exist_ok=True)
 
 GLOBAL_CONVERSION_SEMAPHORE = threading.BoundedSemaphore(MAX_CONCURRENT_CONVERSIONS)
-
-
-class LazyFileSystem:
-    """Create a remote filesystem only when the first cache operation needs it."""
-
-    def __init__(self, factory: Any, protocol: str):
-        self._factory = factory
-        self._filesystem: Any | None = None
-        self._lock = threading.Lock()
-        self.protocol = protocol
-
-    def _get(self):
-        if self._filesystem is None:
-            with self._lock:
-                if self._filesystem is None:
-                    started_at = time.perf_counter()
-                    logger.info("Initializing %s filesystem", self.protocol)
-                    self._filesystem = self._factory()
-                    logger.info(
-                        "%s filesystem initialized in %.2fms",
-                        self.protocol,
-                        (time.perf_counter() - started_at) * 1000,
-                    )
-        return self._filesystem
-
-    def __getattr__(self, name: str):
-        return getattr(self._get(), name)
 
 
 def get_fs_and_root(uri, fs_kwargs=None):
@@ -3122,54 +3094,6 @@ def test_run_cleanup():
     )
 
 
-@test_route("/test/lazy-filesystem", methods=["POST"])
-def test_lazy_filesystem():
-    """Verify concurrent lazy filesystem access initializes the backend once."""
-    factory_calls = 0
-    factory_calls_lock = threading.Lock()
-    start_barrier = threading.Barrier(LAZY_FILESYSTEM_TEST_WORKERS)
-    backend_marker = object()
-    results = []
-
-    class TestBackend:
-        marker = backend_marker
-
-    def factory():
-        nonlocal factory_calls
-        with factory_calls_lock:
-            factory_calls += 1
-        time.sleep(0.02)
-        return TestBackend()
-
-    lazy_filesystem = LazyFileSystem(factory, "test")
-
-    def access_backend():
-        start_barrier.wait()
-        results.append(lazy_filesystem.marker)
-
-    workers = [threading.Thread(target=access_backend) for _ in range(LAZY_FILESYSTEM_TEST_WORKERS)]
-    for worker in workers:
-        worker.start()
-    for worker in workers:
-        worker.join()
-
-    if (
-        factory_calls != 1
-        or len(results) != LAZY_FILESYSTEM_TEST_WORKERS
-        or any(item is not backend_marker for item in results)
-    ):
-        return json_response(
-            {
-                "error": "Lazy filesystem was initialized incorrectly",
-                "factory_calls": factory_calls,
-                "results": len(results),
-            },
-            500,
-        )
-
-    return json_response({"factory_calls": factory_calls, "workers": len(results)})
-
-
 @test_route("/test/set-local-file-mtime", methods=["POST"])
 def test_set_local_file_mtime():
     """Set a converted local file mtime in test mode to exercise cleanup behavior."""
@@ -4878,15 +4802,13 @@ logger.info(f"Cleanup interval: {CLEANUP_INTERVAL}s")
 logger.info(f"Cache cleanup interval: {CACHE_CLEANUP_INTERVAL}s")
 log_queue_probe_capacity_warning()
 
-# Local cleanup remains synchronous for the single-container development path.
-# Remote cleanup initializes cloud filesystem clients in the background so it
-# cannot delay the first health check or browser page response.
+# Initialize remote filesystems on the main thread before serving requests.
+# GCSFS initialization from a background thread can stall for minutes. Remote
+# cleanup can then run in the background so it does not delay the first page or
+# conversion; per-entry cleanup errors isolate any read/cleanup overlap.
 if "file" in CACHE_PROTOCOLS or "local" in CACHE_PROTOCOLS:
     cleanup_cache_files()
 else:
-    # Do not delay startup while listing the remote bucket.  This cleanup runs
-    # concurrently with requests, so a stale cache read can race with removal.
-    # The per-entry error handling above keeps that race isolated to one item.
     logger.info("Starting remote cache cleanup in background; cache reads may overlap cleanup")
     threading.Thread(
         target=cleanup_cache_files,
