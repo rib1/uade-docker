@@ -297,7 +297,14 @@ class LazyFileSystem:
         if self._filesystem is None:
             with self._lock:
                 if self._filesystem is None:
+                    started_at = time.perf_counter()
+                    logger.info("Initializing %s filesystem", self.protocol)
                     self._filesystem = self._factory()
+                    logger.info(
+                        "%s filesystem initialized in %.2fms",
+                        self.protocol,
+                        (time.perf_counter() - started_at) * 1000,
+                    )
         return self._filesystem
 
     def __getattr__(self, name: str):
@@ -1114,10 +1121,24 @@ def maybe_run_local_cleanup():
 
 def iter_cache_entries(path):
     """Yield immediate filesystem entries and their optional fsspec types."""
+    started_at = time.perf_counter()
+    logger.info("Cache listing started (path=%s)", path)
     try:
         entries = fs_cache.ls(path, detail=True)
     except FileNotFoundError:
+        logger.info(
+            "Cache listing finished (path=%s, entries=0, duration=%.2fms)",
+            path,
+            (time.perf_counter() - started_at) * 1000,
+        )
         return
+
+    logger.info(
+        "Cache listing finished (path=%s, entries=%d, duration=%.2fms)",
+        path,
+        len(entries),
+        (time.perf_counter() - started_at) * 1000,
+    )
 
     for entry in entries:
         if isinstance(entry, dict):
