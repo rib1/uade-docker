@@ -320,7 +320,14 @@ def get_fs_and_root(uri, fs_kwargs=None):
         fs = fsspec.filesystem("s3", **fs_kwargs)
         root = uri[5:]
     elif uri.startswith("gcs://"):
-        fs = fsspec.filesystem("gcs", **fs_kwargs)
+        gcs_kwargs = {**fs_kwargs}
+        if os.getenv("K_SERVICE"):
+            # Cloud Run provides credentials through the metadata server. Use
+            # that path directly and keep standard flat buckets on the stable
+            # filesystem implementation; local GCS users retain ADC discovery.
+            gcs_kwargs.setdefault("token", "cloud")
+            os.environ.setdefault("GCSFS_EXPERIMENTAL_ZB_HNS_SUPPORT", "false")
+        fs = fsspec.filesystem("gcs", **gcs_kwargs)
         root = uri[6:]
     elif uri.startswith("file://"):
         fs = fsspec.filesystem("file")
