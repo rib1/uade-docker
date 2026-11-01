@@ -43,6 +43,7 @@ select = [
     "B912", # Python 3.14 map() requires an explicit strict= choice
     "BLE001", # blind-except
     "C4",  # flake8-comprehensions
+    "unnecessary-regular-expression-compile", # Ruff 0.17.2 preview rule
     "EXE002", # shebang-missing-executable-file
     "PIE", # flake8-pie
     "FBT", # flake8-boolean-trap
