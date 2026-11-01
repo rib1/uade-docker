@@ -1112,12 +1112,32 @@ def maybe_run_local_cleanup():
     run_local_cleanup_locked(source="request")
 
 
+def iter_cache_entries(path):
+    """Yield immediate filesystem entries and their optional fsspec types."""
+    try:
+        entries = fs_cache.ls(path, detail=True)
+    except FileNotFoundError:
+        return
+
+    for entry in entries:
+        if isinstance(entry, dict):
+            entry_path = entry.get("name")
+            entry_type = entry.get("type")
+        else:
+            entry_path = entry
+            entry_type = None
+        if entry_path:
+            yield str(entry_path), entry_type
+
+
 def iter_conversion_lock_paths():
     """Yield conversion lock files from the shared lock backend."""
     if CONVERSION_LOCKS_ROOT_LOCAL is not None:
         yield from CONVERSION_LOCKS_ROOT_LOCAL.glob("*.lock")
         return
-    yield from fs_cache.glob(f"{CONVERSION_LOCKS_ROOT_REMOTE}/*.lock")
+    for lock_path, _ in iter_cache_entries(CONVERSION_LOCKS_ROOT_REMOTE):
+        if lock_path.endswith(".lock"):
+            yield lock_path
 
 
 def cleanup_stale_conversion_locks():
@@ -1143,10 +1163,14 @@ def cleanup_cache_files():
         removed = 0
         removed += cleanup_stale_conversion_locks()
         stale_cache_hashes = set()
-        # List all files in cache root
-        for cache_file in fs_cache.glob(f"{root_cache}/*"):
+        # List immediate cache entries with the common fsspec API. Avoid
+        # glob(), whose wildcard expansion can turn into an expensive bucket
+        # scan on object-storage backends.
+        for cache_file, cache_type in iter_cache_entries(root_cache):
             try:
-                if is_cache_directory(cache_file):
+                if cache_type == "directory" or (
+                    cache_type is None and is_cache_directory(cache_file)
+                ):
                     continue
                 if is_cache_access_temp_file(cache_file):
                     fs_cache.rm_file(cache_file)
@@ -4835,9 +4859,7 @@ else:
     # Do not delay startup while listing the remote bucket.  This cleanup runs
     # concurrently with requests, so a stale cache read can race with removal.
     # The per-entry error handling above keeps that race isolated to one item.
-    logger.info(
-        "Starting remote cache cleanup in background; cache reads may overlap cleanup"
-    )
+    logger.info("Starting remote cache cleanup in background; cache reads may overlap cleanup")
     threading.Thread(
         target=cleanup_cache_files,
         name="remote-cache-cleanup",
