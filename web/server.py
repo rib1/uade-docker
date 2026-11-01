@@ -223,9 +223,26 @@ def get_disk_usage(path):
     return None
 
 
+startup_phase_started_at = time.perf_counter()
 GIT_COMMIT: Final = get_git_commit()
+logger.info(
+    "Startup phase finished (git commit lookup, duration=%.2fms)",
+    (time.perf_counter() - startup_phase_started_at) * 1000,
+)
+
+startup_phase_started_at = time.perf_counter()
 IMAGE_BUILD_TIME: Final = get_image_build_time()
+logger.info(
+    "Startup phase finished (image build time lookup, duration=%.2fms)",
+    (time.perf_counter() - startup_phase_started_at) * 1000,
+)
+
+startup_phase_started_at = time.perf_counter()
 UADE_VERSION: Final = get_uade_version()
+logger.info(
+    "Startup phase finished (UADE version lookup, duration=%.2fms)",
+    (time.perf_counter() - startup_phase_started_at) * 1000,
+)
 
 # Configuration from environment variables (cloud-ready)
 MAX_UPLOAD_SIZE: Final = int(os.getenv("MAX_UPLOAD_SIZE", "10485760"))  # 10MB
@@ -287,10 +304,12 @@ def get_fs_and_root(uri, fs_kwargs=None):
     import fsspec
 
     fs_kwargs = fs_kwargs or {}
+    filesystem_started_at = time.perf_counter()
     # Detect S3 URI for remote storage support
     if uri.startswith("s3://"):
         fs = fsspec.filesystem("s3", **fs_kwargs)
         root = uri[5:]
+        scheme = "s3"
     elif uri.startswith("gcs://"):
         gcs_kwargs = {**fs_kwargs}
         if os.getenv("K_SERVICE"):
@@ -301,12 +320,20 @@ def get_fs_and_root(uri, fs_kwargs=None):
             os.environ.setdefault("GCSFS_EXPERIMENTAL_ZB_HNS_SUPPORT", "false")
         fs = fsspec.filesystem("gcs", **gcs_kwargs)
         root = uri[6:]
+        scheme = "gcs"
     elif uri.startswith("file://"):
         fs = fsspec.filesystem("file")
         root = uri[7:] or TEMP_BASE
+        scheme = "file"
     else:
         fs = fsspec.filesystem("file")
         root = uri
+        scheme = "file"
+    logger.info(
+        "Filesystem construction finished (scheme=%s, duration=%.2fms)",
+        scheme,
+        (time.perf_counter() - filesystem_started_at) * 1000,
+    )
     return fs, root
 
 
