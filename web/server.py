@@ -31,9 +31,8 @@ from datetime import UTC, datetime
 from enum import Enum
 from functools import wraps
 from pathlib import Path
-from typing import Final
+from typing import Any, Final
 
-import fsspec
 import requests
 from flask import Flask, Response, jsonify, request, send_from_directory
 from flask_limiter import Limiter
@@ -238,6 +237,7 @@ app.config["MAX_DOWNLOAD_SIZE"] = MAX_DOWNLOAD_SIZE
 MAX_ARCHIVE_SIZE: Final = MAX_DOWNLOAD_SIZE
 MAX_ARCHIVE_MEMBER_SIZE: Final = MAX_ARCHIVE_SIZE
 MAX_ARCHIVE_TOTAL_SIZE: Final = MAX_ARCHIVE_SIZE
+LAZY_FILESYSTEM_TEST_WORKERS: Final = 8
 CLEANUP_INTERVAL: Final = int(os.getenv("CLEANUP_INTERVAL", "3600"))  # 1 hour
 CACHE_CLEANUP_INTERVAL: Final = int(os.getenv("CACHE_CLEANUP_INTERVAL", "86400"))  # 24 hours
 RATE_LIMIT: Final = int(os.getenv("RATE_LIMIT", "200"))  # requests per hour
@@ -284,7 +284,29 @@ for directory in [MODULES_DIR, CONVERTED_DIR]:
 GLOBAL_CONVERSION_SEMAPHORE = threading.BoundedSemaphore(MAX_CONCURRENT_CONVERSIONS)
 
 
+class LazyFileSystem:
+    """Create a remote filesystem only when the first cache operation needs it."""
+
+    def __init__(self, factory: Any, protocol: str):
+        self._factory = factory
+        self._filesystem: Any | None = None
+        self._lock = threading.Lock()
+        self.protocol = protocol
+
+    def _get(self):
+        if self._filesystem is None:
+            with self._lock:
+                if self._filesystem is None:
+                    self._filesystem = self._factory()
+        return self._filesystem
+
+    def __getattr__(self, name: str):
+        return getattr(self._get(), name)
+
+
 def get_fs_and_root(uri, fs_kwargs=None):
+    import fsspec
+
     fs_kwargs = fs_kwargs or {}
     # Detect S3 URI for remote storage support
     if uri.startswith("s3://"):
@@ -308,12 +330,23 @@ def get_fs_and_root(uri, fs_kwargs=None):
 #   - "s3://bucket/path" for AWS S3
 #   - "gcs://bucket/path" for Google Cloud Storage
 CACHE_URI: Final = os.getenv("CACHE_URI", f"file://{TEMP_BASE}/cache")
-fs_cache, root_cache = get_fs_and_root(CACHE_URI)
-CACHE_PROTOCOLS: Final = (
-    tuple(fs_cache.protocol)
-    if isinstance(fs_cache.protocol, (list, tuple, set))
-    else (fs_cache.protocol,)
-)
+cache_protocols: tuple[str, ...]
+if CACHE_URI.startswith("s3://"):
+    root_cache = CACHE_URI[5:]
+    fs_cache = LazyFileSystem(lambda: get_fs_and_root(CACHE_URI)[0], "s3")
+    cache_protocols = ("s3",)
+elif CACHE_URI.startswith("gcs://"):
+    root_cache = CACHE_URI[6:]
+    fs_cache = LazyFileSystem(lambda: get_fs_and_root(CACHE_URI)[0], "gcs")
+    cache_protocols = ("gcs",)
+else:
+    fs_cache, root_cache = get_fs_and_root(CACHE_URI)
+    cache_protocols = (
+        tuple(fs_cache.protocol)
+        if isinstance(fs_cache.protocol, (list, tuple, set))
+        else (fs_cache.protocol,)
+    )
+CACHE_PROTOCOLS: Final = cache_protocols
 CACHE_ACCESS_UPDATE_INTERVAL_SECONDS: Final = int(
     os.getenv("CACHE_ACCESS_UPDATE_INTERVAL_SECONDS", "300")
 )
@@ -1097,8 +1130,14 @@ def cleanup_stale_conversion_locks():
 
 
 def cleanup_cache_files():
-    """Remove files older than CACHE_CLEANUP_INTERVAL from remote cache (supports file, s3, gcs)"""
-    logger.info("cleanup_cache_files called at startup")
+    """Remove old cache files from file, S3, or GCS storage.
+
+    Remote cleanup can run while requests read the shared cache.  A request
+    for an entry that becomes stale at the same time as cleanup may observe a
+    missing object, so each entry is handled independently and cleanup errors
+    are logged without aborting the whole pass.
+    """
+    logger.info("Starting cache cleanup")
     try:
         cutoff = time.time() - CACHE_CLEANUP_INTERVAL
         removed = 0
@@ -3031,6 +3070,54 @@ def test_run_cleanup():
     )
 
 
+@test_route("/test/lazy-filesystem", methods=["POST"])
+def test_lazy_filesystem():
+    """Verify concurrent lazy filesystem access initializes the backend once."""
+    factory_calls = 0
+    factory_calls_lock = threading.Lock()
+    start_barrier = threading.Barrier(LAZY_FILESYSTEM_TEST_WORKERS)
+    backend_marker = object()
+    results = []
+
+    class TestBackend:
+        marker = backend_marker
+
+    def factory():
+        nonlocal factory_calls
+        with factory_calls_lock:
+            factory_calls += 1
+        time.sleep(0.02)
+        return TestBackend()
+
+    lazy_filesystem = LazyFileSystem(factory, "test")
+
+    def access_backend():
+        start_barrier.wait()
+        results.append(lazy_filesystem.marker)
+
+    workers = [threading.Thread(target=access_backend) for _ in range(LAZY_FILESYSTEM_TEST_WORKERS)]
+    for worker in workers:
+        worker.start()
+    for worker in workers:
+        worker.join()
+
+    if (
+        factory_calls != 1
+        or len(results) != LAZY_FILESYSTEM_TEST_WORKERS
+        or any(item is not backend_marker for item in results)
+    ):
+        return json_response(
+            {
+                "error": "Lazy filesystem was initialized incorrectly",
+                "factory_calls": factory_calls,
+                "results": len(results),
+            },
+            500,
+        )
+
+    return json_response({"factory_calls": factory_calls, "workers": len(results)})
+
+
 @test_route("/test/set-local-file-mtime", methods=["POST"])
 def test_set_local_file_mtime():
     """Set a converted local file mtime in test mode to exercise cleanup behavior."""
@@ -4739,8 +4826,23 @@ logger.info(f"Cleanup interval: {CLEANUP_INTERVAL}s")
 logger.info(f"Cache cleanup interval: {CACHE_CLEANUP_INTERVAL}s")
 log_queue_probe_capacity_warning()
 
-# Clean up cache files once at startup (runs in all environments)
-cleanup_cache_files()
+# Local cleanup remains synchronous for the single-container development path.
+# Remote cleanup initializes cloud filesystem clients in the background so it
+# cannot delay the first health check or browser page response.
+if "file" in CACHE_PROTOCOLS or "local" in CACHE_PROTOCOLS:
+    cleanup_cache_files()
+else:
+    # Do not delay startup while listing the remote bucket.  This cleanup runs
+    # concurrently with requests, so a stale cache read can race with removal.
+    # The per-entry error handling above keeps that race isolated to one item.
+    logger.info(
+        "Starting remote cache cleanup in background; cache reads may overlap cleanup"
+    )
+    threading.Thread(
+        target=cleanup_cache_files,
+        name="remote-cache-cleanup",
+        daemon=True,
+    ).start()
 
 if __name__ == "__main__":
     development_mode = get_app_mode() == "development"
