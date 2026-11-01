@@ -347,11 +347,11 @@ CACHE_URI: Final = os.getenv("CACHE_URI", f"file://{TEMP_BASE}/cache")
 cache_protocols: tuple[str, ...]
 if CACHE_URI.startswith("s3://"):
     root_cache = CACHE_URI[5:]
-    fs_cache = LazyFileSystem(lambda: get_fs_and_root(CACHE_URI)[0], "s3")
+    fs_cache = get_fs_and_root(CACHE_URI)[0]
     cache_protocols = ("s3",)
 elif CACHE_URI.startswith("gcs://"):
     root_cache = CACHE_URI[6:]
-    fs_cache = LazyFileSystem(lambda: get_fs_and_root(CACHE_URI)[0], "gcs")
+    fs_cache = get_fs_and_root(CACHE_URI)[0]
     cache_protocols = ("gcs",)
 else:
     fs_cache, root_cache = get_fs_and_root(CACHE_URI)
