@@ -33,6 +33,7 @@ from functools import wraps
 from pathlib import Path
 from typing import Final
 
+import fsspec
 import requests
 from flask import Flask, Response, jsonify, request, send_from_directory
 from flask_limiter import Limiter
@@ -223,26 +224,9 @@ def get_disk_usage(path):
     return None
 
 
-startup_phase_started_at = time.perf_counter()
 GIT_COMMIT: Final = get_git_commit()
-logger.info(
-    "Startup phase finished (git commit lookup, duration=%.2fms)",
-    (time.perf_counter() - startup_phase_started_at) * 1000,
-)
-
-startup_phase_started_at = time.perf_counter()
 IMAGE_BUILD_TIME: Final = get_image_build_time()
-logger.info(
-    "Startup phase finished (image build time lookup, duration=%.2fms)",
-    (time.perf_counter() - startup_phase_started_at) * 1000,
-)
-
-startup_phase_started_at = time.perf_counter()
 UADE_VERSION: Final = get_uade_version()
-logger.info(
-    "Startup phase finished (UADE version lookup, duration=%.2fms)",
-    (time.perf_counter() - startup_phase_started_at) * 1000,
-)
 
 # Configuration from environment variables (cloud-ready)
 MAX_UPLOAD_SIZE: Final = int(os.getenv("MAX_UPLOAD_SIZE", "10485760"))  # 10MB
@@ -301,39 +285,20 @@ GLOBAL_CONVERSION_SEMAPHORE = threading.BoundedSemaphore(MAX_CONCURRENT_CONVERSI
 
 
 def get_fs_and_root(uri, fs_kwargs=None):
-    import fsspec
-
     fs_kwargs = fs_kwargs or {}
-    filesystem_started_at = time.perf_counter()
     # Detect S3 URI for remote storage support
     if uri.startswith("s3://"):
         fs = fsspec.filesystem("s3", **fs_kwargs)
         root = uri[5:]
-        scheme = "s3"
     elif uri.startswith("gcs://"):
-        gcs_kwargs = {**fs_kwargs}
-        if os.getenv("K_SERVICE"):
-            # Cloud Run provides credentials through the metadata server. Use
-            # that path directly and keep standard flat buckets on the stable
-            # filesystem implementation; local GCS users retain ADC discovery.
-            gcs_kwargs.setdefault("token", "cloud")
-            os.environ.setdefault("GCSFS_EXPERIMENTAL_ZB_HNS_SUPPORT", "false")
-        fs = fsspec.filesystem("gcs", **gcs_kwargs)
+        fs = fsspec.filesystem("gcs", **fs_kwargs)
         root = uri[6:]
-        scheme = "gcs"
     elif uri.startswith("file://"):
         fs = fsspec.filesystem("file")
         root = uri[7:] or TEMP_BASE
-        scheme = "file"
     else:
         fs = fsspec.filesystem("file")
         root = uri
-        scheme = "file"
-    logger.info(
-        "Filesystem construction finished (scheme=%s, duration=%.2fms)",
-        scheme,
-        (time.perf_counter() - filesystem_started_at) * 1000,
-    )
     return fs, root
 
 
@@ -343,23 +308,12 @@ def get_fs_and_root(uri, fs_kwargs=None):
 #   - "s3://bucket/path" for AWS S3
 #   - "gcs://bucket/path" for Google Cloud Storage
 CACHE_URI: Final = os.getenv("CACHE_URI", f"file://{TEMP_BASE}/cache")
-cache_protocols: tuple[str, ...]
-if CACHE_URI.startswith("s3://"):
-    root_cache = CACHE_URI[5:]
-    fs_cache = get_fs_and_root(CACHE_URI)[0]
-    cache_protocols = ("s3",)
-elif CACHE_URI.startswith("gcs://"):
-    root_cache = CACHE_URI[6:]
-    fs_cache = get_fs_and_root(CACHE_URI)[0]
-    cache_protocols = ("gcs",)
-else:
-    fs_cache, root_cache = get_fs_and_root(CACHE_URI)
-    cache_protocols = (
-        tuple(fs_cache.protocol)
-        if isinstance(fs_cache.protocol, (list, tuple, set))
-        else (fs_cache.protocol,)
-    )
-CACHE_PROTOCOLS: Final = cache_protocols
+fs_cache, root_cache = get_fs_and_root(CACHE_URI)
+CACHE_PROTOCOLS: Final = (
+    tuple(fs_cache.protocol)
+    if isinstance(fs_cache.protocol, (list, tuple, set))
+    else (fs_cache.protocol,)
+)
 CACHE_ACCESS_UPDATE_INTERVAL_SECONDS: Final = int(
     os.getenv("CACHE_ACCESS_UPDATE_INTERVAL_SECONDS", "300")
 )
@@ -1125,46 +1079,12 @@ def maybe_run_local_cleanup():
     run_local_cleanup_locked(source="request")
 
 
-def iter_cache_entries(path):
-    """Yield immediate filesystem entries and their optional fsspec types."""
-    started_at = time.perf_counter()
-    logger.info("Cache listing started (path=%s)", path)
-    try:
-        entries = fs_cache.ls(path, detail=True)
-    except FileNotFoundError:
-        logger.info(
-            "Cache listing finished (path=%s, entries=0, duration=%.2fms)",
-            path,
-            (time.perf_counter() - started_at) * 1000,
-        )
-        return
-
-    logger.info(
-        "Cache listing finished (path=%s, entries=%d, duration=%.2fms)",
-        path,
-        len(entries),
-        (time.perf_counter() - started_at) * 1000,
-    )
-
-    for entry in entries:
-        if isinstance(entry, dict):
-            entry_path = entry.get("name")
-            entry_type = entry.get("type")
-        else:
-            entry_path = entry
-            entry_type = None
-        if entry_path:
-            yield str(entry_path), entry_type
-
-
 def iter_conversion_lock_paths():
     """Yield conversion lock files from the shared lock backend."""
     if CONVERSION_LOCKS_ROOT_LOCAL is not None:
         yield from CONVERSION_LOCKS_ROOT_LOCAL.glob("*.lock")
         return
-    for lock_path, _ in iter_cache_entries(CONVERSION_LOCKS_ROOT_REMOTE):
-        if lock_path.endswith(".lock"):
-            yield lock_path
+    yield from fs_cache.glob(f"{CONVERSION_LOCKS_ROOT_REMOTE}/*.lock")
 
 
 def cleanup_stale_conversion_locks():
@@ -1177,27 +1097,17 @@ def cleanup_stale_conversion_locks():
 
 
 def cleanup_cache_files():
-    """Remove old cache files from file, S3, or GCS storage.
-
-    Remote cleanup can run while requests read the shared cache.  A request
-    for an entry that becomes stale at the same time as cleanup may observe a
-    missing object, so each entry is handled independently and cleanup errors
-    are logged without aborting the whole pass.
-    """
-    logger.info("Starting cache cleanup")
+    """Remove files older than CACHE_CLEANUP_INTERVAL from remote cache (supports file, s3, gcs)"""
+    logger.info("cleanup_cache_files called at startup")
     try:
         cutoff = time.time() - CACHE_CLEANUP_INTERVAL
         removed = 0
         removed += cleanup_stale_conversion_locks()
         stale_cache_hashes = set()
-        # List immediate cache entries with the common fsspec API. Avoid
-        # glob(), whose wildcard expansion can turn into an expensive bucket
-        # scan on object-storage backends.
-        for cache_file, cache_type in iter_cache_entries(root_cache):
+        # List all files in cache root
+        for cache_file in fs_cache.glob(f"{root_cache}/*"):
             try:
-                if cache_type == "directory" or (
-                    cache_type is None and is_cache_directory(cache_file)
-                ):
+                if is_cache_directory(cache_file):
                     continue
                 if is_cache_access_temp_file(cache_file):
                     fs_cache.rm_file(cache_file)
@@ -4829,19 +4739,8 @@ logger.info(f"Cleanup interval: {CLEANUP_INTERVAL}s")
 logger.info(f"Cache cleanup interval: {CACHE_CLEANUP_INTERVAL}s")
 log_queue_probe_capacity_warning()
 
-# Initialize remote filesystems on the main thread before serving requests.
-# GCSFS initialization from a background thread can stall for minutes. Remote
-# cleanup can then run in the background so it does not delay the first page or
-# conversion; per-entry cleanup errors isolate any read/cleanup overlap.
-if "file" in CACHE_PROTOCOLS or "local" in CACHE_PROTOCOLS:
-    cleanup_cache_files()
-else:
-    logger.info("Starting remote cache cleanup in background; cache reads may overlap cleanup")
-    threading.Thread(
-        target=cleanup_cache_files,
-        name="remote-cache-cleanup",
-        daemon=True,
-    ).start()
+# Clean up cache files once at startup (runs in all environments)
+cleanup_cache_files()
 
 if __name__ == "__main__":
     development_mode = get_app_mode() == "development"

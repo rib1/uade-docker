@@ -80,9 +80,6 @@ USER uade
 ENV FLASK_APP=server.py
 ENV FLASK_ENV=production
 ENV PYTHONUNBUFFERED=1
-# Set PYTHONPROFILEIMPORTTIME=1 on a diagnostic revision to emit Python import
-# timings during container startup. Keep profiling disabled for normal runs.
-ENV PYTHONPROFILEIMPORTTIME=0
 ENV PORT=5000
 
 # Expose port (cloud platforms read this)
@@ -97,4 +94,4 @@ HEALTHCHECK --interval=30s --timeout=3s --retries=3 \
 # Use 8 threads to handle a mix of CPU-bound (conversion) and I/O-bound (streaming)
 # requests concurrently. Python's GIL is released during I/O, allowing other threads to run.
 # Since most requests serve cached files (I/O-bound), this configuration enables greater concurrency for simultaneous streams.
-CMD ["/bin/sh", "/app/start-web.sh", "gunicorn", "--bind", "0.0.0.0:5000", "--workers", "1", "--threads", "8", "--timeout", "300", "--graceful-timeout", "300", "--keep-alive", "5", "--worker-class", "gthread", "--access-logfile", "-", "--error-logfile", "-", "server:app", "--worker-tmp-dir", "/dev/shm", "--no-control-socket", "--pid", "/tmp/gunicorn.pid"]
+CMD ["gunicorn", "--bind", "0.0.0.0:5000", "--workers", "1", "--threads", "8", "--timeout", "300", "--graceful-timeout", "300", "--keep-alive", "5", "--worker-class", "gthread", "--access-logfile", "-", "--error-logfile", "-", "server:app", "--worker-tmp-dir", "/dev/shm", "--no-control-socket", "--pid", "/tmp/gunicorn.pid"]

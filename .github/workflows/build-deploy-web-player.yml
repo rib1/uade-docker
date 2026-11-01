@@ -143,6 +143,7 @@ jobs:
       # Lot of requests will be for cached files (I/O-bound), so this allows for more concurrent streams.
       # Benchmark sweep result for this Cloud Run shape:
       # MAX_CONCURRENT_CONVERSIONS=2 gave the best playback/conversion balance.
+      # Wait for Flask initialization; Gunicorn opens its TCP socket before loading the app.
       run: |
         if [ -z "${GCS_CACHE_BUCKET}" ]; then
           echo "GCS_CACHE_BUCKET secret is required for the multi-instance Cloud Run deployment."
@@ -167,6 +168,7 @@ jobs:
           --allow-unauthenticated \
           --service-account uade-web-player-sa@${{ env.PROJECT_ID }}.iam.gserviceaccount.com \
           --port 5000 \
+          --startup-probe "httpGet.path=/health,httpGet.port=5000,timeoutSeconds=5,periodSeconds=5,failureThreshold=48" \
           --memory 2Gi \
           --cpu 1 \
           --concurrency 8 \
