@@ -287,6 +287,10 @@ This document contains project-specific learnings and regression-avoidance notes
 
 ## Performance Lessons
 
+- **Cloud Run Startup Probe:** Use HTTP `/health` rather than TCP readiness: Gunicorn opens its socket before Flask finishes loading. Premature startup completion can leave initialization subject to idle CPU throttling. On 2026-11-01, diagnostic revision `uade-web-player-00431-zn8` reached health in about 6.6 seconds with the HTTP probe, including 3.7 seconds for GCS filesystem construction. This is a diagnostic measurement, not a baseline for the restored main code.
+- **Startup Optimization Evidence:** Background cleanup, lazy initialization, and authentication changes did not establish a Cloud Run improvement; they were reverted. `fsspec` already imports only the selected storage provider. Measure deployed startup before adding concurrency or changing bucket clients.
+- **Temporary Profiling:** Add startup markers and Python import profiling only when investigating. Verbose import logs can distort timings; remove instrumentation afterward and retain the finding here.
+
 **Key Takeaways:** Benchmark semaphore limits against the deployed Cloud Run shape, not local intuition. For the current single-CPU service, `2` is the best default.
 
 - **Cloud Run Semaphore Default:** For the current Cloud Run shape (`1 CPU`, `8` request concurrency, Gunicorn `1` worker / `8` threads), the mixed `/play/*` plus cold-convert sweep showed `MAX_CONCURRENT_CONVERSIONS=2` as the best balance. `1` kept playback even lower-latency but introduced large conversion queueing, while `3` did not improve throughput enough to justify the extra contention risk.
