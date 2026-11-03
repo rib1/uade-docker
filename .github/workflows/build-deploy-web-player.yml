@@ -168,9 +168,10 @@ jobs:
           --allow-unauthenticated \
           --service-account uade-web-player-sa@${{ env.PROJECT_ID }}.iam.gserviceaccount.com \
           --port 5000 \
-          --startup-probe "httpGet.path=/health,httpGet.port=5000,timeoutSeconds=5,periodSeconds=5,failureThreshold=48" \
+          --startup-probe "httpGet.path=/health,httpGet.port=5000,timeoutSeconds=1,periodSeconds=1,failureThreshold=240" \
           --memory 2Gi \
           --cpu 1 \
+          --no-cpu-boost \
           --concurrency 8 \
           --timeout 300s \
           --max-instances 10 \
