@@ -56,10 +56,6 @@ updates:
     cooldown:
       default-days: 7
     open-pull-requests-limit: 5
-    groups:
-      filesystems:
-        patterns:
-          - "google-cloud-storage"
   - package-ecosystem: "pip"
     directory: "/test"
     schedule:
