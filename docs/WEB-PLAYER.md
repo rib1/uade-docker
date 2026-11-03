@@ -258,8 +258,8 @@ Returns comprehensive server health status, including:
 - **Runtime Stats**: Process startup time (`started_at`), uptime, Python version, OS platform, and the web server.
 - **System Resources**: Memory and disk usage statistics (Linux only for memory).
 - **Dependency Check**: Availability verification for `uade123`, `flac`, `lha`, and `unzip` binaries.
-- **Configuration**: Redacted cache URI/protocol and service limits (max sizes, rate limiting status).
-- **Optional Cache Debug Times**: When `HEALTH_INCLUDE_CACHE_DEBUG=1`, includes cache timing
+- **Configuration**: Redacted cache URI/protocol, cache initialization state, and service limits (max sizes, rate limiting status). Health checks do not initialize GCS or inspect bucket contents.
+- **Optional Cache Debug Times**: For local storage only, when `HEALTH_INCLUDE_CACHE_DEBUG=1`, includes cache timing
   summaries for `oldest_entry_at`, `newest_entry_at`, `oldest_accessed_at`, and `newest_accessed_at`.
 
 ### Upload File
@@ -432,7 +432,7 @@ MAX_UPLOAD_SIZE: 10485760 # Max upload (10MB)
 MAX_DOWNLOAD_SIZE: 10485760 # Max download from URLs (10MB)
 # Archive member and total expansion limits use MAX_DOWNLOAD_SIZE too
 CLEANUP_INTERVAL: 3600 # Local file age threshold and request-triggered cleanup gate (1 hour)
-CACHE_CLEANUP_INTERVAL: 86400 # Cache cleanup interval (24 hours)
+CACHE_CLEANUP_INTERVAL: 86400 # Cache entry age threshold (24 hours)
 CACHE_URI: file:///tmp/cache # Remote cache URI (default: file:///tmp/cache)
 CACHE_ACCESS_UPDATE_INTERVAL_SECONDS: 300 # Minimum seconds between cache access sidecar rewrites
 RATE_LIMIT: 200 # Max Requests/hour per IP (all endpoints combined)
@@ -447,7 +447,7 @@ MAX_CONCURRENT_CONVERSIONS: 2 # Max concurrent heavy UADE/FLAC conversions per p
 DISABLE_SSL_VERIFY: 0 # Set to 1 to disable SSL verification for corporate proxies (Zscaler)
 GIT_COMMIT: unknown # Git commit hash (set automatically at build time)
 UADE_TEST_MODE: 0 # Set to 1 to enable test mode (allows internal test server access)
-HEALTH_INCLUDE_CACHE_DEBUG: 1 # Optional: add cache timing summaries to /health when set
+HEALTH_INCLUDE_CACHE_DEBUG: 1 # Optional: add local-cache timing summaries to /health
 ```
 
 ## Caching
@@ -508,8 +508,17 @@ GCS uses the synchronous Google Cloud Storage SDK, while local cache access uses
 the Python standard library. Existing GCS object names, JSON metadata, access sidecars, and exclusive
 conversion locks remain compatible with the previous backend. See
 [`PERFORMANCE.md`](PERFORMANCE.md#cloud-run-startup-measurements) for the measured
-startup improvement and test conditions. Cache initialization and cleanup still
-run at startup; they are not deferred to the first conversion.
+startup improvements and test conditions. GCS SDK import and client construction
+are deferred until the first cache operation, normally during conversion.
+Concurrent callers wait for the same initialization; failed initialization can
+be retried on a later call. This makes the UI ready sooner but adds work to the
+first conversion.
+
+GCS cleanup starts on a later eligible request after initialization and runs at
+most once per `CLEANUP_INTERVAL` per process. Entries expire according to
+`CACHE_CLEANUP_INTERVAL`. HTML, static assets, health, informational routes,
+playback, and downloads skip request-triggered cleanup. Local and optional S3
+backends retain startup cache cleanup.
 
 ## Browser Compatibility
 
