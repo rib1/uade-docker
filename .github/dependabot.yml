@@ -59,9 +59,7 @@ updates:
     groups:
       filesystems:
         patterns:
-          - "fsspec"
-          - "gcsfs"
-          - "s3fs"
+          - "google-cloud-storage"
   - package-ecosystem: "pip"
     directory: "/test"
     schedule:

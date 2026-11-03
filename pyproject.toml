@@ -123,7 +123,9 @@ pretty = true
 
 [[tool.mypy.overrides]]
 module = [
-    "fsspec",
+    "s3fs",
+    "google.cloud",
+    "google.api_core.exceptions",
     "flask",
     "flask_limiter",
     "flask_limiter.util",

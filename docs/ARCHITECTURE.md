@@ -254,9 +254,10 @@ This is why `/convert-probed` is documented as a best-effort optimization rather
 - **Registry:** GitHub Container Registry
 - **Cloud Provider:** Google Cloud Platform
 - **Server-Side Cache Support:**
-  - Stateless cache for converted files can use local disk, AWS S3, or Google Cloud Storage
-  - Uses fsspec, s3fs, and gcsfs for unified access
-  - Docker image and local development require Python dependencies (see `requirements.txt`)
+  - The default image supports local disk and Google Cloud Storage through small inline adapters in `web/server.py`
+  - Local storage uses the Python standard library; GCS uses the synchronous Google Cloud Storage SDK
+  - S3 remains an optional backend for custom images; dependency packaging and verification remain TODOs
+  - Python dependencies are listed in `web/requirements.txt`
   - Multi-instance deployments share cache for instant replay and deduplication
   - Remote-cache LRU tracking uses a sidecar access record per cache hash (`HASH.cache-access.json`)
     so cache-hit access times work consistently across `file`, `s3`, and `gcs` backends

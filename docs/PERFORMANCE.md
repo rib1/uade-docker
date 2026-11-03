@@ -6,6 +6,54 @@ The benchmark stack reuses the same fixture data as the endpoint test suite. Bot
 
 The benchmark runner version pin lives in `test/docker-compose.tooling.yml`, alongside the other repo-managed test and quality tool image pins, so Dependabot can track it through the same `/test` Docker update flow.
 
+## Cloud Run Startup Measurements
+
+On 2026-11-03, replacing the GCS filesystem integration with the synchronous
+Google Cloud Storage SDK reduced startup time in a controlled Cloud Run test.
+The local backend now uses the Python standard library. The default image
+supports local storage and GCS; S3 is an optional backend for custom images.
+
+Three fresh revisions per implementation were invoked in alternating order,
+using zero-traffic tagged URLs and `--no-deploy-health-check`. Runtime logs
+confirmed that all six accepted instances started through autoscaling. Both
+implementations used `us-central1`, 1 CPU, 2Gi memory, concurrency 8, CPU boost
+disabled, and a 1-second HTTP `/health` startup probe with a 240-second allowance.
+The test used an isolated, initially empty GCS cache prefix, test mode, disabled
+rate limiting, and enabled cache timing debug output. Production was unchanged
+during the comparison.
+
+| Measurement | Previous backend | Storage SDK |
+| --- | --- | --- |
+| Cold first-page samples | 10.82s, 8.21s, 9.75s | 4.23s, 10.29s, 6.61s |
+| Median cold first page | 9.75s | 6.61s |
+| Mean cold first page | 9.60s | 7.04s |
+| Median worker boot to successful startup probe | 8.26s | 3.66s |
+
+Median first-page latency improved by approximately 32%, and median worker boot
+to readiness improved by approximately 56%. The slow SDK request is included:
+three samples do not establish tail latency or a production SLO. A populated
+cache can also add cleanup work beyond this initially empty-cache comparison.
+
+Earlier GCS-only diagnostics separated provider loading from client construction:
+the previous provider import had a 4.41s median, while construction after import
+took 16ms, including 13ms of credential setup. Importing the provider's dependency
+graph was the main target, rather than authentication or lazy initialization.
+
+Validation included all 24 quality checks, the endpoint integration suite, and
+all 20 local multi-instance tests. Real GCS checks covered chunked binary I/O,
+moves, UTF-8 JSON overwrites, metadata, missing-object errors, and eight parallel
+exclusive-lock attempts with exactly one winner. Cloud Run conversion tests
+verified cache reuse and ranged playback across SDK instances and the previous
+backend, plus stale-lock reclamation, sidecars, and cleanup. Temporary services
+and test objects were removed afterward.
+
+Raw local reports are under the ignored `reports/startup-probe-ab/` directory,
+including `sdk-ab-results.json`, `sdk-final-timings.json`,
+`sdk-contract-result.json`, and `sdk-http-result.json`. The accepted comparison
+used the production baseline image for commit
+`5bb82921fa2cdef8552240b7abc9d8e998d1dd6b` and candidate image digest
+`sha256:1f8ad90e4c1c894691aec187dd3ac0bb5becf6049464c92df031ab89349ae5f8`.
+
 ## Benchmark Entry Point
 
 Use the benchmark Compose overlay:

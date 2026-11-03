@@ -205,7 +205,7 @@ The Web Player Container uses a multi-stage Docker build: it copies the complete
 - **CLI components**: Copied from the Debian-based `uade-cli` image
 - **Additional Components**: Flask app, static assets, Python wrapper
 - **Client-Side Cache Support**: Converted audio is cached in the browser for one month for instant repeat playback.
-- **Server-Side Cache Support**: Converted files are cached using local disk, AWS S3, or Google Cloud Storage. Uses fsspec, s3fs, and gcsfs for unified access. Multi-instance deployments share a stateless cache for deduplication and instant replay. All Python dependencies are listed in `requirements.txt`.
+- **Server-Side Cache Support**: The default image supports local disk through the Python standard library and Google Cloud Storage through Google's synchronous Storage SDK, using small inline adapters in `web/server.py`. S3 remains an optional backend for custom images; dependency packaging and verification remain TODOs. Multi-instance deployments share a stateless cache for deduplication and instant replay. Runtime dependencies are listed in `web/requirements.txt`.
 
 ## Data Flow
 

@@ -6,6 +6,8 @@ Converts Amiga music modules to FLAC or WAV for browser playback
 Cloud-ready with proper logging, error handling, stateless caching, and cleanup
 """
 
+import errno
+import fnmatch
 import hashlib
 import ipaddress
 import json
@@ -33,7 +35,6 @@ from functools import wraps
 from pathlib import Path
 from typing import Final
 
-import fsspec
 import requests
 from flask import Flask, Response, jsonify, request, send_from_directory
 from flask_limiter import Limiter
@@ -284,20 +285,183 @@ for directory in [MODULES_DIR, CONVERTED_DIR]:
 GLOBAL_CONVERSION_SEMAPHORE = threading.BoundedSemaphore(MAX_CONCURRENT_CONVERSIONS)
 
 
+class LocalCacheFilesystem:
+    """Local cache operations without loading a cloud filesystem library."""
+
+    protocol = ("file", "local")
+
+    @staticmethod
+    def exists(path):
+        return Path(path).exists()
+
+    @staticmethod
+    def isdir(path):
+        return Path(path).is_dir()
+
+    @staticmethod
+    def info(path):
+        target = Path(path)
+        stat = target.stat()
+        return {
+            "name": str(path),
+            "size": stat.st_size,
+            "mtime": stat.st_mtime,
+            "type": "directory" if target.is_dir() else "file",
+        }
+
+    @staticmethod
+    def size(path):
+        return Path(path).stat().st_size
+
+    @staticmethod
+    def glob(pattern):
+        pattern_path = Path(pattern)
+        return sorted(str(path) for path in pattern_path.parent.glob(pattern_path.name))
+
+    @staticmethod
+    def open(path, mode):
+        return Path(path).open(mode)
+
+    @staticmethod
+    def rm_file(path):
+        Path(path).unlink()
+
+    @staticmethod
+    def mv(source, destination):
+        Path(source).replace(destination)
+
+
+class GoogleCacheFilesystem:
+    """GCS object operations needed by the app, backed by Google's storage SDK."""
+
+    protocol = ("gs", "gcs")
+    CHUNK_SIZE = 1024 * 1024
+
+    def __init__(self, bucket_name, **client_kwargs):
+        from google.cloud import storage
+
+        self.client = storage.Client(**client_kwargs)
+        self.bucket = self.client.bucket(bucket_name)
+
+    def _key(self, path):
+        bucket, _, key = str(path).partition("/")
+        if bucket != self.bucket.name:
+            raise ValueError("Cache path belongs to a different bucket")
+        return key
+
+    def _blob(self, path):
+        blob = self.bucket.get_blob(self._key(path))
+        if blob is None:
+            raise FileNotFoundError(errno.ENOENT, "Cache object not found", path)
+        return blob
+
+    def exists(self, path):
+        return self.bucket.blob(self._key(path)).exists()
+
+    def isdir(self, path):
+        prefix = self._key(path).rstrip("/") + "/"
+        return (
+            next(iter(self.client.list_blobs(self.bucket, prefix=prefix, max_results=1)), None)
+            is not None
+        )
+
+    def info(self, path):
+        blob = self._blob(path)
+        modified = blob.updated or blob.time_created
+        return {
+            "name": str(path),
+            "size": int(blob.size or 0),
+            "mtime": modified.timestamp() if modified else 0,
+            "type": "file",
+            "generation": blob.generation,
+        }
+
+    def size(self, path):
+        return int(self._blob(path).size or 0)
+
+    def glob(self, pattern):
+        # Cache cleanup uses one-level patterns, including conversion-locks/*.lock.
+        key_pattern = self._key(pattern)
+        parent, _, name_pattern = key_pattern.rpartition("/")
+        prefix = parent + "/" if parent else ""
+        return sorted(
+            f"{self.bucket.name}/{blob.name}"
+            for blob in self.client.list_blobs(self.bucket, prefix=prefix, delimiter="/")
+            if fnmatch.fnmatchcase(blob.name.removeprefix(prefix), name_pattern)
+        )
+
+    @contextmanager
+    def open(self, path, mode):
+        from google.api_core.exceptions import NotFound
+
+        try:
+            # Pin a read to one generation, including across chunked downloads.
+            blob = self._blob(path) if mode.startswith("r") else self.bucket.blob(self._key(path))
+            encoding = {} if "b" in mode else {"encoding": "utf-8"}
+            with blob.open(mode, chunk_size=self.CHUNK_SIZE, **encoding) as stream:
+                yield stream
+        except NotFound as exc:
+            raise FileNotFoundError(errno.ENOENT, "Cache object not found", path) from exc
+
+    def rm_file(self, path):
+        from google.api_core.exceptions import NotFound
+
+        try:
+            self.bucket.blob(self._key(path)).delete()
+        except NotFound as exc:
+            raise FileNotFoundError(errno.ENOENT, "Cache object not found", path) from exc
+
+    def mv(self, source, destination):
+        from google.api_core.exceptions import NotFound
+
+        blob = self._blob(source)
+        target = self.bucket.blob(self._key(destination))
+        try:
+            token = None
+            while True:
+                token, _, _ = target.rewrite(
+                    blob, token=token, if_source_generation_match=blob.generation
+                )
+                if token is None:
+                    break
+            blob.delete(if_generation_match=blob.generation)
+        except NotFound as exc:
+            raise FileNotFoundError(errno.ENOENT, "Cache object not found", source) from exc
+
+    def pipe_file(self, path, data, *, if_generation_match=None):
+        from google.api_core.exceptions import PreconditionFailed
+
+        try:
+            self.bucket.blob(self._key(path)).upload_from_string(
+                data, if_generation_match=if_generation_match
+            )
+        except PreconditionFailed as exc:
+            if if_generation_match == 0:
+                raise FileExistsError(errno.EEXIST, "Cache object already exists", path) from exc
+            raise
+
+
 def get_fs_and_root(uri, fs_kwargs=None):
     fs_kwargs = fs_kwargs or {}
     # Detect S3 URI for remote storage support
     if uri.startswith("s3://"):
-        fs = fsspec.filesystem("s3", **fs_kwargs)
+        # TODO: package and verify S3 as an optional backend. Keep s3fs/fsspec
+        # out of the default image; custom S3 images can install s3fs separately.
+        try:
+            from s3fs import S3FileSystem
+        except ImportError as exc:
+            raise RuntimeError("S3 cache requires the optional s3fs dependency") from exc
+
+        fs = S3FileSystem(**fs_kwargs)
         root = uri[5:]
     elif uri.startswith("gcs://"):
-        fs = fsspec.filesystem("gcs", **fs_kwargs)
         root = uri[6:]
+        fs = GoogleCacheFilesystem(root.split("/", maxsplit=1)[0], **fs_kwargs)
     elif uri.startswith("file://"):
-        fs = fsspec.filesystem("file")
+        fs = LocalCacheFilesystem()
         root = uri[7:] or TEMP_BASE
     else:
-        fs = fsspec.filesystem("file")
+        fs = LocalCacheFilesystem()
         root = uri
     return fs, root
 

@@ -467,7 +467,7 @@ The server maintains its own cache of converted audio files. This is primarily f
 - **Single-Instance Exception:** The default local `file:///tmp/cache` configuration is suitable only when one container handles the workflow end to end.
 - **Deduplication:** If one user converts a module, it becomes available instantly to all other users without needing to be converted again.
 - **Queue Probe Caveat:** Shared cache applies to converted audio and metadata. Probed local-file state used by `/convert-probed` is still a container-local optimization by default, so cross-container queue handoff should expect `/upload` fallback.
-- **Backend Options:** The cache can be a local directory, an AWS S3 bucket, or a Google Cloud Storage bucket.
+- **Backend Options:** The default image supports a local directory or a Google Cloud Storage bucket. S3 requires a custom image with optional backend dependencies; packaging and verification remain TODOs.
 - **LRU Access Tracking:** Remote cache entries store access time in a sidecar file
   `HASH.cache-access.json`. This avoids relying on object mtime updates that are not portable
   across `file`, `s3`, and `gcs` backends.
@@ -485,7 +485,7 @@ Set the `CACHE_URI` environment variable to your desired cache location:
 
 ```yaml
 CACHE_URI: file:///tmp/cache        # Local cache (default)
-CACHE_URI: s3://your-bucket/cache   # AWS S3 remote cache
+CACHE_URI: s3://your-bucket/cache   # Optional: requires a custom image with S3 support
 CACHE_URI: gcs://your-bucket/cache  # Google Cloud Storage remote cache
 CACHE_ACCESS_UPDATE_INTERVAL_SECONDS: 300 # Update sidecar access time at most once every 5 min
 ```
@@ -498,6 +498,13 @@ Standard bucket in `us-central1`, grant
 bucket and configures every Cloud Run instance with
 `gcs://BUCKET_NAME/cache`. Keep the local `file:///tmp/cache` default for
 single-container development only.
+
+GCS uses the synchronous Google Cloud Storage SDK, while local cache access uses
+the Python standard library. Existing GCS object names, JSON metadata, access sidecars, and exclusive
+conversion locks remain compatible with the previous backend. See
+[`PERFORMANCE.md`](PERFORMANCE.md#cloud-run-startup-measurements) for the measured
+startup improvement and test conditions. Cache initialization and cleanup still
+run at startup; they are not deferred to the first conversion.
 
 ## Browser Compatibility
 
@@ -620,8 +627,9 @@ Interactive input fields have associated accessible names to ensure they are pro
   - Remote cache may be slower than local disk; use local cache for development/testing.
   - For S3/GCS, frequent small writes can be expensive; `CACHE_ACCESS_UPDATE_INTERVAL_SECONDS`
     reduces sidecar rewrite frequency on hot cache entries.
-- **fsspec errors:**
-  - Ensure `s3fs` (for S3) or `gcsfs` (for GCS) is installed in your environment.
+- **Storage backend errors:**
+  - GCS requires the Google Cloud Storage SDK, which is included in the default image. Local cache access needs no storage library.
+  - An S3 cache requires a custom image with optional backend dependencies installed. The default image reports this requirement explicitly.
   - Check Python logs for detailed error messages.
 - **Multi-instance consistency:**
   - All instances must use the same `CACHE_URI` value.
