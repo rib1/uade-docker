@@ -177,6 +177,7 @@ jobs:
           --max-instances 10 \
           --min-instances 0 \
           --set-env-vars "FLASK_ENV=production" \
+          --set-env-vars "GOOGLE_CLOUD_PROJECT=${PROJECT_ID}" \
           --set-env-vars "MAX_UPLOAD_SIZE=10485760" \
           --set-env-vars "CLEANUP_INTERVAL=3600" \
           --set-env-vars "CACHE_CLEANUP_INTERVAL=86400" \

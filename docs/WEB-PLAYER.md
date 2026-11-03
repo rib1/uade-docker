@@ -499,6 +499,11 @@ bucket and configures every Cloud Run instance with
 `gcs://BUCKET_NAME/cache`. Keep the local `file:///tmp/cache` default for
 single-container development only.
 
+The deployment also sets `GOOGLE_CLOUD_PROJECT` to the configured GCP project ID.
+For other GCS deployments, set this variable when credentials do not identify a
+project. This is required even when access is limited to an existing bucket;
+otherwise the SDK client cannot initialize.
+
 GCS uses the synchronous Google Cloud Storage SDK, while local cache access uses
 the Python standard library. Existing GCS object names, JSON metadata, access sidecars, and exclusive
 conversion locks remain compatible with the previous backend. See
@@ -619,8 +624,10 @@ Interactive input fields have associated accessible names to ensure they are pro
   - Ensure your IAM/user/role has read/write access to the bucket/prefix.
   - For S3, check bucket policy and credentials (AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY).
   - For GCS, check service account permissions and `GOOGLE_APPLICATION_CREDENTIALS`.
+  - If GCS credentials do not include a project, set `GOOGLE_CLOUD_PROJECT` to your configured GCP project ID. An unset project can prevent the worker from starting.
 - **File not found / cache misses:**
   - Confirm `CACHE_URI` is set correctly (e.g., `s3://your-bucket/cache`).
+  - Supported URI schemes are `file://`, `gcs://`, and optional `s3://`. Other schemes, including `gs://`, are rejected; plain local paths remain supported.
   - Make sure the cache prefix exists and is writable.
   - Check for typos in bucket or path names.
 - **Performance issues:**

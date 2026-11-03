@@ -292,14 +292,17 @@ class LocalCacheFilesystem:
 
     @staticmethod
     def exists(path):
+        """Return whether a local cache path exists."""
         return Path(path).exists()
 
     @staticmethod
     def isdir(path):
+        """Return whether a local cache path is a directory."""
         return Path(path).is_dir()
 
     @staticmethod
     def info(path):
+        """Return the size, modification time, and type of a local cache path."""
         target = Path(path)
         stat = target.stat()
         return {
@@ -311,23 +314,28 @@ class LocalCacheFilesystem:
 
     @staticmethod
     def size(path):
+        """Return the size of a local cache file in bytes."""
         return Path(path).stat().st_size
 
     @staticmethod
     def glob(pattern):
+        """List local cache paths matching the final component of a pattern."""
         pattern_path = Path(pattern)
         return sorted(str(path) for path in pattern_path.parent.glob(pattern_path.name))
 
     @staticmethod
     def open(path, mode):
+        """Open a local cache file using the requested text or binary mode."""
         return Path(path).open(mode)
 
     @staticmethod
     def rm_file(path):
+        """Delete a local cache file, raising FileNotFoundError if absent."""
         Path(path).unlink()
 
     @staticmethod
     def mv(source, destination):
+        """Replace the destination with the source using a filesystem rename."""
         Path(source).replace(destination)
 
 
@@ -338,27 +346,35 @@ class GoogleCacheFilesystem:
     CHUNK_SIZE = 1024 * 1024
 
     def __init__(self, bucket_name, **client_kwargs):
+        """Create a client using explicit settings or application-default credentials.
+
+        Projectless credentials require GOOGLE_CLOUD_PROJECT or a project keyword.
+        """
         from google.cloud import storage
 
         self.client = storage.Client(**client_kwargs)
         self.bucket = self.client.bucket(bucket_name)
 
     def _key(self, path):
+        """Extract an object key, rejecting paths belonging to another bucket."""
         bucket, _, key = str(path).partition("/")
         if bucket != self.bucket.name:
             raise ValueError("Cache path belongs to a different bucket")
         return key
 
     def _blob(self, path):
+        """Load object metadata or raise FileNotFoundError for a missing object."""
         blob = self.bucket.get_blob(self._key(path))
         if blob is None:
             raise FileNotFoundError(errno.ENOENT, "Cache object not found", path)
         return blob
 
     def exists(self, path):
+        """Return whether the cache object exists in GCS."""
         return self.bucket.blob(self._key(path)).exists()
 
     def isdir(self, path):
+        """Return whether any GCS objects exist below this directory prefix."""
         prefix = self._key(path).rstrip("/") + "/"
         return (
             next(iter(self.client.list_blobs(self.bucket, prefix=prefix, max_results=1)), None)
@@ -366,6 +382,7 @@ class GoogleCacheFilesystem:
         )
 
     def info(self, path):
+        """Return object size, modification time, and generation for cache helpers."""
         blob = self._blob(path)
         modified = blob.updated or blob.time_created
         return {
@@ -377,9 +394,11 @@ class GoogleCacheFilesystem:
         }
 
     def size(self, path):
+        """Return the size of a GCS cache object in bytes."""
         return int(self._blob(path).size or 0)
 
     def glob(self, pattern):
+        """List cache objects matching a single-level name pattern."""
         # Cache cleanup uses one-level patterns, including conversion-locks/*.lock.
         key_pattern = self._key(pattern)
         parent, _, name_pattern = key_pattern.rpartition("/")
@@ -392,6 +411,7 @@ class GoogleCacheFilesystem:
 
     @contextmanager
     def open(self, path, mode):
+        """Stream an object, pinning reads to one generation and mapping missing objects."""
         from google.api_core.exceptions import NotFound
 
         try:
@@ -404,6 +424,7 @@ class GoogleCacheFilesystem:
             raise FileNotFoundError(errno.ENOENT, "Cache object not found", path) from exc
 
     def rm_file(self, path):
+        """Delete a GCS object, mapping a missing object to FileNotFoundError."""
         from google.api_core.exceptions import NotFound
 
         try:
@@ -412,6 +433,7 @@ class GoogleCacheFilesystem:
             raise FileNotFoundError(errno.ENOENT, "Cache object not found", path) from exc
 
     def mv(self, source, destination):
+        """Copy one source generation to the destination, then delete that source."""
         from google.api_core.exceptions import NotFound
 
         blob = self._blob(source)
@@ -429,6 +451,7 @@ class GoogleCacheFilesystem:
             raise FileNotFoundError(errno.ENOENT, "Cache object not found", source) from exc
 
     def pipe_file(self, path, data, *, if_generation_match=None):
+        """Write bytes conditionally, mapping create-only conflicts to FileExistsError."""
         from google.api_core.exceptions import PreconditionFailed
 
         try:
@@ -442,6 +465,7 @@ class GoogleCacheFilesystem:
 
 
 def get_fs_and_root(uri, fs_kwargs=None):
+    """Select a supported cache backend, accepting plain paths for local storage."""
     fs_kwargs = fs_kwargs or {}
     # Detect S3 URI for remote storage support
     if uri.startswith("s3://"):
@@ -461,6 +485,8 @@ def get_fs_and_root(uri, fs_kwargs=None):
         fs = LocalCacheFilesystem()
         root = uri[7:] or TEMP_BASE
     else:
+        if "://" in uri:
+            raise ValueError("Unsupported CACHE_URI scheme; use file://, s3://, or gcs://")
         fs = LocalCacheFilesystem()
         root = uri
     return fs, root
