@@ -254,9 +254,11 @@ This is why `/convert-probed` is documented as a best-effort optimization rather
 - **Registry:** GitHub Container Registry
 - **Cloud Provider:** Google Cloud Platform
 - **Server-Side Cache Support:**
-  - Stateless cache for converted files can use local disk, AWS S3, or Google Cloud Storage
-  - Uses fsspec, s3fs, and gcsfs for unified access
-  - Docker image and local development require Python dependencies (see `requirements.txt`)
+  - The default image supports local disk and Google Cloud Storage through small inline adapters in `web/server.py`
+  - Local storage uses the Python standard library; GCS uses the synchronous Google Cloud Storage SDK
+  - `GoogleCacheFilesystem` defers SDK import and client creation until the first cache operation; concurrent callers share one initialization and failures can be retried
+  - S3 remains an optional backend for custom images; dependency packaging and verification remain TODOs
+  - Python dependencies are listed in `web/requirements.txt`
   - Multi-instance deployments share cache for instant replay and deduplication
   - Remote-cache LRU tracking uses a sidecar access record per cache hash (`HASH.cache-access.json`)
     so cache-hit access times work consistently across `file`, `s3`, and `gcs` backends
@@ -295,6 +297,8 @@ This is why `/convert-probed` is documented as a best-effort optimization rather
 - Temporary file cleanup on eligible requests after the configured interval
   - Local files older than `CLEANUP_INTERVAL` are purged by a request-triggered cleanup pass.
   - Cleanup runs at most once per interval per process, is serialized with a lock, and skips `/play/*` and `/download/*` requests.
+  - GCS cache cleanup uses a separate lock and the same `CLEANUP_INTERVAL` gate, starting on an eligible request after client initialization; `CACHE_CLEANUP_INTERVAL` controls cache entry expiration. Local and optional S3 backends retain startup cache cleanup.
+  - HTML, static assets, health, and informational routes skip request-triggered cleanup. Health never initializes GCS or lists bucket contents.
 
 ### Cloud Run
 
@@ -314,7 +318,7 @@ This is why `/convert-probed` is documented as a best-effort optimization rather
   - Environment details (Python version, OS platform)
   - Redacted configuration and cache settings
   - Optional cache debug timing summaries (`oldest_entry_at`, `newest_entry_at`,
-    `oldest_accessed_at`, `newest_accessed_at`) when `HEALTH_INCLUDE_CACHE_DEBUG=1`
+    `oldest_accessed_at`, `newest_accessed_at`) for local storage when `HEALTH_INCLUDE_CACHE_DEBUG=1`
 - Git commit tracking in responses
 - Budget alerts
 - Network egress monitoring (1GB free tier)

@@ -6,6 +6,101 @@ The benchmark stack reuses the same fixture data as the endpoint test suite. Bot
 
 The benchmark runner version pin lives in `test/docker-compose.tooling.yml`, alongside the other repo-managed test and quality tool image pins, so Dependabot can track it through the same `/test` Docker update flow.
 
+## Cloud Run Startup Measurements
+
+On 2026-11-03, replacing the GCS filesystem integration with the synchronous
+Google Cloud Storage SDK reduced startup time in a controlled Cloud Run test.
+The local backend now uses the Python standard library. The default image
+supports local storage and GCS; S3 is an optional backend for custom images.
+
+Three fresh revisions per implementation were invoked in alternating order,
+using zero-traffic tagged URLs and `--no-deploy-health-check`. Runtime logs
+confirmed that all six accepted instances started through autoscaling. Both
+implementations used `us-central1`, 1 CPU, 2Gi memory, concurrency 8, CPU boost
+disabled, and a 1-second HTTP `/health` startup probe with a 240-second allowance.
+The test used an isolated, initially empty GCS cache prefix, test mode, disabled
+rate limiting, and enabled cache timing debug output. Production was unchanged
+during the comparison.
+
+| Measurement | Previous backend | Storage SDK |
+| --- | --- | --- |
+| Cold first-page samples | 10.82s, 8.21s, 9.75s | 4.23s, 10.29s, 6.61s |
+| Median cold first page | 9.75s | 6.61s |
+| Mean cold first page | 9.60s | 7.04s |
+| Median worker boot to successful startup probe | 8.26s | 3.66s |
+
+Median first-page latency improved by approximately 32%, and median worker boot
+to readiness improved by approximately 56%. The slow SDK request is included:
+three samples do not establish tail latency or a production SLO. A populated
+cache can also add cleanup work beyond this initially empty-cache comparison.
+
+Earlier GCS-only diagnostics separated provider loading from client construction:
+the previous provider import had a 4.41s median, while construction after import
+took 16ms, including 13ms of credential setup. Importing the provider's dependency
+graph was the main target, rather than authentication or lazy initialization.
+
+Validation included all 24 quality checks, the endpoint integration suite, and
+all 20 local multi-instance tests. Real GCS checks covered chunked binary I/O,
+moves, UTF-8 JSON overwrites, metadata, missing-object errors, and eight parallel
+exclusive-lock attempts with exactly one winner. Cloud Run conversion tests
+verified cache reuse and ranged playback across SDK instances and the previous
+backend, plus stale-lock reclamation, sidecars, and cleanup. Temporary services
+and test objects were removed afterward.
+
+Raw local reports are under the ignored `reports/startup-probe-ab/` directory,
+including `sdk-ab-results.json`, `sdk-final-timings.json`,
+`sdk-contract-result.json`, and `sdk-http-result.json`. The accepted comparison
+used the production baseline image for commit
+`5bb82921fa2cdef8552240b7abc9d8e998d1dd6b` and candidate image digest
+`sha256:1f8ad90e4c1c894691aec187dd3ac0bb5becf6049464c92df031ab89349ae5f8`.
+
+### Deferred GCS Initialization
+
+A second comparison on 2026-11-03 measured deferring SDK import, client creation,
+and startup GCS cleanup. Three fresh revisions per variant were invoked in
+alternating eager/deferred order through zero-traffic tagged URLs with deployment
+health checks disabled. Logs confirmed that every instance started through
+autoscaling after its cold request began. Both variants used the same region,
+1 CPU, 2Gi memory, concurrency 8, CPU boost off, and a 1-second HTTP startup probe.
+Each trial had an isolated, initially empty GCS cache prefix; test mode was on,
+rate limiting and health cache debug were off. After HTML, health, and static
+requests, each instance converted the same uploaded `space_debris.mod` fixture.
+
+| Measurement | Eager SDK | Deferred SDK |
+| --- | --- | --- |
+| Cold HTML samples | 6.760s, 6.024s, 6.109s | 4.514s, 4.274s, 3.724s |
+| Median cold HTML | 6.109s | 4.274s |
+| Median instance start to successful startup probe | 5.756s | 3.922s |
+| Median worker boot to successful startup probe | 4.639s | 2.766s |
+| First conversion samples | 10.563s, 11.593s, 11.720s | 14.670s, 12.534s, 14.499s |
+| Median first conversion | 11.593s | 14.499s |
+| Median per-trial HTML + first conversion duration | 17.616s | 18.222s |
+
+Median cold HTML improved by 1.835s (30%). First conversion was 2.906s slower
+at the median. The sum above excludes intervening health/static checks and is
+not a browser time-to-play measurement. These three-sample results confirm
+earlier UI readiness, without establishing faster first playback or tail latency.
+The experiment combines SDK/client deferral with moving cleanup; it does not
+isolate bucket construction. Conversion and storage I/O variability also affect
+the observed first-conversion difference.
+
+All deferred instances reported GCS uninitialized and cleanup not yet run after
+the UI checks, then initialized after conversion. Follow-up validation passed
+cache reuse, request-gated cleanup, ranged playback, and unchanged cleanup
+timestamps across static/health requests. Local validation passed all 24 quality
+checks, the endpoint suite, and all 20 multi-instance tests. Focused checks
+covered eight concurrent initialization callers, retry after initialization
+failure, cleanup interval/locking, and UI exclusions with debug health enabled.
+
+Production remained on `uade-web-player-00456-xbp` with its specification
+unchanged; the temporary service and test objects were removed. Raw measurements
+remain in ignored `reports/deferred-cache/`: `results.json`, `phases.json`,
+`logs.json`, `context.json`, `validation.json`, and `production-check.json`.
+Baseline image digest was
+`sha256:c9db4a7a475549a7dcec128f13c534df41df530090dbfa55aa6c43602aef645f`;
+the tested deferred image was
+`sha256:874d424576cc5927d1c8003b7c73e4d1164c2109e25e193c26b033438f03d335`.
+
 ## Benchmark Entry Point
 
 Use the benchmark Compose overlay:

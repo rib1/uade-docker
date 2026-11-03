@@ -6,6 +6,8 @@ Converts Amiga music modules to FLAC or WAV for browser playback
 Cloud-ready with proper logging, error handling, stateless caching, and cleanup
 """
 
+import errno
+import fnmatch
 import hashlib
 import ipaddress
 import json
@@ -33,7 +35,6 @@ from functools import wraps
 from pathlib import Path
 from typing import Final
 
-import fsspec
 import requests
 from flask import Flask, Response, jsonify, request, send_from_directory
 from flask_limiter import Limiter
@@ -54,6 +55,8 @@ CLEANUP_TIMESTAMPS: dict[str, datetime | None] = {"local": None, "cache": None}
 CLEANUP_STATUSES: dict[str, str] = {"local": "not_run_yet", "cache": "not_run_yet"}
 LOCAL_CLEANUP_STATE = {"last_check_monotonic": 0.0}
 LOCAL_CLEANUP_LOCK = threading.Lock()
+CACHE_CLEANUP_STATE = {"last_check_monotonic": 0.0}
+CACHE_CLEANUP_LOCK = threading.Lock()
 ACTIVE_LOCAL_CLEANUP_PATHS: set[Path] = set()
 ACTIVE_LOCAL_CLEANUP_PATHS_LOCK = threading.Lock()
 FLAC_COMPRESSION_COUNTS: dict[str, int] = {}
@@ -284,20 +287,231 @@ for directory in [MODULES_DIR, CONVERTED_DIR]:
 GLOBAL_CONVERSION_SEMAPHORE = threading.BoundedSemaphore(MAX_CONCURRENT_CONVERSIONS)
 
 
+class LocalCacheFilesystem:
+    """Local cache operations without loading a cloud filesystem library."""
+
+    protocol = ("file", "local")
+
+    @staticmethod
+    def exists(path):
+        """Return whether a local cache path exists."""
+        return Path(path).exists()
+
+    @staticmethod
+    def isdir(path):
+        """Return whether a local cache path is a directory."""
+        return Path(path).is_dir()
+
+    @staticmethod
+    def info(path):
+        """Return the size, modification time, and type of a local cache path."""
+        target = Path(path)
+        stat = target.stat()
+        return {
+            "name": str(path),
+            "size": stat.st_size,
+            "mtime": stat.st_mtime,
+            "type": "directory" if target.is_dir() else "file",
+        }
+
+    @staticmethod
+    def size(path):
+        """Return the size of a local cache file in bytes."""
+        return Path(path).stat().st_size
+
+    @staticmethod
+    def glob(pattern):
+        """List local cache paths matching the final component of a pattern."""
+        pattern_path = Path(pattern)
+        return sorted(str(path) for path in pattern_path.parent.glob(pattern_path.name))
+
+    @staticmethod
+    def open(path, mode):
+        """Open a local cache file using the requested text or binary mode."""
+        return Path(path).open(mode)
+
+    @staticmethod
+    def rm_file(path):
+        """Delete a local cache file, raising FileNotFoundError if absent."""
+        Path(path).unlink()
+
+    @staticmethod
+    def mv(source, destination):
+        """Replace the destination with the source using a filesystem rename."""
+        Path(source).replace(destination)
+
+
+class GoogleCacheFilesystem:
+    """GCS object operations needed by the app, backed by Google's storage SDK."""
+
+    protocol = ("gs", "gcs")
+    CHUNK_SIZE = 1024 * 1024
+
+    def __init__(self, bucket_name, **client_kwargs):
+        """Save configuration and defer SDK loading until the first cache operation.
+
+        Projectless credentials require GOOGLE_CLOUD_PROJECT or a project keyword.
+        """
+        self._bucket_name = bucket_name
+        self._client_kwargs = client_kwargs
+        self._bucket = None
+        self._initialization_lock = threading.Lock()
+
+    @property
+    def initialized(self):
+        """Whether initialization has completed, without loading the SDK or contacting GCS."""
+        return self._bucket is not None
+
+    @property
+    def bucket(self):
+        """The bucket, initialized once while concurrent callers wait."""
+        if self._bucket is None:
+            with self._initialization_lock:
+                if self._bucket is None:
+                    from google.cloud import storage
+
+                    client = storage.Client(**self._client_kwargs)
+                    self._bucket = client.bucket(self._bucket_name)
+        return self._bucket
+
+    @property
+    def client(self):
+        """The shared client, initialized on first use."""
+        return self.bucket.client
+
+    def _key(self, path):
+        """Extract an object key, rejecting paths belonging to another bucket."""
+        bucket, _, key = str(path).partition("/")
+        if bucket != self._bucket_name:
+            raise ValueError("Cache path belongs to a different bucket")
+        return key
+
+    def _blob(self, path):
+        """Load object metadata or raise FileNotFoundError for a missing object."""
+        blob = self.bucket.get_blob(self._key(path))
+        if blob is None:
+            raise FileNotFoundError(errno.ENOENT, "Cache object not found", path)
+        return blob
+
+    def exists(self, path):
+        """Return whether the cache object exists in GCS."""
+        return self.bucket.blob(self._key(path)).exists()
+
+    def isdir(self, path):
+        """Return whether any GCS objects exist below this directory prefix."""
+        prefix = self._key(path).rstrip("/") + "/"
+        return (
+            next(iter(self.client.list_blobs(self.bucket, prefix=prefix, max_results=1)), None)
+            is not None
+        )
+
+    def info(self, path):
+        """Return object size, modification time, and generation for cache helpers."""
+        blob = self._blob(path)
+        modified = blob.updated or blob.time_created
+        return {
+            "name": str(path),
+            "size": int(blob.size or 0),
+            "mtime": modified.timestamp() if modified else 0,
+            "type": "file",
+            "generation": blob.generation,
+        }
+
+    def size(self, path):
+        """Return the size of a GCS cache object in bytes."""
+        return int(self._blob(path).size or 0)
+
+    def glob(self, pattern):
+        """List cache objects matching a single-level name pattern."""
+        # Cache cleanup uses one-level patterns, including conversion-locks/*.lock.
+        key_pattern = self._key(pattern)
+        parent, _, name_pattern = key_pattern.rpartition("/")
+        prefix = parent + "/" if parent else ""
+        return sorted(
+            f"{self.bucket.name}/{blob.name}"
+            for blob in self.client.list_blobs(self.bucket, prefix=prefix, delimiter="/")
+            if fnmatch.fnmatchcase(blob.name.removeprefix(prefix), name_pattern)
+        )
+
+    @contextmanager
+    def open(self, path, mode):
+        """Stream an object, pinning reads to one generation and mapping missing objects."""
+        from google.api_core.exceptions import NotFound
+
+        try:
+            # Pin a read to one generation, including across chunked downloads.
+            blob = self._blob(path) if mode.startswith("r") else self.bucket.blob(self._key(path))
+            encoding = {} if "b" in mode else {"encoding": "utf-8"}
+            with blob.open(mode, chunk_size=self.CHUNK_SIZE, **encoding) as stream:
+                yield stream
+        except NotFound as exc:
+            raise FileNotFoundError(errno.ENOENT, "Cache object not found", path) from exc
+
+    def rm_file(self, path):
+        """Delete a GCS object, mapping a missing object to FileNotFoundError."""
+        from google.api_core.exceptions import NotFound
+
+        try:
+            self.bucket.blob(self._key(path)).delete()
+        except NotFound as exc:
+            raise FileNotFoundError(errno.ENOENT, "Cache object not found", path) from exc
+
+    def mv(self, source, destination):
+        """Copy one source generation to the destination, then delete that source."""
+        from google.api_core.exceptions import NotFound
+
+        blob = self._blob(source)
+        target = self.bucket.blob(self._key(destination))
+        try:
+            token = None
+            while True:
+                token, _, _ = target.rewrite(
+                    blob, token=token, if_source_generation_match=blob.generation
+                )
+                if token is None:
+                    break
+            blob.delete(if_generation_match=blob.generation)
+        except NotFound as exc:
+            raise FileNotFoundError(errno.ENOENT, "Cache object not found", source) from exc
+
+    def pipe_file(self, path, data, *, if_generation_match=None):
+        """Write bytes conditionally, mapping create-only conflicts to FileExistsError."""
+        from google.api_core.exceptions import PreconditionFailed
+
+        try:
+            self.bucket.blob(self._key(path)).upload_from_string(
+                data, if_generation_match=if_generation_match
+            )
+        except PreconditionFailed as exc:
+            if if_generation_match == 0:
+                raise FileExistsError(errno.EEXIST, "Cache object already exists", path) from exc
+            raise
+
+
 def get_fs_and_root(uri, fs_kwargs=None):
+    """Select a supported cache backend, accepting plain paths for local storage."""
     fs_kwargs = fs_kwargs or {}
     # Detect S3 URI for remote storage support
     if uri.startswith("s3://"):
-        fs = fsspec.filesystem("s3", **fs_kwargs)
+        # TODO: package and verify S3 as an optional backend. Keep s3fs/fsspec
+        # out of the default image; custom S3 images can install s3fs separately.
+        try:
+            from s3fs import S3FileSystem
+        except ImportError as exc:
+            raise RuntimeError("S3 cache requires the optional s3fs dependency") from exc
+
+        fs = S3FileSystem(**fs_kwargs)
         root = uri[5:]
     elif uri.startswith("gcs://"):
-        fs = fsspec.filesystem("gcs", **fs_kwargs)
         root = uri[6:]
+        fs = GoogleCacheFilesystem(root.split("/", maxsplit=1)[0], **fs_kwargs)
     elif uri.startswith("file://"):
-        fs = fsspec.filesystem("file")
+        fs = LocalCacheFilesystem()
         root = uri[7:] or TEMP_BASE
     else:
-        fs = fsspec.filesystem("file")
+        if "://" in uri:
+            raise ValueError("Unsupported CACHE_URI scheme; use file://, s3://, or gcs://")
+        fs = LocalCacheFilesystem()
         root = uri
     return fs, root
 
@@ -385,10 +599,11 @@ def add_security_headers(response):
 
 @app.before_request
 def maybe_cleanup_before_request():
-    """Apply gated local temp-file cleanup on eligible requests."""
+    """Apply gated cleanup on eligible requests without initializing remote storage."""
     if should_skip_request_cleanup(request.path):
         return
     maybe_run_local_cleanup()
+    cleanup_cache_files(force=False)
 
 
 # Common Amiga module extensions and prefixes for detection module files in archives
@@ -1019,7 +1234,7 @@ def should_skip_request_cleanup(path):
         "/robots.txt",
         "/sitemap.xml",
         "/supported-extensions",
-    } or path.startswith(("/play/", "/download/", "/test/"))
+    } or path.startswith(("/static/", "/play/", "/download/", "/test/"))
 
 
 def log_skipped_local_cleanup(elapsed):
@@ -1096,9 +1311,30 @@ def cleanup_stale_conversion_locks():
     return removed
 
 
-def cleanup_cache_files():
+def cleanup_cache_files(*, force=True):
+    """Serialize cache cleanup; request-triggered runs require an initialized GCS client."""
+    if not force:
+        if not isinstance(fs_cache, GoogleCacheFilesystem) or not fs_cache.initialized:
+            return
+        last_check = CACHE_CLEANUP_STATE["last_check_monotonic"]
+        if last_check and time.monotonic() - last_check < CLEANUP_INTERVAL:
+            return
+    if not CACHE_CLEANUP_LOCK.acquire(blocking=force):
+        return
+    try:
+        now = time.monotonic()
+        last_check = CACHE_CLEANUP_STATE["last_check_monotonic"]
+        if not force and last_check and now - last_check < CLEANUP_INTERVAL:
+            return
+        CACHE_CLEANUP_STATE["last_check_monotonic"] = now
+        _cleanup_cache_files_impl()
+    finally:
+        CACHE_CLEANUP_LOCK.release()
+
+
+def _cleanup_cache_files_impl():
     """Remove files older than CACHE_CLEANUP_INTERVAL from remote cache (supports file, s3, gcs)"""
-    logger.info("cleanup_cache_files called at startup")
+    logger.info("Cleaning up cache files")
     try:
         cutoff = time.time() - CACHE_CLEANUP_INTERVAL
         removed = 0
@@ -2942,6 +3178,7 @@ def health():
     # Gather cache information (redact sensitive parts of URI)
     cache_info = {
         "protocol": fs_cache.protocol,
+        "initialized": not isinstance(fs_cache, GoogleCacheFilesystem) or fs_cache.initialized,
         "uri_redacted": CACHE_URI.split("://")[0] + "://***" if "://" in CACHE_URI else "***",
         "cleanup_status": CLEANUP_STATUSES["cache"],
         "last_cleanup_at": (
@@ -2950,7 +3187,7 @@ def health():
             else None
         ),
     }
-    if HEALTH_INCLUDE_CACHE_DEBUG:
+    if HEALTH_INCLUDE_CACHE_DEBUG and "file" in CACHE_PROTOCOLS:
         cache_info["debug"] = summarize_cache_debug_times()
     temp_files_info = {
         "cleanup_status": CLEANUP_STATUSES["local"],
@@ -4739,8 +4976,9 @@ logger.info(f"Cleanup interval: {CLEANUP_INTERVAL}s")
 logger.info(f"Cache cleanup interval: {CACHE_CLEANUP_INTERVAL}s")
 log_queue_probe_capacity_warning()
 
-# Clean up cache files once at startup (runs in all environments)
-cleanup_cache_files()
+# GCS loading and cleanup wait for cache use; other backends keep startup cleanup.
+if not isinstance(fs_cache, GoogleCacheFilesystem):
+    cleanup_cache_files()
 
 if __name__ == "__main__":
     development_mode = get_app_mode() == "development"
