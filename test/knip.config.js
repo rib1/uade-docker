@@ -35,8 +35,6 @@ module.exports = {
     "./bench/semaphore-balance.js",
     "./bench/smoke.js",
     "./bench/streaming.js",
-    // Loaded via a dynamic require(configPath) in check-purgecss.mjs.
-    "./purgecss.config.js",
   ],
   // These tools are invoked from shell scripts and Docker workflows rather than
   // imported from JavaScript, so they would be false positives in Knip.

@@ -13,6 +13,36 @@ fail() {
   failures=$((failures + 1))
 }
 
+# Import the configured cloud path without allowing the storage SDK to load.
+if CACHE_URI=gcs://import-test-bucket/cache RATE_LIMIT_DISABLED=1 python3 - <<'PY'
+import builtins
+from unittest.mock import patch
+
+original_import = builtins.__import__
+
+
+def guard_cloud_import(name, *args, **kwargs):
+    if name == "google.cloud" or name.startswith("google.cloud."):
+        raise AssertionError("Server import must not load the cloud storage SDK")
+    return original_import(name, *args, **kwargs)
+
+
+with patch("builtins.__import__", side_effect=guard_cloud_import):
+    import server
+
+    assert server.CACHE_URI == "gcs://import-test-bucket/cache"
+    assert server.root_cache == "import-test-bucket/cache"
+    assert isinstance(server.fs_cache, server.GoogleCacheFilesystem)
+    assert server.fs_cache._bucket_name == "import-test-bucket"
+    assert not server.fs_cache.initialized
+    assert server.CLEANUP_STATUSES["cache"] == "not_run_yet"
+PY
+then
+  pass "configured GCS cache stays uninitialized during server import"
+else
+  fail "configured GCS cache initialized during server import"
+fi
+
 # The web image must not run its application or native converter as root.
 if [ "$(id -u)" -ne 0 ]; then
   pass "runtime process is non-root"
