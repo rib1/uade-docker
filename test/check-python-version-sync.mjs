@@ -68,10 +68,10 @@ function extractMypyVersion(pyprojectText) {
   return match[1];
 }
 
-function extractCodeqlDockerVersion(dockerfileText) {
-  const match = dockerfileText.match(/^FROM python:(\d+\.\d+)(?:\.\d+)?-slim(?:-[^\s]+)?$/m);
+function extractDockerPythonVersion(dockerfileText, label) {
+  const match = dockerfileText.match(/^FROM python:(\d+\.\d+)(?:\.\d+)?-(?:slim|alpine)(?:-[^\s]+)?$/m);
   if (!match) {
-    fail("Could not read the Python base image from test/Dockerfile.codeql.");
+    fail(`Could not read the Python base image from ${label}.`);
   }
 
   return match[1];
@@ -99,6 +99,8 @@ async function main() {
     webDockerfileText,
     composeText,
     workflowText,
+    qualityDockerfileText,
+    testDockerfileText,
   ] = await Promise.all([
     readFile(pyprojectPath, "utf8"),
     readFile(codeqlDockerfilePath, "utf8"),
@@ -107,12 +109,16 @@ async function main() {
     readFile(path.join(projectRoot, "Dockerfile.web"), "utf8"),
     readFile(path.join(projectRoot, "docker-compose.yml"), "utf8"),
     readFile(path.join(projectRoot, ".github", "workflows", "security-sast.yml"), "utf8"),
+    readFile(path.join(projectRoot, "test", "Dockerfile.quality"), "utf8"),
+    readFile(path.join(projectRoot, "test", "Dockerfile.test"), "utf8"),
   ]);
 
   const blackVersion = extractBlackVersion(pyprojectText);
   const ruffVersion = extractRuffVersion(pyprojectText);
   const mypyVersion = extractMypyVersion(pyprojectText);
-  const codeqlDockerVersion = extractCodeqlDockerVersion(codeqlDockerfileText);
+  const codeqlDockerVersion = extractDockerPythonVersion(codeqlDockerfileText, "test/Dockerfile.codeql");
+  const qualityDockerVersion = extractDockerPythonVersion(qualityDockerfileText, "test/Dockerfile.quality");
+  const testDockerVersion = extractDockerPythonVersion(testDockerfileText, "test/Dockerfile.test");
   const qualityFallbackVersion = extractQualityFallbackVersions(
     qualityScriptText, "Bash Python fallback images",
   );
@@ -138,6 +144,8 @@ async function main() {
   const comparedVersions = [
     ["pyproject.toml Python target", pyprojectVersion],
     ["test/Dockerfile.codeql base image", codeqlDockerVersion],
+    ["test/Dockerfile.quality base image", qualityDockerVersion],
+    ["test/Dockerfile.test base image", testDockerVersion],
     ["test/check-code-quality.sh Python fallback images", qualityFallbackVersion],
     ["test/check-code-quality.ps1 Python fallback images", powershellVersion],
     ["Dockerfile.web Python base image", webVersion],

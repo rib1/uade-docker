@@ -8,7 +8,7 @@
     "htmlhint": "1.9.2",
     "knip": "6.44.2",
     "pa11y-ci": "5.0.0",
-    "playwright-core": "1.65.0",
+    "playwright-core": "1.65.1",
     "purgecss": "9.1.0"
   }
 }
