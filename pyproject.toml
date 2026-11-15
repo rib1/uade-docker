@@ -1,6 +1,6 @@
 [tool.black]
 line-length = 100
-target-version = ['py314']
+target-version = ['py315']
 include = '\.pyi?$'
 extend-exclude = '''
 /(
@@ -23,7 +23,7 @@ multi_line_mode = 3
 
 [tool.ruff]
 line-length = 100
-target-version = "py314"
+target-version = "py315"
 preview = true
 
 [tool.ruff.format]
@@ -93,7 +93,7 @@ max-statements-in-try = 50
 max-line-length = 100
 
 [tool.mypy]
-python_version = "3.14"
+python_version = "3.15"
 local_partial_types = true
 files = ["web/server.py"]
 follow_imports = "silent"

@@ -4,7 +4,11 @@
 # Use with: docker compose -f docker-compose.yml -f test/docker-compose.quality.yml up quality-check
 #
 # This allows developers to run: docker compose up quality-check
-FROM node:26-alpine
+FROM node:26-alpine AS node
+FROM python:3.15-alpine
+
+COPY --from=node /usr/local/bin/node /usr/local/bin/node
+COPY --from=node /usr/local/lib/node_modules/ /usr/local/lib/node_modules/
 
 # Install bash, Python, Docker CLI, and other utilities
 # Use version-family pins so Alpine revision bumps (for example `-r1` -> `-r2`)
@@ -14,11 +18,12 @@ RUN apk add --no-cache \
     grep=~3.12 \
     findutils=~4.10.0 \
     coreutils=~9.11 \
+    libatomic=~15.2.0 \
     curl=~8.23 \
     shellcheck=~0.11 \
-    python3=~3.14 \
-    py3-pip=~26.1 \
-    docker-cli=~29.9
+    docker-cli=~29.9 \
+    && ln -s ../lib/node_modules/npm/bin/npm-cli.js /usr/local/bin/npm \
+    && ln -s ../lib/node_modules/npm/bin/npx-cli.js /usr/local/bin/npx
 
 # Copy manifests individually so a change in one does not bust the
 # install layers that only depend on a different manifest.
