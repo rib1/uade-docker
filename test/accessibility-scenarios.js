@@ -310,26 +310,25 @@ function validateAccessibilityScenarios() {
   }
 }
 
-function buildPa11yConfig(chromePath) {
+function buildPa11yConfig(chromePath, reducedMotion = "no-preference") {
   const chromeLaunchConfig = { args: ["--no-sandbox", "--disable-setuid-sandbox"] };
+  if (reducedMotion === "reduce") {
+    chromeLaunchConfig.args.push("--force-prefers-reduced-motion");
+  }
   if (chromePath) {
     chromeLaunchConfig.executablePath = chromePath;
   }
   return {
     concurrency: 1,
-    urls: accessibilityScenarios.map(({ label, url, viewport, actions, reducedMotion }) => {
+    urls: accessibilityScenarios.filter((scenario) =>
+      (scenario.reducedMotion || "no-preference") === reducedMotion,
+    ).map(({ label, url, viewport, actions }) => {
       const entry = { url, label };
       if (viewport) {
         entry.viewport = viewport;
       }
       if (actions) {
         entry.actions = actions;
-      }
-      if (reducedMotion === "reduce") {
-        entry.chromeLaunchConfig = {
-          ...chromeLaunchConfig,
-          args: [...chromeLaunchConfig.args, "--force-prefers-reduced-motion"],
-        };
       }
       return entry;
     }),

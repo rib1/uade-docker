@@ -40,11 +40,14 @@ echo "Using Playwright version: ${PLAYWRIGHT_VERSION}"
 echo "Verifying UI states and generating Pa11y config..."
 npm install -g "playwright-core@${PLAYWRIGHT_VERSION}" >/dev/null
 node /workspace/test/accessibility-preflight.js \
-    --write-config=/tmp/pa11yci.json \
+    --write-config=/tmp/pa11yci \
     --chrome-path="${CHROME_PATH}"
 
 # Run Pa11y CI audit against the generated configuration.
 PUPPETEER_SKIP_DOWNLOAD=true npm install -g "pa11y-ci@${PA11Y_CI_VERSION}" >/dev/null
 echo "Using Pa11y CI version: $(pa11y-ci --version)"
 
-pa11y-ci --config /tmp/pa11yci.json
+echo "Auditing normal-motion scenarios..."
+pa11y-ci --config /tmp/pa11yci-no-preference.json
+echo "Auditing reduced-motion scenarios in a separate browser..."
+pa11y-ci --config /tmp/pa11yci-reduce.json

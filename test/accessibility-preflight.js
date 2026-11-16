@@ -191,11 +191,27 @@ async function main() {
     await browser.close();
   }
 
-  // 2. Generate Pa11y Config (optional)
+  // 2. Verify native browser preferences and generate separate Pa11y configs (optional).
   if (writeConfigPath) {
-    const config = buildPa11yConfig(chromePath);
-    fs.writeFileSync(writeConfigPath, `${JSON.stringify(config, null, 2)}\n`);
-    console.log(`Pa11y configuration written to: ${writeConfigPath}`);
+    for (const preference of ["no-preference", "reduce"]) {
+      const config = buildPa11yConfig(chromePath, preference);
+      const auditBrowser = await chromium.launch(config.defaults.chromeLaunchConfig);
+      try {
+        // Clear Playwright's media override so this checks Chromium's launch flags.
+        const page = await auditBrowser.newPage({ reducedMotion: null });
+        const prefersReducedMotion = await page.evaluate(() =>
+          window.matchMedia("(prefers-reduced-motion: reduce)").matches,
+        );
+        if (prefersReducedMotion !== (preference === "reduce")) {
+          throw new Error(`Pa11y browser launch must apply ${preference}.`);
+        }
+      } finally {
+        await auditBrowser.close();
+      }
+      const configPath = `${writeConfigPath}-${preference}.json`;
+      fs.writeFileSync(configPath, `${JSON.stringify(config, null, 2)}\n`);
+      console.log(`Verified ${preference} browser; Pa11y configuration written to: ${configPath}`);
+    }
   }
 }
 
