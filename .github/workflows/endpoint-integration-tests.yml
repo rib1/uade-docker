@@ -86,6 +86,11 @@ jobs:
         run: |
           GIT_COMMIT="${GITHUB_SHA}" docker compose -f docker-compose.yml -f test/docker-compose.endpoints.yml run --rm --build uade-test-runner
 
+      - name: Show endpoint test logs on failure
+        if: failure()
+        run: |
+          docker compose -f docker-compose.yml -f test/docker-compose.endpoints.yml logs --no-color --tail 200 test-fixture-preparer test-http-server uade-web
+
       - name: Tear down endpoint test stack
         if: always()
         run: |
