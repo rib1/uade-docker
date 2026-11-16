@@ -32,6 +32,7 @@
 #   ./test/check-code-quality.sh --purgecss      # PurgeCSS unused CSS check only
 #   ./test/check-code-quality.sh --instructions  # Instruction files only
 #   ./test/check-code-quality.sh --documentation # Documentation files only
+#   ./test/check-code-quality.sh --modern-web-guidance # Manual modernization scan
 
 # Don't use set -e because we want to run all checks even if one fails
 # We handle errors manually and exit at the end based on FAILED_CHECKS count
@@ -194,6 +195,9 @@ Infrastructure Checks:
 Markdown And Documentation Checks:
   --instructions
   --documentation
+
+Manual Scans (excluded from default checks):
+  --modern-web-guidance
 EOF
 }
 
@@ -223,6 +227,7 @@ enable_only_check() {
     RUN_INSTRUCTIONS=false
     RUN_DOCUMENTATION=false
     RUN_PURGECSS=false
+    RUN_MODERN_WEB_GUIDANCE=false
 
     case "$selected_check" in
         eslint) RUN_ESLINT=true ;;
@@ -249,6 +254,7 @@ enable_only_check() {
         instructions) RUN_INSTRUCTIONS=true ;;
         documentation) RUN_DOCUMENTATION=true ;;
         purgecss) RUN_PURGECSS=true ;;
+        modern-web-guidance) RUN_MODERN_WEB_GUIDANCE=true ;;
         # purifycss removed
     esac
 }
@@ -279,6 +285,7 @@ RUN_MYPY=true
 RUN_VULTURE=true
 RUN_INSTRUCTIONS=true
 RUN_DOCUMENTATION=true
+RUN_MODERN_WEB_GUIDANCE=false
 
 for arg in "$@"; do
     case $arg in
@@ -386,6 +393,10 @@ for arg in "$@"; do
             enable_only_check purgecss
             shift
             ;;
+        --modern-web-guidance)
+            enable_only_check modern-web-guidance
+            shift
+            ;;
         # --purifycss removed
         *)
             echo "Unknown option: $arg"
@@ -432,6 +443,31 @@ print_subgroup_header() {
     echo "$1:"
     echo
 }
+
+# Manual modernization scan: never enabled by the default check selection.
+if [ "$RUN_MODERN_WEB_GUIDANCE" = true ]; then
+    print_header "Modern Web Guidance - Manual Modernization Scan"
+    echo "Scanning web/ for advisory modernization candidates (telemetry disabled)..."
+    if command -v modern-web-guidance >/dev/null 2>&1; then
+        OUTPUT=$(DISABLE_TELEMETRY=1 modern-web-guidance legacy-scan "${PROJECT_ROOT}/web" --json 2>&1)
+        EXIT_CODE=$?
+    else
+        COMPOSE_PROJECT_ROOT="${PROJECT_ROOT}"
+        if command -v cygpath >/dev/null 2>&1; then
+            COMPOSE_PROJECT_ROOT=$(cygpath -m "${PROJECT_ROOT}")
+        fi
+        OUTPUT=$(docker compose --project-directory "${COMPOSE_PROJECT_ROOT}" \
+            -f "${COMPOSE_PROJECT_ROOT}/docker-compose.yml" \
+            -f "${COMPOSE_PROJECT_ROOT}/test/docker-compose.quality.yml" \
+            run --rm --build --no-deps -e DISABLE_TELEMETRY=1 \
+            --entrypoint modern-web-guidance quality-check legacy-scan web --json 2>&1)
+        EXIT_CODE=$?
+    fi
+    if [ "$EXIT_CODE" -eq 0 ]; then
+        echo "$OUTPUT"
+    fi
+    print_result "Modern Web Guidance" "$EXIT_CODE" "$OUTPUT"
+fi
 
 # PurgeCSS Check
 if [ "$RUN_PURGECSS" = true ]; then

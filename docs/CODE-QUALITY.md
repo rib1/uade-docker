@@ -52,6 +52,32 @@ The quality suite covers:
 - Repo instruction markdown: instruction-file checks
 - Project documentation markdown: documentation-file checks
 
+## Manual Modern Web Guidance Scan
+
+The quality image includes the pinned
+[`modern-web-guidance`](https://github.com/GoogleChrome/modern-web-guidance-src)
+CLI for manual frontend scans. It is not run automatically by the quality suite
+or GitHub workflow. Its `legacy-scan` findings are advisory modernization
+candidates covering a subset of the guidance corpus, and do not replace linting
+or browser/accessibility tests. No API credentials or installed agent skills are
+required. The following command disables CLI telemetry.
+
+Run a scan manually:
+
+```powershell
+.\test\check-code-quality.ps1 -ModernWebGuidance
+```
+
+```bash
+./test/check-code-quality.sh --modern-web-guidance
+```
+
+Or invoke the Docker CLI directly:
+
+```bash
+docker compose -f docker-compose.yml -f test/docker-compose.quality.yml run --rm --build --no-deps -e DISABLE_TELEMETRY=1 --entrypoint modern-web-guidance quality-check legacy-scan web --json
+```
+
 ## Source Of Truth
 
 Versions and behavior are intentionally centralized:

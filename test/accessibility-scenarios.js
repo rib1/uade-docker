@@ -45,7 +45,7 @@ const STATUS_EXPECTATIONS = {
 };
 
 /**
- * Shared Playwright preflight helper to assert computed status colors.
+ * Assert status colors, reduced-motion behavior, and live-region placement.
  */
 async function expectStatus(page, type) {
   const expected = STATUS_EXPECTATIONS[type];
@@ -57,8 +57,18 @@ async function expectStatus(page, type) {
     return {
       backgroundColor: computed.backgroundColor,
       color: computed.color,
+      animationName: computed.animationName,
+      reducedMotion: window.matchMedia("(prefers-reduced-motion: reduce)").matches,
+      live: element.closest("[aria-live]")?.getAttribute("aria-live"),
     };
   });
+
+  if (styles.live !== "polite") {
+    throw new Error(`${type} messages must be inside a polite live region.`);
+  }
+  if (styles.reducedMotion && styles.animationName !== "none") {
+    throw new Error(`${type} messages must not slide when reduced motion is requested.`);
+  }
 
   if (
     styles.backgroundColor !== expected.backgroundColor ||
@@ -115,6 +125,28 @@ async function expectQueueFilePicker(page, key) {
     throw new Error("Queue file picker must allow selecting multiple modules.");
   }
   await chooser.setFiles([]);
+}
+
+async function expectQueueDisclosure(page) {
+  for (const selector of [PLAYLIST_TOGGLE_BUTTON_SELECTOR, "#playlist-launcher-hitbox"]) {
+    for (const [step, expanded] of [false, true, false].entries()) {
+      if (step > 0) {
+        await page.click(selector);
+      }
+      const matches = await page.evaluate((expected) => {
+        const panel = window.document.getElementById("playlist-panel");
+        return ["playlist-toggle-btn", "playlist-launcher-hitbox"].every((id) => {
+          const button = window.document.getElementById(id);
+          return button.getAttribute("aria-controls") === panel.id &&
+            button.getAttribute("aria-expanded") === String(expected) &&
+            panel.hidden === !expected;
+        });
+      }, expanded);
+      if (!matches) {
+        throw new Error(`Both queue toggles must announce expanded=${expanded}.`);
+      }
+    }
+  }
 }
 
 const accessibilityScenarios = [
@@ -209,6 +241,7 @@ const accessibilityScenarios = [
         state: "visible",
         timeout: DEFAULT_TIMEOUT_MS,
       });
+      await expectQueueDisclosure(page);
       await page.click(PLAYLIST_TOGGLE_BUTTON_SELECTOR);
       await page.waitForSelector(PLAYLIST_PANEL_SELECTOR, {
         state: "visible",
@@ -226,6 +259,7 @@ const accessibilityScenarios = [
         state: "visible",
         timeout: DEFAULT_TIMEOUT_MS,
       });
+      await expectQueueDisclosure(page);
       await page.click(PLAYLIST_TOGGLE_BUTTON_SELECTOR);
       await page.waitForSelector(PLAYLIST_PANEL_SELECTOR, {
         state: "visible",
@@ -236,6 +270,22 @@ const accessibilityScenarios = [
     },
   },
 ];
+
+const reducedMotionScenarioLabels = new Set([
+  "iphone15-example-info",
+  "iphone15-example-playing",
+  "desktop-url-warning-empty",
+  "desktop-url-error-invalid",
+]);
+accessibilityScenarios.push(
+  ...accessibilityScenarios
+    .filter((scenario) => reducedMotionScenarioLabels.has(scenario.label))
+    .map((scenario) => ({
+      ...scenario,
+      label: `${scenario.label}-reduced-motion`,
+      reducedMotion: "reduce",
+    }))
+);
 
 function validateAccessibilityScenarios() {
   const missingPreflight = accessibilityScenarios
@@ -260,10 +310,14 @@ function validateAccessibilityScenarios() {
   }
 }
 
-function buildPa11yConfig() {
+function buildPa11yConfig(chromePath) {
+  const chromeLaunchConfig = { args: ["--no-sandbox", "--disable-setuid-sandbox"] };
+  if (chromePath) {
+    chromeLaunchConfig.executablePath = chromePath;
+  }
   return {
     concurrency: 1,
-    urls: accessibilityScenarios.map(({ label, url, viewport, actions }) => {
+    urls: accessibilityScenarios.map(({ label, url, viewport, actions, reducedMotion }) => {
       const entry = { url, label };
       if (viewport) {
         entry.viewport = viewport;
@@ -271,9 +325,16 @@ function buildPa11yConfig() {
       if (actions) {
         entry.actions = actions;
       }
+      if (reducedMotion === "reduce") {
+        entry.chromeLaunchConfig = {
+          ...chromeLaunchConfig,
+          args: [...chromeLaunchConfig.args, "--force-prefers-reduced-motion"],
+        };
+      }
       return entry;
     }),
     defaults: {
+      chromeLaunchConfig,
       hideElements: "#version-info",
       standard: "WCAG2AA",
       runners: ["htmlcs", "axe"],

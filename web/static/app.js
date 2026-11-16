@@ -206,7 +206,10 @@ function checkSharedUrlParameter() {
     }
 
     // Scroll to URL input section for visibility
-    urlInput.scrollIntoView({ behavior: "smooth", block: "center" });
+    urlInput.scrollIntoView({
+      behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "instant" : "smooth",
+      block: "center",
+    });
 
     // Auto-trigger conversion after short delay (allow UI to settle)
     setTimeout(() => {
@@ -702,13 +705,13 @@ async function performFileProbe(file, button, options = {}) {
 function setupUrlForm() {
   urlSubmit.addEventListener("click", handleUrlConvert);
   playlistAddUrlBtn.addEventListener("click", handleAddUrlToPlaylist);
-  urlInput.addEventListener("keypress", (e) => {
-    if (e.key === "Enter") {
+  urlInput.addEventListener("keydown", (e) => {
+    if (e.key === "Enter" && !e.isComposing) {
       handleUrlConvert();
     }
   });
-  sampleUrlInput.addEventListener("keypress", (e) => {
-    if (e.key === "Enter") {
+  sampleUrlInput.addEventListener("keydown", (e) => {
+    if (e.key === "Enter" && !e.isComposing) {
       handleUrlConvert();
     }
   });
@@ -1634,6 +1637,9 @@ function movePlaylistTrack(trackId, direction) {
 }
 
 function renderPlaylistLauncherBar(hasPlaylist) {
+  const isExpanded = isPlaylistPanelOpen && hasPlaylist;
+  playlistLauncherHitbox.setAttribute("aria-expanded", String(isExpanded));
+  playlistToggleBtn.setAttribute("aria-expanded", String(isExpanded));
   playlistLauncher.classList.toggle("expanded", isPlaylistPanelOpen && hasPlaylist);
   playlistLauncherHitbox.disabled = isUiLocked || !hasPlaylist;
   playlistLauncherHitbox.setAttribute("aria-label", isPlaylistPanelOpen ? "Hide queue" : "Open queue");
@@ -2193,7 +2199,10 @@ function playFile(
 
   updatePlayerSectionVisibility();
   updatePrimaryPlayerActions();
-  playerSection.scrollIntoView({ behavior: "smooth", block: "nearest" });
+  playerSection.scrollIntoView({
+    behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "instant" : "smooth",
+    block: "nearest",
+  });
 
   const autoplayOverlay = document.getElementById("autoplay-overlay");
   if (autoplayOverlay) {
@@ -2574,11 +2583,11 @@ function createAutoplayOverlay() {
     return;
   }
 
-  const overlay = document.createElement("div");
+  const overlay = document.createElement("button");
+  overlay.type = "button";
   overlay.id = "autoplay-overlay";
-  overlay.setAttribute("aria-label", "Play"); // Added aria-label
-  overlay.tabIndex = 0; // Added tabIndex for keyboard accessibility
-  const overlayIcon = document.createElement("div");
+  overlay.setAttribute("aria-label", "Play");
+  const overlayIcon = document.createElement("span");
   overlayIcon.className = "play-button-overlay-icon";
   overlay.appendChild(overlayIcon);
 

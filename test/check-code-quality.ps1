@@ -31,6 +31,7 @@
 #   .\test\check-code-quality.ps1 -PurgeCSS    # PurgeCSS unused CSS check only
 #   .\test\check-code-quality.ps1 -Instructions # Instruction files only
 #   .\test\check-code-quality.ps1 -Documentation # Documentation files only
+#   .\test\check-code-quality.ps1 -ModernWebGuidance # Manual modernization scan
 #
 # Requirements:
 #   - Docker Desktop installed and running
@@ -61,7 +62,8 @@ param(
     [switch]$Vulture,
     [switch]$Instructions,
     [switch]$Documentation,
-    [switch]$PurgeCSS
+    [switch]$PurgeCSS,
+    [switch]$ModernWebGuidance
 )
 
 function Show-Usage {
@@ -112,6 +114,9 @@ function Show-Usage {
     Write-Host "Markdown And Documentation Checks:"
     Write-Host "  -Instructions"
     Write-Host "  -Documentation"
+    Write-Host ""
+    Write-Host "Manual Scans (excluded from default checks):"
+    Write-Host "  -ModernWebGuidance"
 }
 
 # Color codes
@@ -212,7 +217,7 @@ if ($Help) {
 }
 
 # Default to run all if no specific tool selected
-if (-not $ESLint -and -not $Black -and -not $Ruff -and -not $ActionLint -and -not $Gitleaks -and -not $Hadolint -and -not $Compose -and -not $ShellCheck -and -not $Yamllint -and -not $Stylelint -and -not $HTMLHint -and -not $Knip -and -not $KnipProduction -and -not $KnipProductionStrict -and -not $KnipNamespace -and -not $PlaywrightSync -and -not $NodeQualitySync -and -not $PythonSync -and -not $CodeQLSync -and -not $MyPy -and -not $Vulture -and -not $Instructions -and -not $Documentation -and -not $PurgeCSS) {
+if (-not $ESLint -and -not $Black -and -not $Ruff -and -not $ActionLint -and -not $Gitleaks -and -not $Hadolint -and -not $Compose -and -not $ShellCheck -and -not $Yamllint -and -not $Stylelint -and -not $HTMLHint -and -not $Knip -and -not $KnipProduction -and -not $KnipProductionStrict -and -not $KnipNamespace -and -not $PlaywrightSync -and -not $NodeQualitySync -and -not $PythonSync -and -not $CodeQLSync -and -not $MyPy -and -not $Vulture -and -not $Instructions -and -not $Documentation -and -not $PurgeCSS -and -not $ModernWebGuidance) {
     $ESLint = $true
     $Stylelint = $true
     $HTMLHint = $true
@@ -292,6 +297,23 @@ try {
     Write-Host "ERROR: Docker is not installed or not in PATH" @Red
     Write-Host "Please install Docker Desktop from: https://www.docker.com/products/docker-desktop" @Yellow
     exit 1
+}
+
+# Manual modernization scan: never enabled by the default check selection.
+if ($ModernWebGuidance) {
+    Write-Header "Modern Web Guidance - Manual Modernization Scan"
+    Write-Host "Scanning web/ for advisory modernization candidates (telemetry disabled)..."
+
+    $output = & docker compose --project-directory $ProjectRoot `
+        -f (Join-Path $ProjectRoot "docker-compose.yml") `
+        -f (Join-Path $ProjectRoot "test/docker-compose.quality.yml") `
+        run --rm --build --no-deps -e DISABLE_TELEMETRY=1 `
+        --entrypoint modern-web-guidance quality-check legacy-scan web --json 2>&1
+    $exitCode = $LASTEXITCODE
+    if ($exitCode -eq 0) {
+        Write-Host ($output -join "`n")
+    }
+    Write-Result "Modern Web Guidance" $exitCode ($output -join "`n")
 }
 
 # PurgeCSS Check

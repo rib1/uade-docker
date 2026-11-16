@@ -42,6 +42,7 @@ module.exports = {
     "eslint",
     "stylelint",
     "htmlhint",
+    "modern-web-guidance",
     "pa11y-ci",
   ],
 };
