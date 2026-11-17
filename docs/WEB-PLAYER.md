@@ -238,6 +238,9 @@ Behavior notes:
 - Adding a URL to the queue clears the URL and sample URL fields on success
 - A shared `?queue=...` link is loaded before any single-track `?url=...` link
 - Local tracks show a `📁 local` badge in the queue UI
+- On mobile, queue Play buttons show a spinner while checking/converting and a
+  checkmark briefly when playback starts. Full progress stays available in status
+  messages and accessible button names; desktop buttons retain their text labels.
 - After a deferred local track is played, its converted audio is cached on the track object for instant replay
 - Reloading the page restores saved local queue tracks from serialized metadata only. They can retry `/convert-probed` via `moduleHash`, but they cannot re-upload the original local file after reload unless the browser has explicitly persisted the file bytes.
 - If durable local-file restore is needed later, browser storage such as IndexedDB is the realistic implementation path because it can persist the actual module bytes across reloads. That would be a deliberate feature with storage and cleanup tradeoffs, not something normal queue serialization provides automatically.

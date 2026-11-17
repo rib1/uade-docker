@@ -359,6 +359,10 @@ function setDropCueActive(label, isActive) {
 }
 
 function getButtonRestoreText(button, originalText) {
+  if (button.dataset.defaultAriaLabel) {
+    button.setAttribute("aria-label", button.dataset.defaultAriaLabel);
+    delete button.dataset.defaultAriaLabel;
+  }
   if (button === queueBrowseBtn && queueBrowseBtn?.dataset.defaultText) {
     return queueBrowseBtn.dataset.defaultText;
   }
@@ -370,17 +374,30 @@ function getButtonRestoreText(button, originalText) {
  * Shows '✓ Playing' on the button, then resets its HTML after a delay and unlocks the UI.
  */
 function resetButtonAfterDelay(button, originalText, delay = 2000) {
-  button.textContent = "✓ Playing";
+  button.replaceChildren(document.createTextNode("✓"), createButtonStateText(button, "Playing"));
   setTimeout(() => {
-    button.textContent = originalText;
+    button.textContent = getButtonRestoreText(button, originalText);
     syncUiLockState(false);
   }, delay);
+}
+
+function createButtonStateText(button, text) {
+  const label = document.createElement("span");
+  label.className = "button-state-text";
+  label.textContent = ` ${text}`;
+  if (button.classList.contains("playlist-play-btn")) {
+    button.dataset.defaultAriaLabel ||= button.getAttribute("aria-label") || "Play track";
+    const trackName = button.dataset.defaultAriaLabel.replace(/^Play /, "");
+    button.setAttribute("aria-label", `${text} ${trackName}`);
+  }
+  return label;
 }
 
 function setButtonLoadingState(button, loadingText) {
   const spinner = document.createElement("span");
   spinner.className = "loading";
-  button.replaceChildren(spinner, document.createTextNode(` ${loadingText}`));
+  spinner.setAttribute("aria-hidden", "true");
+  button.replaceChildren(spinner, createButtonStateText(button, loadingText));
 }
 
 /**
@@ -1849,7 +1866,7 @@ async function playCachedLocalTrack(track, trackId, button) {
       removeTrackFromPlaylist(trackId);
     }
     showStatus(message, "error");
-    button.textContent = originalBtnText;
+    button.textContent = getButtonRestoreText(button, originalBtnText);
     syncUiLockState(false);
   };
 

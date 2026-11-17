@@ -90,6 +90,7 @@ This document contains project-specific learnings and regression-avoidance notes
 **Key Takeaways:** Scope mobile changes to queue controls. Use stable layouts and text labels. Ensure adequate tap targets.
 
 - **Scoped Styling:** Keep mobile queue changes scoped to queue/playlist controls only.
+- **Compact Queue Feedback:** Hide only the queue-row feedback text span at the mobile breakpoint, keeping its spinner/checkmark visible and its full action/track accessible name updated. Restore the original accessible name on success and failure. Let narrow action labels wrap at enlarged text sizes; geometry checks should include checking, converting, playing, and copied states.
 - **Stable Labels:** Do not rely on transport-style emoji for navigation on all platforms. Use stable text labels like `Prev` and `Next`.
 - **Layout:** Use a fixed one-row layout for mobile queue item actions to prevent unpredictable wrapping. If an action label overflows, shorten only the mobile-visible text (e.g., `Remove` becomes `Del`) while keeping the full `aria-label`.
 - **Grid Stability:** Header actions (`Save`, `Bookmark`, `Share`, `Clear`) should use stable grid slots on mobile to prevent layout jumps during state changes.

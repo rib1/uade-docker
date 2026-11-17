@@ -1,6 +1,7 @@
 const fs = require("fs");
 const { chromium, devices } = require("playwright-core");
 const verifyMediaSessionNavigation = require("./media-session-preflight");
+const verifyQueueButtonLayout = require("./queue-button-layout-preflight");
 
 const {
   accessibilityScenarios,
@@ -167,6 +168,7 @@ async function main() {
   });
 
   try {
+    await verifyQueueButtonLayout(browser, accessibilityScenarios[0].url);
     await verifyMediaSessionNavigation(browser, accessibilityScenarios[0].url);
     await verifyMotionAndStatusAnnouncements(browser);
     await verifyAutoplayKeyboardActivation(browser);
