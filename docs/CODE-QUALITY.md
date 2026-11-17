@@ -69,6 +69,11 @@ benchmark image after changing benchmark code. Dockerfile changes also require
 a rebuild; Docker reuses unaffected layers. ZAP uses its own scanner image and
 consumes the same prepared fixture volume.
 
+All four ZAP scan commands set `database.response.bodysize=20971520` (20 MiB),
+matching the scanner's response limit. Its default 16 MiB history limit cannot
+store some valid audio responses. The larger limit preserves playback/download
+route coverage and allows those responses to be recorded for analysis.
+
 ## What Gets Checked
 
 The quality suite covers:

@@ -351,3 +351,5 @@ This document contains project-specific learnings and regression-avoidance notes
 - Cache fixture preparation in Dockerfile.test before copying changing test scripts and web/server.py. Both the preparation script and test/fixtures directory must be copied before the preparation RUN so changes invalidate the layer.
 - GitHub Actions must load the Buildx-cached image and run Compose without --build for the runner; both runner and preparer select the same image. Build the web service separately.
 - Named volumes hide image contents at their mount point. Keep prepared inputs in fixture-seed and copy them into the working fixture volume each run, overwriting stale local inputs. Offline preparation verifies that cache hits need no external fixture downloads.
+
+- ZAP 2.17 defaults its history response-body limit to 16777216 bytes, while scans can receive 20971520-byte audio bodies. Set database.response.bodysize=20971520 through the -z scanner option in all four scan commands. A controlled 20 MiB binary response was stored and retrieved successfully with this setting; passive-scan body exclusions alone do not fix history storage errors.
