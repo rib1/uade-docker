@@ -980,7 +980,8 @@ audio::-webkit-media-controls-enclosure {
         width: 100%;
         min-width: 0;
         padding-inline: 10px;
-        white-space: nowrap;
+        white-space: normal;
+        overflow-wrap: anywhere;
     }
 
     .playlist-item {
@@ -1000,7 +1001,12 @@ audio::-webkit-media-controls-enclosure {
         min-width: 0;
         padding-inline: 8px;
         font-size: 0.8rem;
-        white-space: nowrap;
+        white-space: normal;
+        overflow-wrap: anywhere;
+    }
+
+    .playlist-item-actions .playlist-play-btn .button-state-text {
+        display: none;
     }
 }
 
