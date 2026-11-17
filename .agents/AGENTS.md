@@ -148,7 +148,7 @@ docker compose -f docker-compose.yml -f test/docker-compose.endpoints.yml down -
 
 **Build Triggers (`.github/workflows/build-deploy-web-player.yml`):**
 - Runs on push to `main` when `web/**`, `Dockerfile.web`, or `.github/workflows/build-deploy-web-player.yml` changes
-- **Does NOT rebuild base image** - pulls `ghcr.io/rib1/uade-cli:latest` from cache
+- **Does NOT rebuild base image** - inherits the versioned UADE base image pin from `Dockerfile.web`, matching Docker Compose builds
 - Tags: `latest`, `stable` (main branch), `<git-sha>` (every commit)
 
 **Health Checks:**

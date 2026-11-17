@@ -109,6 +109,11 @@ FROM uade-cli:3.05-base.1
 
 ### When to Update Dockerfile.web Pins
 
+The web-player CI build and Docker Compose inherit the `ARG BASE_IMAGE` default
+from `Dockerfile.web`. Keep that versioned pin (or digest) as the single source
+of truth; the CI workflow must not override it with `latest` or another image.
+Instruction checks enforce this alignment.
+
 1. **Patch Update** (same UADE, new build number)
    - E.g., `3.05-base.1` → `3.05-base.2`
    - When: Security patches, dependency updates

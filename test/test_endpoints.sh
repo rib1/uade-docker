@@ -2,6 +2,14 @@
 
 set -e
 
+# Bound test HTTP clients without changing application timeouts or retrying assertions.
+# Allow headroom above the default 300-second application conversion limit.
+curl() {
+    command curl --show-error \
+        --connect-timeout "${TEST_CONNECT_TIMEOUT_SECONDS:-5}" \
+        --max-time "${TEST_REQUEST_TIMEOUT_SECONDS:-600}" "$@"
+}
+
 # A script to test the uade-web API endpoints.
 # This script is intended to be run from a Docker container that has curl and jq installed.
 
@@ -3018,9 +3026,12 @@ print_endpoint_coverage_summary() {
 
 # Wait for the service to be up
 echo "Waiting for uade-web-player to be available..."
-while ! curl -s "$BASE_URL/health" > /dev/null; do
-    sleep 1
-done
+timeout 60 curl --fail --silent --show-error \
+    --retry 30 --retry-delay 2 --retry-all-errors \
+    --connect-timeout 2 --max-time 5 "$BASE_URL/health" > /dev/null || {
+        echo "ERROR: Web Player did not become healthy within the readiness deadline."
+        exit 1
+    }
 echo "Service is up!"
 
 test_health_endpoint

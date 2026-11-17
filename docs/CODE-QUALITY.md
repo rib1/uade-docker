@@ -28,6 +28,24 @@ Use the local scripts when you want a local entrypoint for quick iteration or ta
 .\test\check-code-quality.ps1 -Help
 ```
 
+## CI Readiness and Test Network Limits
+
+The web build and deployment checks poll `/health` until it responds successfully,
+with a 60-second wall-clock deadline. Each attempt has a two-second connection
+timeout and a five-second request timeout, with two seconds between retries.
+An already healthy service proceeds immediately. The endpoint test runner uses
+the same bounded readiness check.
+
+Endpoint test HTTP calls default to a five-second connection timeout and a
+600-second request timeout, allowing headroom for the application's default
+300-second conversion limit. Override these test-client limits with
+`TEST_CONNECT_TIMEOUT_SECONDS` and `TEST_REQUEST_TIMEOUT_SECONDS` when needed.
+Failed application assertions are not retried. These settings do not change
+application timeouts or request handling.
+
+The web build, deployment, and endpoint integration jobs each have a 20-minute
+job limit. The separate `/examples` smoke request has a 15-second request limit.
+
 ## What Gets Checked
 
 The quality suite covers:

@@ -21,6 +21,7 @@ permissions:
 jobs:
   build-web:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     permissions:
       contents: read
       packages: write
@@ -61,22 +62,26 @@ jobs:
         cache-to: |
           type=gha,mode=max,scope=web
         build-args: |
-          BASE_IMAGE=ghcr.io/${{ github.repository_owner }}/uade-cli:latest
           GIT_COMMIT=${{ github.sha }}
           IMAGE_CREATED=${{ steps.image-metadata.outputs.created }}
 
     - name: Start Web Player container
       run: |
         docker run -d -p 5000:5000 --name uade-web-test ghcr.io/${{ github.repository_owner }}/uade-web-player:${{ github.sha }}
-        sleep 10
 
-    - name: Test health endpoint
+    - name: Wait for Web Player readiness
       run: |
-        curl -f http://localhost:5000/health || exit 1
+        echo "Waiting up to 60 seconds for the Web Player..."
+        timeout 60 curl --fail --silent --show-error \
+          --retry 30 --retry-delay 2 --retry-all-errors \
+          --connect-timeout 2 --max-time 5 http://localhost:5000/health || {
+            echo "::error::Web Player did not become healthy within the readiness deadline."
+            exit 1
+          }
 
     - name: Test examples endpoint
       run: |
-        curl -f http://localhost:5000/examples || exit 1
+        curl --fail --show-error --connect-timeout 5 --max-time 15 http://localhost:5000/examples
 
     - name: Test FLAC encoder availability
       run: |
@@ -96,6 +101,7 @@ jobs:
   deploy:
     needs: build-web
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     # Only run if the secret is available (i.e., not a fork/Dependabot PR)
     # The job will skip instead of failing if the secret is empty/suppressed.
     if: github.actor != 'dependabot[bot]' && github.repository == 'rib1/uade-docker' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
@@ -278,9 +284,16 @@ jobs:
         echo "Service deployed at: $URL"
 
     - name: Test deployment
+      env:
+        SERVICE_URL: ${{ steps.get-url.outputs.url }}
       run: |
-        sleep 10
-        curl -f ${{ steps.get-url.outputs.url }}/health || exit 1
+        echo "Waiting up to 60 seconds for the deployment..."
+        timeout 60 curl --fail --silent --show-error \
+          --retry 30 --retry-delay 2 --retry-all-errors \
+          --connect-timeout 2 --max-time 5 "${SERVICE_URL}/health" || {
+            echo "::error::Deployment did not become healthy within the readiness deadline."
+            exit 1
+          }
         echo "✅ Health check passed!"
 
     - name: Comment PR with deployment URL

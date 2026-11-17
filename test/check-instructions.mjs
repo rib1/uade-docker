@@ -697,6 +697,19 @@ function validateHadolintSingleVersionSource() {
   }
 }
 
+function validateWebBaseImageSource() {
+  const dockerfilePath = "Dockerfile.web";
+  const workflowPath = ".github/workflows/build-deploy-web-player.yml";
+  const baseImage = readFile(dockerfilePath).match(/^ARG BASE_IMAGE=(\S+)/m)?.[1];
+  if (!baseImage || !(/:\d+(?:\.\d+)+-base\.\d+$/.test(baseImage) ||
+      /@sha256:[a-f0-9]{64}$/.test(baseImage))) {
+    addFailure(dockerfilePath, "must pin the UADE base image to a versioned build or digest");
+  }
+  if (/^\s*BASE_IMAGE\s*[:=]/m.test(readFile(workflowPath))) {
+    addFailure(workflowPath, "must inherit the UADE base image pin from Dockerfile.web");
+  }
+}
+
 function validateK6ChecksumVersionAlignment() {
   const toolingComposePath = "test/docker-compose.tooling.yml";
   const benchmarkDockerfilePath = "test/Dockerfile.benchmark";
@@ -766,6 +779,7 @@ for (const relativePath of instructionFiles) {
 validatePlaywrightVersionAlignment();
 validateHadolintSingleVersionSource();
 validateK6ChecksumVersionAlignment();
+validateWebBaseImageSource();
 validateComposeCommandSourceOfTruth();
 validateBenchmarkGitCommitInjection();
 
