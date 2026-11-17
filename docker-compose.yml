@@ -40,6 +40,11 @@
 #    $env:GIT_COMMIT = (git rev-parse HEAD); docker compose -f docker-compose.yml -f test/docker-compose.benchmark.yml run --rm --build uade-benchmark-runner
 #    or in bash:
 #    GIT_COMMIT=$(git rev-parse HEAD) docker compose -f docker-compose.yml -f test/docker-compose.benchmark.yml run --rm --build uade-benchmark-runner
+# Before pentesting, manually refresh the published stable ZAP image and check its version:
+#    docker compose pull zap-scan
+#    docker compose run --rm --no-deps zap-scan zap.sh -version
+# Stable images refresh for ZAP releases and monthly base-image/add-on updates:
+#    https://www.zaproxy.org/docs/docker/about/
 # 9. To run a DAST scan (UADE_TEST_MODE is OFF by default):
 #    docker compose run --rm --build zap-scan
 #    To run a DAST scan with local-only ZAP seed requests (UADE_TEST_MODE is ON):
