@@ -177,16 +177,17 @@ services:
     # one-shot CLI scans that use an internal random port.
     healthcheck:
       disable: true
-    # Match ZAP's 20 MiB response limit so binary audio fits its history database.
+    # Sample media bodies while keeping their URLs and parameters in scan scope.
     command: >-
       zap-baseline.py -t http://uade-web:5000 -j -a -r report.html -w report.md
-      -z "-config database.response.bodysize=20971520"
+      -z "-configfile /zap/wrk/zap-config.properties"
     depends_on:
       uade-web:
         condition: service_healthy
     volumes:
       # ZAP reports will be saved in the 'reports' directory on the host
       - ./reports:/zap/wrk
+      - ./test/zap-config.properties:/zap/wrk/zap-config.properties:ro
     networks:
       - uade-net
 
@@ -195,7 +196,7 @@ services:
       service: zap-scan
     command: >-
       zap-full-scan.py -t http://uade-web:5000 -j -a -r report.html -w report.md
-      -z "-config database.response.bodysize=20971520"
+      -z "-configfile /zap/wrk/zap-config.properties"
 
   zap-scan-seeded:
     extends:
@@ -203,7 +204,7 @@ services:
     command: >-
       sh -lc "python /zap/wrk/zap_seed_targets.py &&
       python /zap/zap-baseline.py -t http://uade-web-player-seeded:5000 -j -a -r report.html -w report.md
-      -z '-config database.response.bodysize=20971520'"
+      -z '-configfile /zap/wrk/zap-config.properties'"
     depends_on:
       uade-web-seeded:
         condition: service_healthy
@@ -222,7 +223,7 @@ services:
     command: >-
       sh -lc "python /zap/wrk/zap_seed_targets.py &&
       python /zap/zap-full-scan.py -t http://uade-web-player-seeded:5000 -j -a -r report.html -w report.md
-      -z '-config database.response.bodysize=20971520'"
+      -z '-configfile /zap/wrk/zap-config.properties'"
 
   uade-test-race-condition-runner:
     image: ${ENDPOINT_TEST_IMAGE:-uade-endpoint-tests:local}

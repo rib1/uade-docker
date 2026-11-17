@@ -69,10 +69,13 @@ benchmark image after changing benchmark code. Dockerfile changes also require
 a rebuild; Docker reuses unaffected layers. ZAP uses its own scanner image and
 consumes the same prepared fixture volume.
 
-All four ZAP scan commands set `database.response.bodysize=20971520` (20 MiB),
-matching the scanner's response limit. Its default 16 MiB history limit cannot
-store some valid audio responses. The larger limit preserves playback/download
-route coverage and allows those responses to be recorded for analysis.
+All four ZAP scans load `test/zap-config.properties`, which sets media requests
+under `/play/` and `/download/` to `Range: bytes=0-65535`. This samples 64 KiB of
+audio while retaining those URLs and their parameters in scan scope. Other
+responses are unchanged. Full downloads and range-header variations are covered
+by the endpoint suite; ZAP replaces range headers during its own media requests.
+This avoids both per-response and total history-database limits from repeatedly
+storing large audio files.
 
 ## What Gets Checked
 
