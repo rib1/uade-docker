@@ -242,6 +242,26 @@ Behavior notes:
 - Reloading the page restores saved local queue tracks from serialized metadata only. They can retry `/convert-probed` via `moduleHash`, but they cannot re-upload the original local file after reload unless the browser has explicitly persisted the file bytes.
 - If durable local-file restore is needed later, browser storage such as IndexedDB is the realistic implementation path because it can persist the actual module bytes across reloads. That would be a deliberate feature with storage and cleanup tradeoffs, not something normal queue serialization provides automatically.
 
+### Browser and lock-screen controls
+
+Chrome's music controls and compatible lock-screen controls follow the listening
+order through subtunes (subsongs) and then through queued modules:
+`A1 → A2 → A3 → B1 → B2`.
+
+- **Next** advances to the next subtune. After a module's last subtune, it starts
+  the next queued module at its beginning. Next is disabled at the final subtune
+  when there is no next queued module.
+- **Previous** restarts the current subtune if more than three seconds have
+  elapsed within it. Within its first three seconds, Previous returns to the
+  preceding subtune. From a module's first subtune, it loads the previous queued
+  module at its last subtune. At the start of the queue, it restarts playback.
+- Without a queue, the same controls navigate the current module's subtunes.
+  When subtune timing is unavailable, navigation uses whole modules instead.
+- Track navigation is disabled while a queued module is being loaded or converted.
+
+The HTML queue's **Prev/Next** buttons continue to skip whole modules. The
+numbered subtune buttons continue to jump directly to the selected subtune.
+
 ## API Reference
 
 The web player provides a REST API for programmatic access:
