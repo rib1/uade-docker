@@ -141,6 +141,8 @@
                   id="playlist-launcher-hitbox"
                   class="playlist-launcher-hitbox"
                   aria-label="Open queue"
+                  aria-controls="playlist-panel"
+                  aria-expanded="false"
                 ></button>
                 <div class="playlist-launcher-info">
                   <span id="playlist-launcher-label"><strong>Queue</strong> (0)</span>
@@ -148,7 +150,7 @@
                   <span id="playlist-launcher-next" class="playlist-launcher-next"></span>
                 </div>
                 <div class="playlist-launcher-actions">
-                  <button type="button" id="playlist-toggle-btn" class="btn btn-secondary btn-small playlist-toggle-btn" aria-label="Open queue">
+                  <button type="button" id="playlist-toggle-btn" class="btn btn-secondary btn-small playlist-toggle-btn" aria-label="Open queue" aria-controls="playlist-panel" aria-expanded="false">
                     Open
                   </button>
                   <button type="button" id="playlist-prev-btn" class="btn btn-secondary btn-small playlist-prev-btn" aria-label="Play previous track in queue">
@@ -188,7 +190,7 @@
       </section>
 
       <!-- Status Messages -->
-      <div id="status-container"></div>
+      <div id="status-container" role="status" aria-live="polite" aria-atomic="false" aria-relevant="additions text"></div>
     </main>
 
     <!-- Info Footer -->

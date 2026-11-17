@@ -68,13 +68,18 @@ download_fixture() {
   rm -f "$tmp_path"
 
   echo "Downloading $(basename "$fixture_path")..."
-  curl -fsS --insecure -o "$tmp_path" "$fixture_url"
+  curl -fsS --insecure --retry 3 --retry-delay 2 --connect-timeout 15 --max-time 120 \
+    -o "$tmp_path" "$fixture_url"
   mv "$tmp_path" "$fixture_path"
 }
 
 download_fixture "${MODULES_DIR}/space_debris.mod" "https://modland.com/pub/modules/Protracker/Captain/space_debris.mod"
 download_fixture "${MODULES_DIR}/stormlord.ahx" "https://modland.com/pub/modules/AHX/Pink/stormlord.ahx"
-download_fixture "${MODULES_DIR}/gutenberg.txt" "https://www.gutenberg.org/files/1342/1342-0.txt"
+# Preserve the filename used by endpoint tests; unsupported text needs no remote source.
+if [ ! -s "${MODULES_DIR}/gutenberg.txt" ]; then
+  printf 'This is a plain-text test fixture, not an Amiga music module.\n' \
+    > "${MODULES_DIR}/gutenberg.txt"
+fi
 download_fixture "${MODULES_DIR}/mdat.turrican_2_level_0-intro" "https://modland.com/pub/modules/TFMX/Chris%20Huelsbeck/mdat.turrican%202%20level%200-intro"
 download_fixture "${MODULES_DIR}/smpl.turrican_2_level_0-intro" "https://modland.com/pub/modules/TFMX/Chris%20Huelsbeck/smpl.turrican%202%20level%200-intro"
 

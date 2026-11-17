@@ -55,6 +55,7 @@ RUN npm install -g \
     "stylelint@$(node -p 'require("/tmp/quality/package.json").devDependencies.stylelint')" \
     "htmlhint@$(node -p 'require("/tmp/quality/package.json").devDependencies.htmlhint')" \
     "knip@$(node -p 'require("/tmp/quality/package.json").devDependencies.knip')" \
+    "modern-web-guidance@$(node -p 'require("/tmp/quality/package.json").devDependencies["modern-web-guidance"]')" \
     "purgecss@$(node -p 'require("/tmp/quality/package.json").devDependencies.purgecss')"
 
 # Install Black, Ruff, mypy, and yamllint via pip
