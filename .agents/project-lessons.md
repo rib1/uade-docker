@@ -344,3 +344,12 @@ This document contains project-specific learnings and regression-avoidance notes
 - **Filename Flow Hardening:** Uploaded filenames should be normalized once into a stable safe subset and then reused for both path building and log output. Central helpers such as `safe_client_filename()`, `managed_modules_path()`, and `safe_log_name()` reduced both duplication and CodeQL noise.
 - **Log/Response Hygiene:** Shared preparation helpers can reintroduce `log-injection` and reflective-XSS findings if they log raw filenames or return unsanitized names. In this repo, sanitizing before logging and using the safe filename contract consistently cleared those findings.
 - **Real Findings vs Benchmark Noise:** A clean local CodeQL scan does not imply every benchmark race is fixed. During this refactor branch, the remaining real runtime issue was a cross-instance eviction/conversion race, not a static-analysis problem.
+
+
+### Endpoint Fixture Image Cache
+
+- Cache fixture preparation in Dockerfile.test before copying changing test scripts and web/server.py. Both the preparation script and test/fixtures directory must be copied before the preparation RUN so changes invalidate the layer.
+- GitHub Actions must load the Buildx-cached image and run Compose without --build for the runner; both runner and preparer select the same image. Build the web service separately.
+- Named volumes hide image contents at their mount point. Keep prepared inputs in fixture-seed and copy them into the working fixture volume each run, overwriting stale local inputs. Offline preparation verifies that cache hits need no external fixture downloads.
+
+- ZAP 2.17 has both per-response and total history-database limits. Raising the response limit from 16 to 20 MiB fixes individual inserts but repeated media responses can still fill the database cache. Use the shared zap-config.properties Replacer rule to request bytes 0-65535 for /play/ and /download/, retaining route/parameter coverage. Endpoint tests cover full downloads and range variations separately. The -configfile option requires Java properties, not XML; verify the loaded rule and actual 206/65536-byte responses.

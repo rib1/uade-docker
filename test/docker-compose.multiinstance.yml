@@ -68,6 +68,7 @@ services:
       - uade-net
 
   uade-test-multiinstance-runner:
+    image: ${ENDPOINT_TEST_IMAGE:-uade-endpoint-tests:local}
     build:
       context: .
       dockerfile: test/Dockerfile.test

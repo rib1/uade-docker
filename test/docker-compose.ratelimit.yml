@@ -5,6 +5,7 @@ services:
     environment:
       - RATE_LIMIT_DISABLED=0
   uade-test-ratelimit-runner:
+    image: ${ENDPOINT_TEST_IMAGE:-uade-endpoint-tests:local}
     build:
       context: .
       dockerfile: test/Dockerfile.test

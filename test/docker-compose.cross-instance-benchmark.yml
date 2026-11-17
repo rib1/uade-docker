@@ -67,6 +67,7 @@ services:
       - uade-net
 
   uade-cross-instance-benchmark-runner:
+    image: ${BENCHMARK_TEST_IMAGE:-uade-benchmarks:local}
     build:
       context: .
       dockerfile: test/Dockerfile.benchmark

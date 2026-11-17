@@ -40,6 +40,11 @@
 #    $env:GIT_COMMIT = (git rev-parse HEAD); docker compose -f docker-compose.yml -f test/docker-compose.benchmark.yml run --rm --build uade-benchmark-runner
 #    or in bash:
 #    GIT_COMMIT=$(git rev-parse HEAD) docker compose -f docker-compose.yml -f test/docker-compose.benchmark.yml run --rm --build uade-benchmark-runner
+# Before pentesting, manually refresh the published stable ZAP image and check its version:
+#    docker compose pull zap-scan
+#    docker compose run --rm --no-deps zap-scan zap.sh -version
+# Stable images refresh for ZAP releases and monthly base-image/add-on updates:
+#    https://www.zaproxy.org/docs/docker/about/
 # 9. To run a DAST scan (UADE_TEST_MODE is OFF by default):
 #    docker compose run --rm --build zap-scan
 #    To run a DAST scan with local-only ZAP seed requests (UADE_TEST_MODE is ON):
@@ -124,6 +129,7 @@ services:
       - uade-net
 
   uade-test-runner:
+    image: ${ENDPOINT_TEST_IMAGE:-uade-endpoint-tests:local}
     build:
       context: .
       dockerfile: test/Dockerfile.test
@@ -139,6 +145,7 @@ services:
       - uade-net
 
   test-fixture-preparer:
+    image: ${ENDPOINT_TEST_IMAGE:-uade-endpoint-tests:local}
     build:
       context: .
       dockerfile: test/Dockerfile.test
@@ -175,27 +182,34 @@ services:
     # one-shot CLI scans that use an internal random port.
     healthcheck:
       disable: true
-    command: zap-baseline.py -t http://uade-web:5000 -j -a -r report.html -w report.md
+    # Sample media bodies while keeping their URLs and parameters in scan scope.
+    command: >-
+      zap-baseline.py -t http://uade-web:5000 -j -a -r report.html -w report.md
+      -z "-configfile /zap/wrk/zap-config.properties"
     depends_on:
       uade-web:
         condition: service_healthy
     volumes:
       # ZAP reports will be saved in the 'reports' directory on the host
       - ./reports:/zap/wrk
+      - ./test/zap-config.properties:/zap/wrk/zap-config.properties:ro
     networks:
       - uade-net
 
   zap-full-scan:
     extends:
       service: zap-scan
-    command: zap-full-scan.py -t http://uade-web:5000 -j -a -r report.html -w report.md
+    command: >-
+      zap-full-scan.py -t http://uade-web:5000 -j -a -r report.html -w report.md
+      -z "-configfile /zap/wrk/zap-config.properties"
 
   zap-scan-seeded:
     extends:
       service: zap-scan
     command: >-
       sh -lc "python /zap/wrk/zap_seed_targets.py &&
-      python /zap/zap-baseline.py -t http://uade-web-player-seeded:5000 -j -a -r report.html -w report.md"
+      python /zap/zap-baseline.py -t http://uade-web-player-seeded:5000 -j -a -r report.html -w report.md
+      -z '-configfile /zap/wrk/zap-config.properties'"
     depends_on:
       uade-web-seeded:
         condition: service_healthy
@@ -213,9 +227,11 @@ services:
       service: zap-scan-seeded
     command: >-
       sh -lc "python /zap/wrk/zap_seed_targets.py &&
-      python /zap/zap-full-scan.py -t http://uade-web-player-seeded:5000 -j -a -r report.html -w report.md"
+      python /zap/zap-full-scan.py -t http://uade-web-player-seeded:5000 -j -a -r report.html -w report.md
+      -z '-configfile /zap/wrk/zap-config.properties'"
 
   uade-test-race-condition-runner:
+    image: ${ENDPOINT_TEST_IMAGE:-uade-endpoint-tests:local}
     build:
       context: .
       dockerfile: test/Dockerfile.test

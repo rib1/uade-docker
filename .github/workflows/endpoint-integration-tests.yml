@@ -55,7 +55,7 @@ jobs:
 
             git diff --name-only "${base_sha}" "${head_sha}" > changed-files.txt
 
-            if grep -Eq '^(web/|Dockerfile\.web$|docker-compose\.yml$|test/(Dockerfile\.test|docker-compose\.endpoints\.yml|test_endpoints\.sh|prepare-endpoint-fixtures\.sh|report_endpoint_coverage\.py)$|\.github/workflows/endpoint-integration-tests\.yml$)' changed-files.txt; then
+            if grep -Eq '^(web/|Dockerfile\.web$|docker-compose\.yml$|test/fixtures/|test/(Dockerfile\.test|docker-compose\.endpoints\.yml|test_endpoints\.sh|prepare-endpoint-fixtures\.sh|report_endpoint_coverage\.py)$|\.github/workflows/endpoint-integration-tests\.yml$)' changed-files.txt; then
               run_tests=true
             fi
           fi
@@ -83,9 +83,23 @@ jobs:
         run: |
           node test/check-alpine-apk-pins.mjs
 
+      - name: Build cached endpoint test image
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: test/Dockerfile.test
+          load: true
+          tags: uade-endpoint-tests:ci
+          cache-from: type=gha,scope=endpoint-test-fixtures
+          cache-to: type=gha,mode=max,scope=endpoint-test-fixtures
+
       - name: Run endpoint integration tests
+        env:
+          GIT_COMMIT: ${{ github.sha }}
+          ENDPOINT_TEST_IMAGE: uade-endpoint-tests:ci
         run: |
-          GIT_COMMIT="${GITHUB_SHA}" docker compose -f docker-compose.yml -f test/docker-compose.endpoints.yml run --rm --build uade-test-runner
+          docker compose -f docker-compose.yml -f test/docker-compose.endpoints.yml build uade-web
+          docker compose -f docker-compose.yml -f test/docker-compose.endpoints.yml run --rm uade-test-runner
 
       - name: Show endpoint test logs on failure
         if: failure()

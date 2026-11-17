@@ -46,6 +46,37 @@ application timeouts or request handling.
 The web build, deployment, and endpoint integration jobs each have a 20-minute
 job limit. The separate `/examples` smoke request has a 15-second request limit.
 
+## Endpoint Fixture Image Cache
+
+Endpoint CI caches the test image with Docker BuildKit's GitHub Actions cache.
+Fixtures are prepared in an image layer before application and test code is
+copied in, so ordinary code changes reuse the downloaded inputs. Changes to
+`test/fixtures/`, `test/prepare-endpoint-fixtures.sh`, or earlier Dockerfile
+instructions rebuild that layer. To refresh upstream content at an unchanged
+URL, update the preparation script.
+
+The fixture preparer copies the image's inputs into the working volume on each
+run, overwriting existing files so local volumes also receive updated inputs.
+Application conversion caches are separate. Tests that explicitly check live
+external URLs still contact those hosts.
+
+All shell test runners and the fixture preparer share `uade-endpoint-tests:local`
+(override with `ENDPOINT_TEST_IMAGE`). Both benchmark runners share
+`uade-benchmarks:local` (override with `BENCHMARK_TEST_IMAGE`). Build these images
+once, then omit `--build` while their inputs are unchanged. Rebuild the shared
+test/fixture image after changing shell tests or fixtures, and rebuild the
+benchmark image after changing benchmark code. Dockerfile changes also require
+a rebuild; Docker reuses unaffected layers. ZAP uses its own scanner image and
+consumes the same prepared fixture volume.
+
+All four ZAP scans load `test/zap-config.properties`, which sets media requests
+under `/play/` and `/download/` to `Range: bytes=0-65535`. This samples 64 KiB of
+audio while retaining those URLs and their parameters in scan scope. Other
+responses are unchanged. Full downloads and range-header variations are covered
+by the endpoint suite; ZAP replaces range headers during its own media requests.
+This avoids both per-response and total history-database limits from repeatedly
+storing large audio files.
+
 ## What Gets Checked
 
 The quality suite covers:

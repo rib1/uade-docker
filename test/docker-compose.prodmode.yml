@@ -6,6 +6,7 @@ services:
       - UADE_TEST_MODE=0
 
   uade-test-prod-mode-runner:
+    image: ${ENDPOINT_TEST_IMAGE:-uade-endpoint-tests:local}
     build:
       context: .
       dockerfile: test/Dockerfile.test

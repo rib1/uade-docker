@@ -1230,6 +1230,7 @@ def should_skip_request_cleanup(path):
         "/",
         "/client-config.js",
         "/examples",
+        "/favicon.ico",
         "/health",
         "/robots.txt",
         "/sitemap.xml",
@@ -3121,6 +3122,13 @@ def process_audio_conversion(
 def index():
     """Serve main page"""
     return send_from_directory("static", "index.html")
+
+
+@app.route("/favicon.ico")
+@limiter.exempt
+def favicon():
+    """Serve the site icon at the conventional browser URL."""
+    return send_from_directory(app.static_folder, "favicon.ico")
 
 
 @app.route("/robots.txt")

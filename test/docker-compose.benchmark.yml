@@ -11,6 +11,7 @@ services:
       - MAX_CONCURRENT_CONVERSIONS=${MAX_CONCURRENT_CONVERSIONS:-2}
 
   uade-benchmark-runner:
+    image: ${BENCHMARK_TEST_IMAGE:-uade-benchmarks:local}
     build:
       context: .
       dockerfile: test/Dockerfile.benchmark

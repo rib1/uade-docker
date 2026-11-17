@@ -9,6 +9,12 @@ TOO_LARGE_BYTES=11534336
 
 mkdir -p "$MODULES_DIR" "$INVALID_DIR"
 
+# Refresh mutable working copies from the image, including existing local volumes.
+# During the image build, this script prepares fixture-seed itself.
+if [ "$FIXTURES_DIR" != "fixture-seed" ] && [ -d fixture-seed/modules ]; then
+  cp -R fixture-seed/. "$FIXTURES_DIR/"
+fi
+
 : > "${INVALID_DIR}/empty.bin"
 
 if [ ! -f "${INVALID_DIR}/too-large.bin" ] || [ "$(wc -c < "${INVALID_DIR}/too-large.bin")" -ne "$TOO_LARGE_BYTES" ]; then
