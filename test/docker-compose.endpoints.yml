@@ -3,6 +3,12 @@
 # when running integration tests with uade-test-runner.
 
 services:
+  uade-test-runner:
+    image: ${ENDPOINT_TEST_IMAGE:-uade-endpoint-tests:local}
+
+  test-fixture-preparer:
+    image: ${ENDPOINT_TEST_IMAGE:-uade-endpoint-tests:local}
+
   uade-web:
     environment:
       - UADE_TEST_MODE=1

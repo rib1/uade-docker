@@ -46,6 +46,20 @@ application timeouts or request handling.
 The web build, deployment, and endpoint integration jobs each have a 20-minute
 job limit. The separate `/examples` smoke request has a 15-second request limit.
 
+## Endpoint Fixture Image Cache
+
+Endpoint CI caches the test image with Docker BuildKit's GitHub Actions cache.
+Fixtures are prepared in an image layer before application and test code is
+copied in, so ordinary code changes reuse the downloaded inputs. Changes to
+`test/fixtures/`, `test/prepare-endpoint-fixtures.sh`, or earlier Dockerfile
+instructions rebuild that layer. To refresh upstream content at an unchanged
+URL, update the preparation script.
+
+The fixture preparer copies the image's inputs into the working volume on each
+run, overwriting existing files so local volumes also receive updated inputs.
+Application conversion caches are separate. Tests that explicitly check live
+external URLs still contact those hosts.
+
 ## What Gets Checked
 
 The quality suite covers:

@@ -15,17 +15,20 @@ WORKDIR /home/tester/app
 # Create a directory for test fixtures and set ownership
 RUN mkdir -p /home/tester/app/fixtures/invalid && chown -R tester:tester /home/tester/app/fixtures
 
-# Copy the scripts and give ownership to the non-root user
-COPY --chown=tester:tester test/*.sh .
+# Cache prepared inputs separately from application and test code.
+COPY --chown=tester:tester test/prepare-endpoint-fixtures.sh .
 COPY --chown=tester:tester test/fixtures ./fixture-seed
-COPY --chown=tester:tester test/report_endpoint_coverage.py ./report_endpoint_coverage.py
-COPY --chown=tester:tester web/server.py ./web/server.py
-
-RUN chmod +x ./*.sh
 
 # Switch to the non-root user
 # The user is present in this image's /etc/passwd, so name resolution is deterministic.
 # hadolint ignore=DL3066
 USER tester
+
+RUN FIXTURES_DIR=fixture-seed sh ./prepare-endpoint-fixtures.sh
+
+COPY --chown=tester:tester test/*.sh .
+COPY --chown=tester:tester test/report_endpoint_coverage.py ./report_endpoint_coverage.py
+COPY --chown=tester:tester web/server.py ./web/server.py
+RUN chmod +x ./*.sh
 
 CMD ["/bin/bash", "./test_endpoints.sh"]
