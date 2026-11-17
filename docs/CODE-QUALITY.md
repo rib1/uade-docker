@@ -60,6 +60,12 @@ run, overwriting existing files so local volumes also receive updated inputs.
 Application conversion caches are separate. Tests that explicitly check live
 external URLs still contact those hosts.
 
+All shell test runners and the fixture preparer share `uade-endpoint-tests:local`
+(override with `ENDPOINT_TEST_IMAGE`). Both benchmark runners share
+`uade-benchmarks:local` (override with `BENCHMARK_TEST_IMAGE`). Build these images
+once, then omit `--build` on subsequent test runs to reuse them. ZAP uses its own
+scanner image and consumes the same prepared fixture volume.
+
 ## What Gets Checked
 
 The quality suite covers:

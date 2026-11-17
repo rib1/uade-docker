@@ -124,6 +124,7 @@ services:
       - uade-net
 
   uade-test-runner:
+    image: ${ENDPOINT_TEST_IMAGE:-uade-endpoint-tests:local}
     build:
       context: .
       dockerfile: test/Dockerfile.test
@@ -139,6 +140,7 @@ services:
       - uade-net
 
   test-fixture-preparer:
+    image: ${ENDPOINT_TEST_IMAGE:-uade-endpoint-tests:local}
     build:
       context: .
       dockerfile: test/Dockerfile.test
@@ -216,6 +218,7 @@ services:
       python /zap/zap-full-scan.py -t http://uade-web-player-seeded:5000 -j -a -r report.html -w report.md"
 
   uade-test-race-condition-runner:
+    image: ${ENDPOINT_TEST_IMAGE:-uade-endpoint-tests:local}
     build:
       context: .
       dockerfile: test/Dockerfile.test
