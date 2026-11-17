@@ -5,6 +5,7 @@ let currentDownloadUrl = null;
 let currentSubsongDurations = [];
 let currentSubsongs = 1;
 let currentSubsongIndex = 0;
+let playbackLoadId = 0;
 let currentShareableUrl = null; // For shareable URLs feature
 let currentShareableSampleUrl = null;
 let currentPlayableTrackName = null;
@@ -2156,6 +2157,7 @@ function playFile(
   subsongDurations = [],
   { preservePlaylistSelection = false } = {},
 ) {
+  playbackLoadId += 1;
   currentDownloadUrl = downloadUrl;
   currentPlayableTrackName = moduleName || "Module";
   currentPlayableTrackFormat = moduleFormat || playerFormat || "Module";
@@ -2308,10 +2310,11 @@ async function playPreviousMediaSessionTrack() {
     return;
   }
   const source = audioPlayer.src;
+  const loadId = playbackLoadId;
   const pendingSeek = new AbortController();
   const jumpToLastSubsong = () => {
     pendingSeek.abort();
-    if (currentPlaylistTrackId === previous.id && audioPlayer.src === source) {
+    if (playbackLoadId === loadId && currentPlaylistTrackId === previous.id && audioPlayer.src === source) {
       const start = currentSubsongDurations.slice(0, -1).reduce((sum, duration) => sum + duration, 0);
       jumpToSubsong(start);
     }

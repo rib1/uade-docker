@@ -38,9 +38,18 @@ module.exports = async function verifyMediaSessionNavigation(browser, url) {
     const page = await context.newPage();
     const audio = createAudioFixture();
     let failMiddleAudio = false;
-    await page.route("**/media-session-test.wav*", (route) => {
+    let delayedMiddleAudio = null;
+    await page.route("**/media-session-test.wav*", async (route) => {
       if (failMiddleAudio && route.request().url().includes("track=middle")) {
         return route.fulfill({ contentType: "audio/wav", body: "invalid audio" });
+      }
+      if (delayedMiddleAudio && route.request().url().includes("track=middle")) {
+        const metadataGate = delayedMiddleAudio;
+        delayedMiddleAudio = null;
+        await metadataGate;
+        if (route.request().failure()) {
+          return undefined;
+        }
       }
       const range = route.request().headers().range?.match(/^bytes=(\d+)-(\d*)$/);
       const start = range ? Number(range[1]) : 0;
@@ -50,7 +59,11 @@ module.exports = async function verifyMediaSessionNavigation(browser, url) {
         headers["Content-Range"] = `bytes ${start}-${end}/${audio.length}`;
       }
       return route.fulfill({ status: range ? 206 : 200, headers,
-        contentType: "audio/wav", body: audio.subarray(start, end + 1) });
+        contentType: "audio/wav", body: audio.subarray(start, end + 1) }).catch((error) => {
+        if (!route.request().failure()) {
+          throw error;
+        }
+      });
     });
     await page.route("**/convert-url", (route) => {
       const name = new URL(route.request().postDataJSON().url).pathname.slice(1);
@@ -148,6 +161,29 @@ module.exports = async function verifyMediaSessionNavigation(browser, url) {
     await page.click("#playlist-toggle-btn");
     await page.click(".playlist-item.active .playlist-play-btn");
     await expectTrack("Middle");
+    await page.click("#playlist-next-btn");
+    await expectTrack("Last");
+
+    console.log("Checking same-track HTML replay before delayed metadata arrives");
+    let releaseMetadata;
+    delayedMiddleAudio = new Promise((resolve) => { releaseMetadata = resolve; });
+    try {
+      await media("previoustrack");
+      await page.waitForFunction(() =>
+        window.document.getElementById("current-track").textContent.startsWith("Middle") &&
+        window.document.getElementById("audio-player").readyState === 0 &&
+        !window.document.getElementById("url-submit").disabled,
+      null, { timeout: 5000 });
+      await page.click(".playlist-item.active .playlist-play-btn");
+      await page.waitForFunction(() =>
+        window.document.querySelector(".playlist-item.active .playlist-play-btn")
+          .textContent.includes("Playing"),
+      null, { timeout: 5000 });
+      releaseMetadata();
+      await expectTrack("Middle");
+    } finally {
+      releaseMetadata();
+    }
     await page.click("#playlist-next-btn");
     await expectTrack("Last");
 
