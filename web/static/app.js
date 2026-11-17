@@ -5,6 +5,7 @@ let currentDownloadUrl = null;
 let currentSubsongDurations = [];
 let currentSubsongs = 1;
 let currentSubsongIndex = 0;
+let playbackLoadId = 0;
 let currentShareableUrl = null; // For shareable URLs feature
 let currentShareableSampleUrl = null;
 let currentPlayableTrackName = null;
@@ -174,6 +175,17 @@ document.addEventListener("DOMContentLoaded", () => {
       autoplayOverlay.style.display = "none";
       autoplayOverlay.style.pointerEvents = "none"; // Disable interaction
     }
+    if ("mediaSession" in navigator) {
+      navigator.mediaSession.playbackState = "playing";
+      updateMediaSessionNavigationHandlers();
+    }
+  });
+
+  audioPlayer.addEventListener("pause", () => {
+    if ("mediaSession" in navigator) {
+      navigator.mediaSession.playbackState = "paused";
+      updateMediaSessionNavigationHandlers();
+    }
   });
 
   audioPlayer.addEventListener("ended", handlePlaylistEnded);
@@ -325,6 +337,7 @@ function syncUiLockState(uiLocked) {
     queueBrowseBtn.tabIndex = uiLocked ? -1 : 0;
   }
   updatePlayerSectionVisibility();
+  updateMediaSessionNavigationHandlers();
 }
 
 function initializeFileInputAccept() {
@@ -1808,7 +1821,7 @@ function getPlaylistNextLabel() {
 }
 
 function getLivePlaylistPlayButton(trackId, fallbackButton) {
-  if (!trackId) {
+  if (!trackId || !fallbackButton?.classList.contains("playlist-play-btn")) {
     return fallbackButton;
   }
 
@@ -2144,6 +2157,7 @@ function playFile(
   subsongDurations = [],
   { preservePlaylistSelection = false } = {},
 ) {
+  playbackLoadId += 1;
   currentDownloadUrl = downloadUrl;
   currentPlayableTrackName = moduleName || "Module";
   currentPlayableTrackFormat = moduleFormat || playerFormat || "Module";
@@ -2243,10 +2257,6 @@ function playFile(
 }
 
 // Update Media Session
-// NOTE: As of iOS Safari 18, the Media Session API (for lock screen and media widget metadata)
-// appears to be buggy or inconsistent, and may not display song information or artwork
-// even when correctly implemented. This is believed to be a browser-specific issue and
-// is out of the control of this application's developers.
 function updateMediaSession(title, artist, album) {
   if ("mediaSession" in navigator) {
     navigator.mediaSession.metadata = new MediaMetadata({
@@ -2282,11 +2292,41 @@ function canPlayPreviousPlaylistTrack() {
 }
 
 function canPlayNextPlaylistTrack() {
-  if (!hasActivePlaylistTrack()) {
+  if (playlistTracks.length === 0) {
     return false;
   }
   const currentIndex = playlistTracks.findIndex((track) => track.id === currentPlaylistTrackId);
-  return currentIndex >= 0 && currentIndex < playlistTracks.length - 1;
+  return currentIndex < playlistTracks.length - 1;
+}
+
+async function playPreviousMediaSessionTrack() {
+  const index = playlistTracks.findIndex((track) => track.id === currentPlaylistTrackId);
+  const previous = playlistTracks[index - 1];
+  if (!previous) {
+    return;
+  }
+  await playPlaylistTrack(previous.id);
+  if (currentPlaylistTrackId !== previous.id) {
+    return;
+  }
+  const source = audioPlayer.src;
+  const loadId = playbackLoadId;
+  const pendingSeek = new AbortController();
+  const jumpToLastSubsong = () => {
+    pendingSeek.abort();
+    if (playbackLoadId === loadId && currentPlaylistTrackId === previous.id && audioPlayer.src === source) {
+      const start = currentSubsongDurations.slice(0, -1).reduce((sum, duration) => sum + duration, 0);
+      jumpToSubsong(start);
+    }
+  };
+  if (audioPlayer.readyState >= 1) {
+    jumpToLastSubsong();
+  } else {
+    audioPlayer.addEventListener("loadedmetadata", jumpToLastSubsong,
+      { once: true, signal: pendingSeek.signal });
+    audioPlayer.addEventListener("error", () => pendingSeek.abort(),
+      { once: true, signal: pendingSeek.signal });
+  }
 }
 
 function updateMediaSessionNavigationHandlers() {
@@ -2294,25 +2334,43 @@ function updateMediaSessionNavigationHandlers() {
     return;
   }
 
-  navigator.mediaSession.setActionHandler("previoustrack", () => {
-    if (canPlayPreviousPlaylistTrack()) {
-      playPreviousPlaylistTrack();
-      return;
-    }
-    if (!hasActivePlaylistTrack() && currentSubsongs > 1 && currentSubsongDurations.length > 0) {
-      navigateToPreviousSubsong();
-    }
-  });
+  const hasSubtunes = currentSubsongs > 1 && currentSubsongDurations.length > 1;
+  const canPrevious = !isUiLocked && Boolean(audioPlayer.getAttribute("src"));
+  const canNext = !isUiLocked && (canPlayNextPlaylistTrack() ||
+    (hasSubtunes && currentSubsongIndex < currentSubsongDurations.length - 1));
 
-  navigator.mediaSession.setActionHandler("nexttrack", () => {
-    if (canPlayNextPlaylistTrack()) {
-      playNextPlaylistTrack();
+  navigator.mediaSession.setActionHandler("play", () => {
+    audioPlayer.play().catch(err => console.error("Playback error:", err));
+  });
+  navigator.mediaSession.setActionHandler("pause", () => audioPlayer.pause());
+  navigator.mediaSession.setActionHandler("previoustrack", canPrevious ? () => {
+    if (isUiLocked) {
       return;
     }
-    if (!hasActivePlaylistTrack() && currentSubsongs > 1 && currentSubsongDurations.length > 0) {
-      navigateToNextSubsong();
+    updateCurrentSubsongIndex();
+    const start = currentSubsongDurations.slice(0, currentSubsongIndex)
+      .reduce((sum, duration) => sum + duration, 0);
+    if (audioPlayer.currentTime - start > 3 ||
+        (currentSubsongIndex === 0 && !canPlayPreviousPlaylistTrack())) {
+      jumpToSubsong(start);
+    } else if (currentSubsongIndex > 0) {
+      navigateToPreviousSubsong();
+    } else {
+      playPreviousMediaSessionTrack().catch(err => console.error("Playback error:", err));
     }
-  });
+  } : null);
+
+  navigator.mediaSession.setActionHandler("nexttrack", canNext ? () => {
+    if (isUiLocked) {
+      return;
+    }
+    updateCurrentSubsongIndex();
+    if (hasSubtunes && currentSubsongIndex < currentSubsongDurations.length - 1) {
+      navigateToNextSubsong();
+    } else {
+      playNextPlaylistTrack();
+    }
+  } : null);
 }
 
 // Subsong Navigation
@@ -2375,6 +2433,7 @@ function updateSubsongNavigation() {
 function jumpToSubsong(startTime) {
   if (audioPlayer) {
     audioPlayer.currentTime = startTime;
+    updateCurrentSubsongIndex();
     if (audioPlayer.paused) {
       audioPlayer.play().catch(err => {
         console.error("Playback error:", err);
@@ -2399,19 +2458,23 @@ function updateCurrentSubsongIndex() {
 
   const currentTime = audioPlayer.currentTime;
   let cumulativeTime = 0;
+  let subsongIndex = currentSubsongDurations.length - 1;
 
   for (let i = 0; i < currentSubsongDurations.length; i++) {
     cumulativeTime += currentSubsongDurations[i];
     if (currentTime < cumulativeTime) {
-      currentSubsongIndex = i;
-      return;
+      subsongIndex = i;
+      break;
     }
   }
-  // If we're past all subsongs, we're on the last one
-  currentSubsongIndex = currentSubsongDurations.length - 1;
+  if (currentSubsongIndex !== subsongIndex) {
+    currentSubsongIndex = subsongIndex;
+    updateMediaSessionNavigationHandlers();
+  }
 }
 
 function navigateToPreviousSubsong() {
+  updateCurrentSubsongIndex();
   if (currentSubsongIndex > 0) {
     // Calculate start time of previous subsong
     let startTime = 0;
@@ -2426,6 +2489,7 @@ function navigateToPreviousSubsong() {
 }
 
 function navigateToNextSubsong() {
+  updateCurrentSubsongIndex();
   if (currentSubsongIndex < currentSubsongDurations.length - 1) {
     // Calculate start time of next subsong
     let startTime = 0;
