@@ -66,7 +66,7 @@ module.exports = async function verifyMediaSessionNavigation(browser, url) {
       });
     });
     await page.route("**/convert-url", (route) => {
-      const name = new URL(route.request().postDataJSON().url).pathname.slice(1);
+      const name = new URL(route.request().postDataJSON().url).pathname.split("/").pop();
       return route.fulfill({ json: {
         success: true, file_id: name, module_name: name, subsongs: 3,
         subsong_durations: [10, 20, 30], audio_format: "wav", module_format: "Test",
@@ -74,6 +74,37 @@ module.exports = async function verifyMediaSessionNavigation(browser, url) {
       } });
     });
     await page.goto(url, { waitUntil: "networkidle" });
+
+    // Autoplay from an Add To Queue button must reset that originating button.
+    await page.route("**/probe-url", (route) => route.fulfill({ json: {
+      ok: true, playable: true, module_name: "URL track", module_format: "Test",
+    } }));
+    for (const source of ["example", "url"]) {
+      console.log(`Checking autoplay button cleanup from ${source} queue add`);
+      const addButton = source === "example"
+        ? page.locator(".example-card").filter({ hasText: "Lizardking - Doskpop" })
+          .locator(".add-playlist-btn")
+        : page.locator("#playlist-add-url-btn");
+      const originalText = await addButton.textContent();
+      if (source === "url") {
+        await page.fill("#url-input", "https://example.com/url-track");
+      }
+      await addButton.click();
+      await page.waitForFunction((expected) =>
+        window.document.getElementById("current-track").textContent.startsWith(expected) &&
+        !window.document.getElementById("audio-player").paused &&
+        !window.document.getElementById("url-submit").disabled,
+      source === "example" ? "Lizardking - Doskpop" : "URL track", { timeout: 5000 });
+      if (await addButton.locator(".loading").count() !== 0 ||
+          await addButton.textContent() !== originalText || !await addButton.isEnabled()) {
+        throw new Error(`The ${source} Add To Queue button must stop spinning and restore its label after autoplay.`);
+      }
+      if (await page.locator(".playlist-play-btn").textContent() !== "Play") {
+        throw new Error("The queue Play button must not inherit the Add To Queue label.");
+      }
+      await page.reload({ waitUntil: "networkidle" });
+    }
+
     await page.click("h1");
     await page.evaluate(() => {
       window.loadPlaylistFromPayload({ v: 1, t: [

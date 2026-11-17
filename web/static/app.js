@@ -1821,7 +1821,7 @@ function getPlaylistNextLabel() {
 }
 
 function getLivePlaylistPlayButton(trackId, fallbackButton) {
-  if (!trackId) {
+  if (!trackId || !fallbackButton?.classList.contains("playlist-play-btn")) {
     return fallbackButton;
   }
 
