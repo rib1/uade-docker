@@ -90,8 +90,10 @@ _MD5_HEX_RE = re.compile(r"^[a-f0-9]{32}$")
 # Get git commit hash for version tracking
 def get_git_commit():
     """Get current git commit hash"""
+    if commit := os.getenv("GIT_COMMIT"):
+        return commit
     try:
-        # Trusted fixed binary path and static args; falls back to env var if git is unavailable.
+        # Local development fallback when no build commit was supplied.
         result = subprocess.run(  # ruff:ignore[subprocess-without-shell-equals-true]
             [GIT_BIN, "rev-parse", "--short", "HEAD"],
             capture_output=True,
@@ -102,11 +104,8 @@ def get_git_commit():
         if result.returncode == 0:
             return result.stdout.strip()
     except OSError, subprocess.SubprocessError:
-        # Ignore errors (e.g., not a git repo, git not installed); fallback to env var
-        logger.info(
-            "Could not get git commit via command line, using environment variable fallback"
-        )
-    return os.getenv("GIT_COMMIT", "unknown")
+        logger.info("Could not get git commit from a local checkout")
+    return "unknown"
 
 
 def get_uade_version():
@@ -1608,14 +1607,6 @@ def summarize_cache_debug_times():
     }
 
 
-def supports_flac(user_agent):
-    """Check if browser supports FLAC playback"""
-    # Modern browsers that support FLAC natively
-    ua = user_agent.lower()
-    flac_browsers = ["chrome", "chromium", "edge", "firefox", "safari"]
-    return any(browser in ua for browser in flac_browsers)
-
-
 def compress_to_flac(wav_path, flac_path):
     """Compress WAV to FLAC format"""
     # Use a temporary file for UADE output to ensure atomic write
@@ -1647,10 +1638,11 @@ def compress_to_flac(wav_path, flac_path):
                 f"Compressed to FLAC: {wav_path} -> {flac_path} "
                 f"({flac_path.stat().st_size / wav_path.stat().st_size:.1%} of original)"
             )
-            with FLAC_COMPRESSION_COUNTS_LOCK:
-                FLAC_COMPRESSION_COUNTS[flac_path.stem] = (
-                    FLAC_COMPRESSION_COUNTS.get(flac_path.stem, 0) + 1
-                )
+            if is_test_features_enabled():
+                with FLAC_COMPRESSION_COUNTS_LOCK:
+                    FLAC_COMPRESSION_COUNTS[flac_path.stem] = (
+                        FLAC_COMPRESSION_COUNTS.get(flac_path.stem, 0) + 1
+                    )
             _log_duration("FLAC compression", flac_started_at, output=flac_path.name)
             return True
         logger.error(f"FLAC compression failed: {result.stderr}")
@@ -2013,7 +2005,7 @@ def save_to_cache(cache_hash, file, ext):
     update_cache_access_record(cache_hash, force=True)
 
 
-def fetch_cached_file(cache_hash, *, prefer_flac=False, allow_wav_fallback=True):
+def fetch_cached_file(cache_hash, *, prefer_flac=False):
     """
     Check if a converted file exists in remote cache (WAV or FLAC).
     If found, copy to local and return local path with metadata.
@@ -2022,10 +2014,8 @@ def fetch_cached_file(cache_hash, *, prefer_flac=False, allow_wav_fallback=True)
         tuple: (cache_file_path, metadata) where metadata contains subsongs and
                subsong_durations, or (None, None) if not found
     """
-    # Try FLAC first if preferred
-    extensions = [".flac"] if prefer_flac else []
-    if not prefer_flac and allow_wav_fallback:
-        extensions.append(".wav")
+    # Fetch one format; playback handles FLAC/WAV fallback.
+    extensions = [".flac"] if prefer_flac else [".wav"]
 
     for ext in extensions:
         cache_file_remote = f"{root_cache}/{cache_hash}{ext}"
@@ -2567,18 +2557,13 @@ def _metadata_success(*, module_name, module_format, player_format, subsongs):
 def _cached_conversion_result(
     cache_hash,
     *,
-    prefer_flac,
     player_format,
     module_name,
     module_format,
     subsongs,
 ):
     """Return a cached conversion result when the remote/local cache already has the artifact."""
-    cached_file, metadata = fetch_cached_file(
-        cache_hash,
-        prefer_flac=prefer_flac,
-        allow_wav_fallback=not prefer_flac,
-    )
+    cached_file, metadata = fetch_cached_file(cache_hash, prefer_flac=True)
     if not (cached_file and cached_file.exists()):
         return None
 
@@ -2652,7 +2637,6 @@ def _clear_stale_conversion_lock(lock_path):
 def wait_for_conversion(
     cache_hash,
     lock_path,
-    prefer_flac,
     player_format,
     module_name,
     module_format,
@@ -2667,7 +2651,6 @@ def wait_for_conversion(
         if not _lock_exists(lock_path):
             result = _cached_conversion_result(
                 cache_hash,
-                prefer_flac=prefer_flac,
                 player_format=player_format,
                 module_name=module_name,
                 module_format=module_format,
@@ -2706,7 +2689,6 @@ def _resolve_inflight_conversion(
     cache_hash,
     lock_path,
     *,
-    prefer_flac,
     player_format,
     module_name,
     module_format,
@@ -2723,7 +2705,6 @@ def _resolve_inflight_conversion(
     result = wait_for_conversion(
         cache_hash,
         lock_path,
-        prefer_flac,
         player_format,
         module_name,
         module_format,
@@ -2764,12 +2745,11 @@ def _acquire_conversion_semaphore(cache_hash, *, timeout_seconds):
 def process_audio_conversion(
     input_path,
     *,
-    compress_flac=False,
     sample_file_and_alias=None,
     _retried_missing_input=False,
 ):
     """
-    Convert module to WAV using UADE with optional caching and FLAC compression.
+    Convert a module to canonical FLAC, retaining WAV if compression fails.
 
     This function participates in both a global conversion semaphore and a
     per-hash file lock. The semaphore caps heavy UADE/FLAC work at
@@ -2778,7 +2758,6 @@ def process_audio_conversion(
 
     Args:
         input_path (Path): Path to the module file to convert.
-        compress_flac (bool): Whether to compress output to FLAC format.
         sample_file_and_alias (SampleFileAndAlias | None): Optional sample file
                              and alias paths to clean up if metadata detection fails.
 
@@ -2898,7 +2877,6 @@ def process_audio_conversion(
         # Check remote cache first (before acquiring lock)
         cached_result = _cached_conversion_result(
             cache_hash,
-            prefer_flac=compress_flac,
             player_format=metadata.player_format,
             module_name=metadata.module_name,
             module_format=metadata.module_format,
@@ -2910,7 +2888,6 @@ def process_audio_conversion(
         inflight_result = _resolve_inflight_conversion(
             cache_hash,
             lock_path,
-            prefer_flac=compress_flac,
             player_format=metadata.player_format,
             module_name=metadata.module_name,
             module_format=metadata.module_format,
@@ -2927,7 +2904,6 @@ def process_audio_conversion(
 
             cached_result = _cached_conversion_result(
                 cache_hash,
-                prefer_flac=compress_flac,
                 player_format=metadata.player_format,
                 module_name=metadata.module_name,
                 module_format=metadata.module_format,
@@ -3007,13 +2983,11 @@ def process_audio_conversion(
             final_output = output_path
             flac_success = False
 
-            # Compress to FLAC if requested
-            if compress_flac:
-                flac_output = output_path.with_suffix(".flac")
-                if compress_to_flac(output_path, flac_output):
-                    final_output = flac_output
-                    flac_success = True
-                    output_path.unlink(missing_ok=True)
+            flac_output = output_path.with_suffix(".flac")
+            if compress_to_flac(output_path, flac_output):
+                final_output = flac_output
+                flac_success = True
+                output_path.unlink(missing_ok=True)
 
             # Save metadata to local disk first (includes detected metadata and subsong durations)
             metadata_payload = {
@@ -3042,7 +3016,7 @@ def process_audio_conversion(
                 "Full audio conversion pipeline",
                 overall_started_at,
                 cache_hash=cache_hash,
-                flac=compress_flac,
+                flac=True,
             )
             logger.info(f"Successfully converted: {input_path} -> {final_output}")
             return _conversion_success(
@@ -3060,7 +3034,6 @@ def process_audio_conversion(
             result = _resolve_inflight_conversion(
                 cache_hash,
                 lock_path,
-                prefer_flac=compress_flac,
                 player_format=metadata.player_format,
                 module_name=metadata.module_name,
                 module_format=metadata.module_format,
@@ -3081,7 +3054,6 @@ def process_audio_conversion(
             logger.info(f"Retrying conversion after transient missing input: {input_path}")
             return process_audio_conversion(
                 input_path,
-                compress_flac=compress_flac,
                 sample_file_and_alias=sample_file_and_alias,
                 _retried_missing_input=True,
             )
@@ -3568,7 +3540,6 @@ def convert_probed():
 def process_module_and_respond(
     module_path,
     filename,
-    use_flac,
     *,
     url_cached=False,
     sample_file_and_alias=None,
@@ -3590,10 +3561,9 @@ def process_module_and_respond(
         module_path = prepared_source.module_path
         filename = prepared_source.filename
 
-        # Convert to WAV (and optionally FLAC)
+        # Render WAV, then produce the canonical FLAC artifact.
         conversion_result = process_audio_conversion(
             module_path,
-            compress_flac=use_flac,
             sample_file_and_alias=sample_file_and_alias,
         )
 
@@ -3918,7 +3888,6 @@ def convert_resolved_module_source(
     return process_module_and_respond(
         source.module_path,
         source.filename,
-        use_flac=True,
         url_cached=source.url_cached,
         sample_file_and_alias=source.sample_file_and_alias,
         unsupported_content_policy=unsupported_content_policy,
