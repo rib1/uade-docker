@@ -113,6 +113,81 @@ else
   fail "setpriv and module fixtures are required for non-SUID conversion checks"
 fi
 
+# Exercise the retired-feature contracts against real conversion tools.
+if python3 - <<'PY'
+import os
+import shutil
+import subprocess
+import tempfile
+import wave
+from pathlib import Path
+from unittest.mock import patch
+
+with tempfile.TemporaryDirectory(prefix="conversion-contracts-", dir="/tmp") as temporary:
+    root = Path(temporary)
+    with (
+        patch.dict(os.environ, {"TMPDIR": temporary, "CACHE_URI": f"file://{root}/cache"}),
+        patch.object(tempfile, "tempdir", None),
+    ):
+        import server
+
+        with (
+            patch.dict(os.environ, {"GIT_COMMIT": "supplied-build-commit"}),
+            patch.object(server.subprocess, "run", side_effect=AssertionError("Git invoked")),
+        ):
+            assert server.get_git_commit() == "supplied-build-commit"
+        with patch.dict(os.environ, {}, clear=True):
+            with patch.object(
+                server.subprocess, "run",
+                return_value=subprocess.CompletedProcess([], 0, stdout="local-commit\n"),
+            ):
+                assert server.get_git_commit() == "local-commit"
+            with patch.object(server.subprocess, "run", side_effect=FileNotFoundError):
+                assert server.get_git_commit() == "unknown"
+
+        wav = root / "counter.wav"
+        with wave.open(str(wav), "wb") as audio:
+            audio.setnchannels(1)
+            audio.setsampwidth(2)
+            audio.setframerate(16000)
+            audio.writeframes(b"\0\0" * 16000)
+        with patch.dict(os.environ, {"UADE_TEST_MODE": "0"}):
+            assert server.compress_to_flac(wav, root / "production.flac")
+            assert not server.FLAC_COMPRESSION_COUNTS
+        with patch.dict(os.environ, {"UADE_TEST_MODE": "1"}):
+            assert server.compress_to_flac(wav, root / "test.flac")
+            assert server.FLAC_COMPRESSION_COUNTS == {"test": 1}
+
+        module = server.MODULES_DIR / "fallback.mod"
+        shutil.copyfile("/fixtures/modules/space_debris.mod", module)
+        with (
+            patch.dict(os.environ, {"UADE_TEST_MODE": "0"}),
+            patch.object(server, "compress_to_flac", return_value=False),
+        ):
+            result = server.process_audio_conversion(module)
+        assert result.success, result.error
+        assert result.final_file is not None and result.final_file.suffix == ".wav"
+        assert result.final_file.is_file()
+        response = server.app.test_client().get(
+            f"/play/{result.cache_hash}", headers={"Range": "bytes=0-63"}
+        )
+        assert response.status_code == 206
+        assert response.mimetype == "audio/wav"
+        assert len(response.data) == 64
+        result.final_file.unlink()
+        response = server.app.test_client().get(
+            f"/play/{result.cache_hash}", headers={"Range": "bytes=0-63"}
+        )
+        assert response.status_code == 206 and response.mimetype == "audio/wav"
+        assert len(response.data) == 64
+        assert server.FLAC_COMPRESSION_COUNTS == {"test": 1}
+PY
+then
+  pass "build commit precedence, local Git fallback, test-only counters, and WAV fallback"
+else
+  fail "conversion cleanup contracts"
+fi
+
 if [ "$failures" -ne 0 ]; then
   echo "Runtime hardening checks failed: $failures" >&2
   exit 1

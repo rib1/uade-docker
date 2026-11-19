@@ -54,7 +54,7 @@ The Flask app is a **single 2200+ line file** with clear functional sections:
 - All file operations use `Path` objects from `pathlib`
 - Subprocess calls to `uade123` binary with `capture_output=True, text=True, timeout=300`
 - Cache keys are MD5 hashes: `hashlib.md5(file_content).hexdigest()` or URL-based
-- FLAC compression conditional on User-Agent: `supports_flac(request.headers.get("User-Agent"))`
+- Conversion endpoints produce canonical FLAC for all User-Agents; retain WAV fallback when compression fails.
 
 Cache operations use small inline adapters in `web/server.py`: GCS uses the synchronous Google Cloud Storage SDK and local storage uses the Python standard library. Keep storage imports limited to the selected backend. Optional S3 support requires a custom image and remains a packaging/testing TODO.
 

@@ -697,6 +697,15 @@ function validateHadolintSingleVersionSource() {
   }
 }
 
+function validateBackendFunctionGuidance() {
+  const guidancePath = ".agents/AGENTS.md";
+  const backend = readFile("web/server.py");
+  if (readFile(guidancePath).includes("supports_flac(") &&
+      !backend.includes("def supports_flac(")) {
+    addFailure(guidancePath, "must not describe browser FLAC detection after its removal");
+  }
+}
+
 function validateWebBaseImageSource() {
   const dockerfilePath = "Dockerfile.web";
   const workflowPath = ".github/workflows/build-deploy-web-player.yml";
@@ -780,6 +789,7 @@ validatePlaywrightVersionAlignment();
 validateHadolintSingleVersionSource();
 validateK6ChecksumVersionAlignment();
 validateWebBaseImageSource();
+validateBackendFunctionGuidance();
 validateComposeCommandSourceOfTruth();
 validateBenchmarkGitCommitInjection();
 
