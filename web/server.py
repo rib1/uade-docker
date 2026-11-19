@@ -82,7 +82,6 @@ GIT_BIN: Final = "/usr/bin/git"
 UADE123_BIN: Final = "/usr/local/bin/uade123"
 FLAC_BIN: Final = "/usr/bin/flac"
 LHA_BIN: Final = "/usr/bin/lha"
-SH_BIN: Final = "/bin/sh"
 
 # ---------- Regex for validating MD5 hex hashes ----------
 _MD5_HEX_RE = re.compile(r"^[a-f0-9]{32}$")
@@ -2958,16 +2957,10 @@ def process_audio_conversion(
                     str(input_path),
                 ]  # Headless mode
 
-                # Modern way to set umask for a child process without using the
-                # deprecated preexec_fn.
-                # We wrap the command in a shell that sets the umask and then execs the binary.
-                # This is thread-safe and avoids Python's deprecated preexec_fn.
-                full_cmd = [SH_BIN, "-c", 'umask 0002; exec "$@"', "--", *cmd]
-
                 uade_started_at = time.perf_counter()
                 with Path(stderr_log_path).open("wb") as stderr_log:
                     result = subprocess.run(  # ruff:ignore[subprocess-without-shell-equals-true]
-                        full_cmd,
+                        cmd,
                         stdout=subprocess.DEVNULL,
                         stderr=stderr_log,
                         check=False,
