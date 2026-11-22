@@ -3034,6 +3034,59 @@ timeout 60 curl --fail --silent --show-error \
     }
 echo "Service is up!"
 
+test_gunicorn_http_framing_and_keepalive() {
+    echo "--- Testing Gunicorn HTTP framing and pipelined keep-alive ---"
+    python3 - "$BASE_URL" <<'PY'
+import socket
+import sys
+from urllib.parse import urlsplit
+
+target = urlsplit(sys.argv[1])
+if target.scheme != "http":
+    print("SKIPPED: direct Gunicorn wire checks require an HTTP target")
+    sys.exit(0)
+
+host = target.hostname
+port = target.port or 80
+headers = f"Host: {target.netloc}\r\n".encode()
+
+def exchange(request, *, half_close=True):
+    with socket.create_connection((host, port), timeout=5) as connection:
+        connection.settimeout(10)
+        connection.sendall(request)
+        if half_close:
+            connection.shutdown(socket.SHUT_WR)
+        chunks = []
+        while chunk := connection.recv(65536):
+            chunks.append(chunk)
+        return b"".join(chunks)
+
+invalid_headers = (
+    b"Transfer-Encoding: identity\r\n",
+    b"X-Test : invalid\r\n",
+    b"Content-Length: +0\r\n",
+)
+for invalid in invalid_headers:
+    response = exchange(
+        b"GET /health HTTP/1.1\r\n" + headers + invalid + b"Connection: close\r\n\r\n"
+    )
+    status = response.split(b"\r\n", 1)[0]
+    assert status.split()[1:2] == [b"400"], (invalid, status)
+
+# The first handler ignores its body; the second request is already buffered
+# when gthread drains that body. Both must receive responses on this connection.
+response = exchange(
+    b"GET /health HTTP/1.1\r\n" + headers + b"Content-Length: 2\r\n\r\n{}"
+    + b"GET /health HTTP/1.1\r\n" + headers + b"Connection: close\r\n\r\n",
+    half_close=False,
+)
+assert response.count(b"HTTP/1.1 200 ") == 2, response[:1000]
+print("SUCCESS: malformed framing rejected and both pipelined requests served")
+PY
+    echo ""
+}
+
+test_gunicorn_http_framing_and_keepalive
 test_health_endpoint
 test_security_headers_and_health_disclosure
 test_download_safety_and_advanced_ranges

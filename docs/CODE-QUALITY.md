@@ -46,6 +46,22 @@ application timeouts or request handling.
 The web build, deployment, and endpoint integration jobs each have a 20-minute
 job limit. The separate `/examples` smoke request has a 15-second request limit.
 
+Endpoint tests exercise Gunicorn's HTTP parser directly: malformed transfer
+encoding, header whitespace, and content lengths must be rejected, and two
+pipelined keep-alive requests must complete even when the first body is unread.
+These wire checks require a direct HTTP target and skip HTTPS proxy targets.
+
+Ruff also checks `pyproject.toml` for renamed rule selectors (`RUF202`). Preview
+checks for redirected suppressions (`RUF101`) and missing method receivers
+(`PLE0211`) are explicitly enabled in the shared configuration.
+The Bash wrapper uses a local Ruff only when its version matches the pinned
+version; otherwise, both linting and formatting use the pinned Docker image.
+
+The benchmark image enables k6 HTTP debug redaction for these headers only:
+`Authorization`, `Proxy-Authorization`, `Cookie`, `Set-Cookie`, `X-API-Key`,
+`X-Auth-Token`, and `X-Amz-Security-Token`. Other headers (including
+`X-Access-Token`), query parameters, and full debug bodies remain visible.
+
 ## Endpoint Fixture Image Cache
 
 Endpoint CI caches the test image with Docker BuildKit's GitHub Actions cache.

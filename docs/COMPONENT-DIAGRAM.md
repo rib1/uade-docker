@@ -200,7 +200,7 @@ The Web Player Container uses a multi-stage Docker build: it copies the complete
 - **Base**: CLI Player Container (inherits all UADE components)
 - **Frontend**: HTML5, CSS3, Vanilla JavaScript
 - **Backend**: Python 3.15, Flask 3.1.3
-- **Server**: Gunicorn 26.2.0 (`1` worker, `8` threads, `gthread`)
+- **Server**: Gunicorn 27.0.1 (`1` worker, `8` threads, `gthread`)
 - **Runtime base**: `python:3.15-slim`
 - **CLI components**: Copied from the Debian-based `uade-cli` image
 - **Additional Components**: Flask app, static assets, Python wrapper
