@@ -65,6 +65,7 @@ select = [
     "RUF", # Ruff-specific rules
     "PTH", # pathlib best practices
     "PLE", # pylint errors
+    "PLE0211", # methods require a receiver unless declared static (preview)
     "PLW", # pylint warnings
     "D421", # property-docstring-starts-with-verb
     "PLR2004", # magic-value-comparison
@@ -77,6 +78,8 @@ select = [
     "RUF075", # fallible-context-manager
     "RUF105", # noqa-comments
     "RUF106", # rule-codes-in-suppression-comments
+    "RUF101", # redirected suppression rule codes (preview)
+    "RUF202", # renamed selectors in Ruff configuration (preview)
 ]
 ignore = [
     "S101", # Ignore `assert` statements, which are used in test scripts

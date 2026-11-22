@@ -657,7 +657,7 @@ if ($Ruff) {
 
     Write-Host "Running Ruff on Python targets and Markdown Python code blocks..."
 
-    $ruffCheckArgs = @("check") + $PythonQualityTargets
+    $ruffCheckArgs = @("check") + $PythonQualityTargets + @("pyproject.toml")
     $ruffFormatArgs = @("format") + $RuffFormatTargets + @("--check")
     if ($Fix) {
         $ruffCheckArgs += "--fix"

@@ -891,14 +891,14 @@ if [ "$RUN_RUFF" = true ]; then
     if command -v ruff >/dev/null 2>&1; then
         OUTPUT_FORMAT=$(cd "${PROJECT_ROOT}" && ruff format "${RUFF_FORMAT_TARGETS[@]}" "${RUFF_FORMAT_ARGS[@]}" 2>&1)
         EXIT_CODE_FORMAT=$?
-        OUTPUT_CHECK=$(cd "${PROJECT_ROOT}" && ruff check "${PYTHON_QUALITY_TARGETS[@]}" "${RUFF_CHECK_ARGS[@]}" 2>&1)
+        OUTPUT_CHECK=$(cd "${PROJECT_ROOT}" && ruff check "${PYTHON_QUALITY_TARGETS[@]}" pyproject.toml "${RUFF_CHECK_ARGS[@]}" 2>&1)
         EXIT_CODE_CHECK=$?
     else
         OUTPUT=$(docker run --rm \
                -v "${PROJECT_ROOT}:/workspace" \
                --workdir /workspace \
                "ghcr.io/astral-sh/ruff:${RUFF_VERSION}" \
-               check "${PYTHON_QUALITY_TARGETS[@]}" "${RUFF_CHECK_ARGS[@]}" 2>&1)
+               check "${PYTHON_QUALITY_TARGETS[@]}" pyproject.toml "${RUFF_CHECK_ARGS[@]}" 2>&1)
         EXIT_CODE=$?
         OUTPUT_FORMAT=""
         EXIT_CODE_FORMAT=0
