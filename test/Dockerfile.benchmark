@@ -28,7 +28,9 @@ COPY --chown=benchmarker:benchmarker test/bench ./bench
 
 RUN chmod +x ./*.sh
 
-# Keep credential headers masked if a benchmark enables HTTP debug logging.
+# HTTP debug redaction covers Authorization, Proxy-Authorization, Cookie,
+# Set-Cookie, X-API-Key, X-Auth-Token, and X-Amz-Security-Token only.
+# Other headers (e.g. X-Access-Token), query parameters, and bodies stay visible.
 ENV K6_HTTP_DEBUG_REDACT=true
 
 # The user is present in this image's /etc/passwd, so name resolution is deterministic.

@@ -3050,11 +3050,12 @@ host = target.hostname
 port = target.port or 80
 headers = f"Host: {target.netloc}\r\n".encode()
 
-def exchange(request):
+def exchange(request, *, half_close=True):
     with socket.create_connection((host, port), timeout=5) as connection:
         connection.settimeout(10)
         connection.sendall(request)
-        connection.shutdown(socket.SHUT_WR)
+        if half_close:
+            connection.shutdown(socket.SHUT_WR)
         chunks = []
         while chunk := connection.recv(65536):
             chunks.append(chunk)
@@ -3067,7 +3068,7 @@ invalid_headers = (
 )
 for invalid in invalid_headers:
     response = exchange(
-        b"POST /upload HTTP/1.1\r\n" + headers + invalid + b"Connection: close\r\n\r\n"
+        b"GET /health HTTP/1.1\r\n" + headers + invalid + b"Connection: close\r\n\r\n"
     )
     status = response.split(b"\r\n", 1)[0]
     assert status.split()[1:2] == [b"400"], (invalid, status)
@@ -3076,7 +3077,8 @@ for invalid in invalid_headers:
 # when gthread drains that body. Both must receive responses on this connection.
 response = exchange(
     b"GET /health HTTP/1.1\r\n" + headers + b"Content-Length: 2\r\n\r\n{}"
-    + b"GET /health HTTP/1.1\r\n" + headers + b"Connection: close\r\n\r\n"
+    + b"GET /health HTTP/1.1\r\n" + headers + b"Connection: close\r\n\r\n",
+    half_close=False,
 )
 assert response.count(b"HTTP/1.1 200 ") == 2, response[:1000]
 print("SUCCESS: malformed framing rejected and both pipelined requests served")
