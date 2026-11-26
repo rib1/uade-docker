@@ -190,7 +190,8 @@ jobs:
           --set-env-vars "RATE_LIMIT=200" \
           --set-env-vars "CACHE_URI=gcs://${GCS_CACHE_BUCKET}/cache" \
           --set-env-vars "MAX_CONCURRENT_CONVERSIONS=2" \
-          --set-env-vars "RATE_LIMIT_DISABLED=0"
+          --set-env-vars "RATE_LIMIT_DISABLED=0" \
+          --set-env-vars "RATE_LIMIT_TRUSTED_PROXY_HOPS=1"
 
     - name: Cleanup old untagged images
       continue-on-error: true
