@@ -459,7 +459,8 @@ CACHE_CLEANUP_INTERVAL: 86400 # Cache entry age threshold (24 hours)
 CACHE_URI: file:///tmp/cache # Remote cache URI (default: file:///tmp/cache)
 CACHE_ACCESS_UPDATE_INTERVAL_SECONDS: 300 # Minimum seconds between cache access sidecar rewrites
 RATE_LIMIT: 200 # Max Requests/hour per IP (all endpoints combined)
-RATE_LIMIT_DISABLED: 0 # Set to 1 to disable rate limiting for local development/testing
+RATE_LIMIT_DISABLED: 1 # Disabled by default; set to 0 where enforcement is needed
+RATE_LIMIT_TRUSTED_PROXY_HOPS: 0 # Use the connection IP unless a trusted ingress is configured
 CONVERSION_RATE_LIMIT_PER_MINUTE: 10 # Standard conversion/probe rate for most POST endpoints
 DOWNLOAD_RATE_LIMIT: 6 # Max file downloads per minute per IP
 PROBE_UPLOAD_RATE_LIMIT_PER_MINUTE: 40 # Higher queue probe rate for local multi-file adds
@@ -592,7 +593,9 @@ UADE Web Player uses per-endpoint and global rate limits to prevent abuse and en
 
 At startup, when rate limiting is enabled, the server logs a warning if `PROBE_UPLOAD_RATE_LIMIT_PER_MINUTE` is less than double `QUEUE_DROP_FILE_LIMIT`, because repeated queue drops can otherwise hit the probe rate limiter within a minute.
 
-When `RATE_LIMIT_DISABLED=1`, the browser-side queue drop cap is disabled too, so local/dev setups are not constrained by the production safety limit.
+Local deployments default to `RATE_LIMIT_DISABLED=1`, which also disables the browser queue drop cap. The rate-limit test overlay and Cloud Run explicitly enable the limiter.
+
+`RATE_LIMIT_TRUSTED_PROXY_HOPS` selects an entry from the right of `X-Forwarded-For` for the rate-limit key. The direct Cloud Run deployment uses `1` for the rightmost entry. With a value of `0`, or if the selected address is missing or invalid, the limiter uses the connection IP. Verify the header chain before configuring another ingress, such as a load balancer or AWS function endpoint.
 
 > **Note:**
 > Rate limits are enforced per instance/pod. In multi-instance/cloud deployments, limits are not global unless a distributed backend (e.g., Redis) is configured for Flask-Limiter.

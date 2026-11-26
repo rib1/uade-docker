@@ -544,10 +544,36 @@ CONVERSION_LOCKS_ROOT_LOCAL: Final[Path | None] = (
 if CONVERSION_LOCKS_ROOT_LOCAL is not None:
     CONVERSION_LOCKS_ROOT_LOCAL.mkdir(parents=True, exist_ok=True)
 
-# Rate limiting, disabled if RATE_LIMIT_DISABLED is set to "1"
-rate_limit_enabled = os.getenv("RATE_LIMIT_DISABLED", "0") != "1"
+# Forwarded addresses are trusted only for an explicitly configured ingress chain.
+RATE_LIMIT_TRUSTED_PROXY_HOPS: Final = int(os.getenv("RATE_LIMIT_TRUSTED_PROXY_HOPS", "0"))
+if RATE_LIMIT_TRUSTED_PROXY_HOPS < 0:
+    raise ValueError("RATE_LIMIT_TRUSTED_PROXY_HOPS must be non-negative")
+
+
+def rate_limit_client_ip():
+    """Use the configured proxy's client address for the limiter only."""
+    if RATE_LIMIT_TRUSTED_PROXY_HOPS:
+        addresses = request.headers.get("X-Forwarded-For", "").rsplit(
+            ",", RATE_LIMIT_TRUSTED_PROXY_HOPS
+        )
+        if len(addresses) >= RATE_LIMIT_TRUSTED_PROXY_HOPS:
+            candidate = addresses[-RATE_LIMIT_TRUSTED_PROXY_HOPS].strip()
+            try:
+                address = ipaddress.ip_address(candidate)
+            except ValueError:
+                return get_remote_address()
+            if isinstance(address, ipaddress.IPv6Address):
+                if address.scope_id is not None:
+                    return get_remote_address()
+                if address.ipv4_mapped is not None:
+                    return str(address.ipv4_mapped)
+            return str(address)
+    return get_remote_address()
+
+
+rate_limit_enabled = os.getenv("RATE_LIMIT_DISABLED", "1") != "1"
 limiter: Final = Limiter(
-    get_remote_address,
+    rate_limit_client_ip,
     app=app,
     storage_uri="memory://",  # NOTE: Rate limits are per-instance/pod only.
     # Not global across all instances unless using a distributed backend (e.g. Redis).
@@ -557,7 +583,7 @@ limiter: Final = Limiter(
 )
 
 if not rate_limit_enabled:
-    logger.info("Rate limiting is disabled via RATE_LIMIT_DISABLED env variable")
+    logger.info("Rate limiting is disabled; set RATE_LIMIT_DISABLED=0 to enable it")
 
 
 @app.errorhandler(429)

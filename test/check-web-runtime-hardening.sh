@@ -43,6 +43,50 @@ else
   fail "configured GCS cache initialized during server import"
 fi
 
+# Keep cloud-client quotas separate and ignore untrusted entries in the header.
+if RATE_LIMIT_DISABLED=0 RATE_LIMIT_TRUSTED_PROXY_HOPS=1 python3 - <<'PY'
+from unittest.mock import patch
+
+from flask import Flask
+from flask_limiter import Limiter
+
+import server
+
+probe = Flask(__name__)
+Limiter(server.rate_limit_client_ip, app=probe, default_limits=["1 per minute"], storage_uri="memory://")
+probe.add_url_rule("/", view_func=lambda: "ok")
+
+with probe.test_client() as client:
+    for forwarded, expected in (
+        ("203.0.113.10", 200),
+        ("198.51.100.1, 203.0.113.10", 429),
+        ("198.51.100.2, 203.0.113.10", 429),
+        ("203.0.113.20", 200),
+        ("2001:db8::1", 200),
+        ("2001:0db8:0:0:0:0:0:1", 429),
+        ("::ffff:203.0.113.10", 429),
+    ):
+        result = client.get("/", headers={"X-Forwarded-For": forwarded})
+        assert result.status_code == expected, (forwarded, result.status_code)
+
+for forwarded in (None, "203.0.113.10, invalid", "fe80::1%arbitrary"):
+    headers = {"X-Forwarded-For": forwarded} if forwarded else {"X-Real-IP": "203.0.113.10"}
+    with server.app.test_request_context("/", headers=headers, environ_base={"REMOTE_ADDR": "192.0.2.1"}):
+        assert server.rate_limit_client_ip() == "192.0.2.1", forwarded
+
+with patch.object(server, "RATE_LIMIT_TRUSTED_PROXY_HOPS", 0):
+    with server.app.test_request_context(
+        "/", headers={"X-Forwarded-For": "203.0.113.10"},
+        environ_base={"REMOTE_ADDR": "192.0.2.1"},
+    ):
+        assert server.rate_limit_client_ip() == "192.0.2.1"
+PY
+then
+  pass "rate limiter separates clients behind a trusted proxy and ignores untrusted addresses"
+else
+  fail "rate limiter trusted proxy behavior"
+fi
+
 # The web image must not run its application or native converter as root.
 if [ "$(id -u)" -ne 0 ]; then
   pass "runtime process is non-root"
